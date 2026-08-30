@@ -534,7 +534,7 @@ CREATE INDEX IF NOT EXISTS idx_asset_collection_members_path
     ON asset_collection_members(file_path);
 """
 
-# v39: application-maintained FTS5 full-text index over the asset document
+# v39/v40: application-maintained FTS5 full-text index over the asset document
 # sources (assets.name + file_tags + file_meta.notes). A self-maintained
 # content table was chosen over an external-content table: the document
 # spans three tables, so requiring rowid alignment with one content table
@@ -542,12 +542,20 @@ CREATE INDEX IF NOT EXISTS idx_asset_collection_members_path
 # by the application layer (delete-by-key + re-insert); a full rebuild is
 # DELETE-all + re-seed. file_path is the document key, declared UNINDEXED
 # so it is never a matchable token — only name/tags/notes text matches.
+#
+# v40 switched the tokenizer from the default unicode61 to trigram
+# (case-insensitive). unicode61 keeps a contiguous CJK run as ONE token, so
+# only whole-run queries ever matched; trigram makes every >=3-character
+# phrase a substring match. Queries shorter than 3 code points cannot form
+# a trigram — those are served by the application-side post-verification
+# path (application/search_syntax.py), not by MATCH.
 ASSET_SEARCH_FTS_SCHEMA = """
 CREATE VIRTUAL TABLE IF NOT EXISTS asset_search USING fts5(
     file_path UNINDEXED,
     name,
     tags,
-    notes
+    notes,
+    tokenize='trigram case_sensitive 0'
 );
 """
 

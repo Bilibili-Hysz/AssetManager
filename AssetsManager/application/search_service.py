@@ -664,12 +664,15 @@ class SearchService:
     ) -> SearchResultSet:
         """Return full-text (``asset_search``) matches with source diagnostics.
 
-        Fourth search source (migration v39): the FTS5 document aggregates
-        ``assets.name``, ``file_tags`` and ``file_meta.notes`` per path, so
-        this source recalls tag/notes text that the scanner and indexed
-        sources cannot see. The query is parsed with the shared syntax
-        parser (bare words AND, ``|`` OR, ``-`` exclusion, quoted phrases,
-        ``name:``/``tag:``/``notes:`` field filters).
+        Fourth search source (migration v39, trigram since v40): the FTS5
+        document aggregates ``assets.name``, ``file_tags`` and
+        ``file_meta.notes`` per path, so this source recalls tag/notes text
+        that the scanner and indexed sources cannot see. The query is
+        parsed with the shared syntax parser (bare words AND, ``|`` OR,
+        ``-`` exclusion, quoted phrases, ``name:``/``tag:``/``notes:``
+        field filters) and executed on the dual-track contract: a trigram
+        MATCH prefilter plus an exact case-folded substring
+        post-verification that serves 1-2 code point (e.g. CJK) terms.
 
         The full-text index is a derived, rebuildable projection: every
         failure (unwired maintainer, missing table, malformed MATCH)
@@ -727,14 +730,14 @@ class SearchService:
         root = Path(library_root).resolve(strict=False)
         try:
             parsed = parse_query(query)
-            if parsed.match:
-                paths = self._search_index_service.match_file_paths(
-                    parsed.match, limit=limit, db_conn=db_conn,
-                )
-            else:
-                # Empty query or pure exclusion: nothing searchable, which
-                # is a complete empty result, not an error.
-                paths = []
+            # Dual-track execution (migration v40): the trigram MATCH
+            # prefilter narrows candidates, the exact substring predicate
+            # post-verifies them (implementing 1-2 code point terms that
+            # cannot form a trigram, plus exclusions and field scopes).
+            # A query with no positive term yields no paths.
+            paths = self._search_index_service.query_file_paths(
+                parsed, limit=limit, db_conn=db_conn,
+            )
         except Exception:
             return self._record_results(
                 "search.fts",

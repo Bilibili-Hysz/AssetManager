@@ -61,6 +61,7 @@ _EXPECTED_HISTORY = (
     (37, "media_derivatives_and_sequences"),
     (38, "asset_collections"),
     (39, "asset_search_fts"),
+    (40, "asset_search_trigram"),
 )
 
 

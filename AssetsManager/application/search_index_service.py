@@ -22,13 +22,16 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from sqlite3 import Connection
-from typing import Callable, Iterable
+from typing import TYPE_CHECKING, Callable, Iterable
 
 from AssetsManager.core.database import db_write_lock
 from AssetsManager.core.schema_defs import (
     ASSET_SEARCH_FTS_SCHEMA,
     ASSET_SEARCH_SEED_SQL,
 )
+
+if TYPE_CHECKING:
+    from AssetsManager.application.search_syntax import ParsedQuery
 
 _log = logging.getLogger(__name__)
 
@@ -155,19 +158,77 @@ class SearchIndexService:
 
         The query is parsed with the shared syntax parser (bare words AND,
         ``|`` OR, ``-`` exclusion, quoted phrases, ``name:``/``tag:``/
-        ``notes:`` field filters). Used by smart-collection evaluation; any
-        failure (missing table, malformed MATCH) degrades to no matches.
+        ``notes:`` field filters) and executed through the dual-track
+        :meth:`query_file_paths` path. Used by smart-collection evaluation;
+        any failure (missing table, malformed MATCH) degrades to no matches.
         """
         from AssetsManager.application.search_syntax import parse_query
 
         try:
             parsed = parse_query(query)
-            if not parsed.match:
-                return []
-            return self.match_file_paths(parsed.match, limit=int(limit))
+            return self.query_file_paths(parsed, limit=int(limit))
         except Exception:
             _log.warning("Search index path lookup failed", exc_info=True)
             return []
+
+    def query_file_paths(
+        self,
+        parsed: ParsedQuery,
+        *,
+        limit: int = 10_000,
+        db_conn: Connection | None = None,
+    ) -> list[str]:
+        """Execute one parsed query under the v40 dual-track contract.
+
+        Track 1 (FTS5 MATCH): the parsed prefilter expression runs against
+        the trigram index — every >=3-code-point term is a substring match.
+        Track 2 (post-verification): the exact case-folded substring
+        predicate from :func:`make_row_predicate` is applied to the
+        candidate rows, implementing the 1-2 code-point terms that cannot
+        form a trigram and re-checking exclusions/field scopes exactly.
+
+        Candidate sourcing: when some OR group has no long term
+        (``parsed.needs_full_scan``) the prefilter cannot cover that
+        group's rows, so the whole index is streamed (lazily, stopping at
+        ``limit`` verified hits); otherwise the MATCH prefilter bounds the
+        candidates. Like the strict :meth:`match_file_paths` read this is
+        a strict read: a missing table or a bad expression raises, and the
+        caller owns the error mapping (``SearchService`` degrades it to an
+        ERROR source, smart evaluation degrades to "matches nothing").
+        """
+        from AssetsManager.application.search_syntax import make_row_predicate
+
+        conn = db_conn if db_conn is not None else self._connection_provider()
+        if conn is None:
+            return []
+        if not parsed.groups:
+            # Empty query or pure exclusion: nothing matches, by contract.
+            return []
+        predicate = make_row_predicate(parsed)
+        if parsed.needs_full_scan:
+            verified: list[str] = []
+            target = int(limit)
+            cursor = conn.execute(
+                "SELECT file_path, name, tags, notes FROM asset_search"
+            )
+            for file_path, name, tags, notes in cursor:
+                if predicate(name or "", tags or "", notes or ""):
+                    verified.append(str(file_path))
+                    if len(verified) >= target:
+                        break
+            return verified
+        if not parsed.match:
+            return []
+        rows = conn.execute(
+            "SELECT file_path, name, tags, notes FROM asset_search "
+            "WHERE asset_search MATCH ? LIMIT ?",
+            (parsed.match, int(limit)),
+        ).fetchall()
+        return [
+            str(row[0])
+            for row in rows
+            if predicate(row[1] or "", row[2] or "", row[3] or "")
+        ]
 
     def match_file_paths(
         self,

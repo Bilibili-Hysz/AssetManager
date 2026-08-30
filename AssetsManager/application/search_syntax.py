@@ -11,52 +11,105 @@ the whole grammar is table-testable. Supported syntax:
   (``tag:`` maps to the FTS ``tags`` column; ``tags:`` is an alias; a space
   after the colon is allowed, ``name: sunset`` == ``name:sunset``)
 
-Output is an FTS5 ``MATCH`` expression for the positive part — exclusions
-appended as ``(positives) NOT ("e1" OR "e2")`` with the positive expression
-parenthesized first, so no reliance on FTS5's NOT/AND/OR precedence — plus
-the raw excluded texts and a ``fallback`` flag set whenever unsupported
-syntax had to be sanitized:
+Dual-track matching (v40 trigram rebuild). The asset_search index uses the
+``trigram`` tokenizer, which makes every phrase of **3+ code points** a
+substring match but cannot express shorter queries (a 1-2 code-point phrase
+forms no trigram and would match nothing). The parser therefore tags every
+term with its track and the output carries both halves:
 
-- unclosed quotes (an odd quote count; the quoted run is lost);
-- ``*`` — FTS5 prefix search is intentionally not exposed; quoting
-  neutralizes the star and the flag marks the lost intent;
-- unknown ``foo:`` prefixes (FTS5 would reject the unknown column, so the
-  word is downgraded to a quoted literal term instead).
+- ``match`` is the FTS5 ``MATCH`` expression built from the **long**
+  (>=3 code points) positives only, with the long exclusions appended as
+  ``(positives) NOT ("e1" OR "e2")`` — a prefilter, never the whole truth;
+- ``groups`` / ``excluded_units`` keep the full predicate as OR-groups of
+  AND-ed :class:`QueryUnit` values (and the exclusion units). The caller
+  runs :func:`make_row_predicate` over the candidate rows to apply the
+  short (1-2 code point) terms and every exclusion exactly, case-folded,
+  as substring checks. When a whole OR group has no long term the FTS
+  prefilter cannot cover that group's rows; ``needs_full_scan`` tells the
+  caller to scan the index directly instead of running MATCH.
 
-Degenerate inputs have defined behavior and never produce an illegal MATCH:
-an empty/whitespace query and a pure-exclusion query (``-dog``) both yield
-``match=""`` — the search source returns no results for those instead of
-executing MATCH.
+Other semantics are unchanged: unclosed quotes (an odd quote count; the
+quoted run is lost), ``*`` (prefix search is intentionally not exposed;
+quoting neutralizes the star) and unknown ``foo:`` prefixes (the word is
+downgraded to a quoted literal term) set the ``fallback`` flag. Degenerate
+inputs have defined behavior and never produce an illegal MATCH: an
+empty/whitespace query and a pure-exclusion query (``-dog``) both yield
+``match=""`` with no groups — the search source returns no results for
+those instead of executing anything.
 
-CJK note (measured on SQLite 3.50.4, unicode61 tokenizer): a contiguous
-CJK run is a **single token**, so a query hits a document only when the
-query text equals one complete run (e.g. ``风景`` matches ``sunset 风景.png``
-where ``风景`` is bounded by separators, but does not match the ``风景``
-inside ``美丽的风景.png`` — that run is the single token ``美丽的风景``).
-Substring search inside CJK runs needs the trigram tokenizer; that is a
-possible follow-up and out of scope here.
+CJK note (v40): a 2-character query such as ``风景`` now matches
+``美丽的风景.png`` through the post-verification track; a 3+ character
+query matches through the trigram MATCH track. Both tracks are substring
+semantics, so the two agree on every candidate row.
 """
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
-__all__ = ["ParsedQuery", "parse_query"]
+__all__ = [
+    "ParsedQuery",
+    "QueryUnit",
+    "make_row_predicate",
+    "parse_query",
+]
+
+#: Minimum code-point length for a term to ride the FTS5 MATCH (trigram)
+#: track. Shorter terms are post-verified against candidate rows instead.
+MIN_FTS_LENGTH = 3
+
+
+@dataclass(frozen=True)
+class QueryUnit:
+    """One positive or excluded term with its optional column scope.
+
+    ``column`` is ``None`` for an unscoped term (match any of name/tags/
+    notes) or one of the FTS5 column names ``name``/``tags``/``notes``.
+    """
+
+    text: str
+    column: str | None = None
+
+    @property
+    def is_fts(self) -> bool:
+        """True when the term is long enough for the trigram MATCH track."""
+        return len(self.text) >= MIN_FTS_LENGTH
 
 
 @dataclass(frozen=True)
 class ParsedQuery:
-    """Result of parsing one user query into FTS5 terms.
+    """Result of parsing one user query into dual-track FTS5 terms.
 
-    ``match`` is the FTS5 MATCH expression for the positive part with
-    exclusions already applied via NOT; empty means "nothing searchable"
-    (empty query or pure exclusion). ``excluded`` keeps the raw excluded
-    texts for diagnostics. ``fallback`` marks sanitized unsupported syntax.
+    ``match`` is the FTS5 MATCH **prefilter**: the long positive terms with
+    exclusions already applied via NOT; empty means the prefilter matches
+    nothing (empty query, pure exclusion, or only-short positives — the
+    latter is signalled by ``needs_full_scan`` instead). ``groups`` keeps
+    the complete positive predicate (OR-groups of AND-ed units, short terms
+    included) and ``excluded_units`` the exclusion units; callers apply
+    them with :func:`make_row_predicate`. ``excluded`` keeps the raw
+    excluded texts for diagnostics. ``fallback`` marks sanitized
+    unsupported syntax.
     """
 
     match: str
+    groups: tuple[tuple[QueryUnit, ...], ...] = ()
     excluded: tuple[str, ...] = ()
+    excluded_units: tuple[QueryUnit, ...] = ()
     fallback: bool = False
+
+    @property
+    def needs_full_scan(self) -> bool:
+        """True when some OR group has no long term.
+
+        The MATCH prefilter is built from long terms only, so a group made
+        entirely of short (1-2 code point) terms contributes no MATCH
+        fragment and its rows are invisible to the prefilter. The caller
+        must then scan the index and post-verify every row.
+        """
+        return bool(self.groups) and any(
+            not any(unit.is_fts for unit in group) for group in self.groups
+        )
 
 
 #: Input tokens: quoted phrase (with "" escapes), a standalone ``|``, or a
@@ -98,26 +151,34 @@ def _field_fragment(column: str, text: str) -> str:
 
 @dataclass
 class _State:
-    """Mutable parse accumulator: OR groups of positive fragments."""
+    """Mutable parse accumulator: OR groups of positive fragments.
 
-    groups: list[list[str]] = field(default_factory=lambda: [[]])
+    Every positive/excluded term is kept as a ``(fragment, QueryUnit)``
+    pair so the MATCH expression can drop short terms while the predicate
+    keeps the complete term list.
+    """
+
+    groups: list[list[tuple[str, QueryUnit]]] = field(default_factory=lambda: [[]])
     excluded_fragments: list[str] = field(default_factory=list)
+    excluded_units: list[QueryUnit] = field(default_factory=list)
     excluded_texts: list[str] = field(default_factory=list)
     fallback: bool = False
     pending_field: str | None = None
     pending_exclusion: bool = False
 
-    def add_positive(self, fragment: str) -> None:
-        self.groups[-1].append(fragment)
+    def add_positive(self, fragment: str, unit: QueryUnit) -> None:
+        self.groups[-1].append((fragment, unit))
 
-    def add_exclusion(self, fragment: str, text: str) -> None:
+    def add_exclusion(self, fragment: str, text: str, unit: QueryUnit) -> None:
         self.excluded_fragments.append(fragment)
+        self.excluded_units.append(unit)
         self.excluded_texts.append(text)
 
     def flush_pending_field(self) -> None:
         """Downgrade a dangling field prefix (``name:`` with no value)."""
         if self.pending_field is not None:
-            self.add_positive(_fts_string(self.pending_field + ":"))
+            text = self.pending_field + ":"
+            self.add_positive(_fts_string(text), QueryUnit(text))
             self.pending_field = None
 
 
@@ -167,18 +228,20 @@ def _feed_word(state: _State, word: str) -> None:
             return
         if exclusion:
             state.add_exclusion(
-                _unit_fragment(state, value, column), f"{prefix}:{value}"
+                _unit_fragment(state, value, column),
+                f"{prefix}:{value}",
+                QueryUnit(value, column),
             )
         else:
             state.flush_pending_field()
-            state.add_positive(_unit_fragment(state, value, column))
+            state.add_positive(_unit_fragment(state, value, column), QueryUnit(value, column))
         return
 
     if state.pending_field is not None and not exclusion:
         # This word is the value of a preceding ``name:``-style prefix.
         column = _FIELD_COLUMNS[state.pending_field]
         state.pending_field = None
-        state.add_positive(_unit_fragment(state, text, column))
+        state.add_positive(_unit_fragment(state, text, column), QueryUnit(text, column))
         return
 
     if ":" in text:
@@ -189,14 +252,16 @@ def _feed_word(state: _State, word: str) -> None:
     if not text:
         return
     if exclusion:
-        state.add_exclusion(_unit_fragment(state, text, None), text)
+        state.add_exclusion(
+            _unit_fragment(state, text, None), text, QueryUnit(text)
+        )
         return
     state.flush_pending_field()
-    state.add_positive(_unit_fragment(state, text, None))
+    state.add_positive(_unit_fragment(state, text, None), QueryUnit(text))
 
 
 def parse_query(query: str) -> ParsedQuery:
-    """Parse one user query string into an FTS5 MATCH expression."""
+    """Parse one user query string into a dual-track FTS5 query plan."""
     if not isinstance(query, str):
         raise TypeError("query must be a string")
 
@@ -214,15 +279,19 @@ def parse_query(query: str) -> ParsedQuery:
                 if state.pending_field is not None:
                     column = _FIELD_COLUMNS[state.pending_field]
                     state.pending_field = None
-                    state.add_exclusion(_field_fragment(column, text), text)
+                    state.add_exclusion(
+                        _field_fragment(column, text), text, QueryUnit(text, column)
+                    )
                 else:
-                    state.add_exclusion(_fts_string(text), text)
+                    state.add_exclusion(_fts_string(text), text, QueryUnit(text))
             elif state.pending_field is not None:
                 column = _FIELD_COLUMNS[state.pending_field]
                 state.pending_field = None
-                state.add_positive(_field_fragment(column, text))
+                state.add_positive(
+                    _field_fragment(column, text), QueryUnit(text, column)
+                )
             else:
-                state.add_positive(_fts_string(text))
+                state.add_positive(_fts_string(text), QueryUnit(text))
             continue
         if match.group("pipe") is not None:
             state.flush_pending_field()
@@ -235,26 +304,86 @@ def parse_query(query: str) -> ParsedQuery:
 
     state.flush_pending_field()
 
-    groups = [group for group in state.groups if group]
-    if not groups:
-        return ParsedQuery(
-            match="",
-            excluded=tuple(state.excluded_texts),
-            fallback=fallback or state.fallback,
-        )
-    if len(groups) == 1:
-        positives = " ".join(groups[0])
-    else:
-        positives = " OR ".join("(" + " ".join(group) + ")" for group in groups)
+    # The MATCH prefilter keeps only long (trigram-expressible) fragments.
+    # Short fragments would form no trigram and match nothing, so folding
+    # them into a group would kill the group's long terms too.
+    match_groups = [
+        [fragment for fragment, unit in group if unit.is_fts]
+        for group in state.groups
+        if group
+    ]
+    match_groups = [fragments for fragments in match_groups if fragments]
+    long_exclusions = [
+        fragment
+        for fragment, unit in zip(state.excluded_fragments, state.excluded_units)
+        if unit.is_fts
+    ]
 
-    if state.excluded_fragments:
-        exclusions = " OR ".join(state.excluded_fragments)
-        match_sql = f"({positives}) NOT ({exclusions})"
+    if not match_groups:
+        match_sql = ""
+    elif len(match_groups) == 1:
+        positives = " ".join(match_groups[0])
+        match_sql = (
+            f"({positives}) NOT ({' OR '.join(long_exclusions)})"
+            if long_exclusions
+            else positives
+        )
     else:
-        match_sql = positives
+        positives = " OR ".join("(" + " ".join(group) + ")" for group in match_groups)
+        match_sql = (
+            f"({positives}) NOT ({' OR '.join(long_exclusions)})"
+            if long_exclusions
+            else positives
+        )
 
     return ParsedQuery(
         match=match_sql,
+        groups=tuple(
+            tuple(unit for _fragment, unit in group) for group in state.groups if group
+        ),
         excluded=tuple(state.excluded_texts),
+        excluded_units=tuple(state.excluded_units),
         fallback=fallback or state.fallback,
     )
+
+
+def _unit_matches(unit: QueryUnit, name: str, tags: str, notes: str) -> bool:
+    """Case-folded substring check of one unit against a document row."""
+    needle = unit.text.casefold()
+    if unit.column is None:
+        return (
+            needle in name.casefold()
+            or needle in tags.casefold()
+            or needle in notes.casefold()
+        )
+    column_text = {"name": name, "tags": tags, "notes": notes}[unit.column]
+    return needle in column_text.casefold()
+
+
+def make_row_predicate(
+    parsed: ParsedQuery,
+) -> Callable[[str, str, str], bool]:
+    """Build the exact predicate for one parsed query.
+
+    The returned callable takes a document row's ``(name, tags, notes)``
+    texts and reports whether the row satisfies the query: OR over groups
+    of AND-ed terms, minus every exclusion. All comparisons are
+    case-folded substring checks, which agrees with the trigram MATCH
+    track for long terms and implements the short terms exactly.
+    """
+    groups = parsed.groups
+    excluded = parsed.excluded_units
+
+    def predicate(name: str, tags: str, notes: str) -> bool:
+        if not groups:
+            # No positive term: empty query or pure exclusion — nothing
+            # matches by contract (the MATCH track returns nothing too).
+            return False
+        if any(_unit_matches(unit, name, tags, notes) for unit in excluded):
+            return False
+        return any(
+            all(_unit_matches(unit, name, tags, notes) for unit in group)
+            for group in groups
+        )
+
+    return predicate

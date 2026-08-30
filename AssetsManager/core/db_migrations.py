@@ -47,7 +47,7 @@ from AssetsManager.core.schema_defs import (
 )
 
 
-CURRENT_SCHEMA_VERSION = 39
+CURRENT_SCHEMA_VERSION = 40
 _BASELINE_SCHEMA_CONTRACT = {
     "file_tags": {
         "columns": ("file_path", "tag"),
@@ -1209,6 +1209,27 @@ def _add_asset_collections_schema_v38(conn: sqlite3.Connection) -> None:
     validate_schema_objects(conn, ("asset_collections", "asset_collection_members"))
 
 
+def _apply_asset_search_fts(
+    conn: sqlite3.Connection, *, rebuild: bool
+) -> None:
+    """Provision (and optionally rebuild) the ``asset_search`` FTS table.
+
+    Shared by v39 (provision + first seed) and v40 (trigram rebuild): the
+    seed SQL logic is deliberately ONE implementation, not two copies. With
+    ``rebuild=True`` the existing virtual table is dropped first so the DDL
+    below re-creates it with the current tokenizer, and the seed's ``NOT IN``
+    guard (trivially true on the emptied table) repopulates every document.
+    """
+    if rebuild:
+        conn.execute("DROP TABLE IF EXISTS asset_search")
+    for statement in ASSET_SEARCH_FTS_SCHEMA.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    for statement in ASSET_SEARCH_SEED_SQL.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+
+
 def _add_asset_search_fts_v39(conn: sqlite3.Connection) -> None:
     """Add the FTS5 full-text index over asset documents and seed it.
 
@@ -1224,13 +1245,33 @@ def _add_asset_search_fts_v39(conn: sqlite3.Connection) -> None:
 
     The step is idempotent: the virtual table uses CREATE ... IF NOT EXISTS
     and the seed insert skips every file_path that already has a document.
+
+    Note: v40 later rebuilt this table with the trigram tokenizer (same
+    columns, same contract) to fix CJK substring matching; running the full
+    migration sequence therefore ends on the v40 shape regardless of the
+    DDL version this step executes.
     """
-    for statement in ASSET_SEARCH_FTS_SCHEMA.split(";"):
-        if sql := statement.strip():
-            conn.execute(sql)
-    for statement in ASSET_SEARCH_SEED_SQL.split(";"):
-        if sql := statement.strip():
-            conn.execute(sql)
+    _apply_asset_search_fts(conn, rebuild=False)
+    validate_schema_object(conn, "asset_search", SCHEMA_OBJECT_CONTRACT["asset_search"])
+
+
+def _rebuild_asset_search_fts_trigram_v40(conn: sqlite3.Connection) -> None:
+    """Rebuild ``asset_search`` with the trigram tokenizer (CJK substrings).
+
+    v39's default unicode61 tokenizer keeps a contiguous CJK run as a single
+    token, so ``风景`` could never match ``美丽的风景.png``. The trigram
+    tokenizer (case-insensitive) turns every >=3-code-point query into a
+    substring match. Queries shorter than 3 code points cannot form a
+    trigram; the application layer serves those with an exact-substring
+    post-verification pass instead (application/search_syntax.py).
+
+    The step drops and re-creates the virtual table, then re-seeds every
+    document from the same shared seed SQL as v39 — the existing index has
+    no external consumers, so a full rebuild is safe and keeps every
+    recorded document. Re-running on an already-trigram table is idempotent
+    (drop + recreate + seed is a fixed point).
+    """
+    _apply_asset_search_fts(conn, rebuild=True)
     validate_schema_object(conn, "asset_search", SCHEMA_OBJECT_CONTRACT["asset_search"])
 
 
@@ -1316,6 +1357,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(37, "media_derivatives_and_sequences", _add_media_derivatives_schema_v37),
     Migration(38, "asset_collections", _add_asset_collections_schema_v38),
     Migration(39, "asset_search_fts", _add_asset_search_fts_v39),
+    Migration(40, "asset_search_trigram", _rebuild_asset_search_fts_trigram_v40),
 )
 
 

@@ -71,18 +71,23 @@ def _document(conn: sqlite3.Connection, file_path: str) -> tuple[str, str, str] 
 # ── Migration v39: seed content and idempotency ────────────────────────
 
 
-def test_migrate_reaches_v39_and_provisions_fts_table():
+def test_migrate_reaches_latest_and_provisions_fts_table():
     connection = sqlite3.connect(":memory:", check_same_thread=False)
     connection.executescript(database._SCHEMA)
     try:
         version = migrate(connection)
-        assert version == CURRENT_SCHEMA_VERSION == 39
+        assert version == CURRENT_SCHEMA_VERSION == 40
         tables = {
             row[0]
             for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
         }
         assert "asset_search" in tables
         assert connection.execute("SELECT count(*) FROM asset_search").fetchone()[0] == 0
+        # v40 rebuilt the table with the trigram tokenizer.
+        ddl = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE name='asset_search'"
+        ).fetchone()[0]
+        assert "trigram" in ddl
     finally:
         connection.close()
 
@@ -112,6 +117,75 @@ def test_v39_seed_aggregates_three_sources_and_is_idempotent(conn: sqlite3.Conne
     # Idempotent: re-running the step neither duplicates nor loses rows.
     _add_asset_search_fts_v39(conn)
     assert conn.execute("SELECT count(*) FROM asset_search").fetchone()[0] == 2
+
+
+# ── Migration v40: trigram rebuild (CJK substring fix) ─────────────────
+
+
+def _migrate_to_39(conn: sqlite3.Connection) -> None:
+    """Run and record migrations 1..39 only, leaving v40 pending."""
+    from AssetsManager.core.db_migrations import MIGRATIONS
+    from AssetsManager.core.schema_defs import SCHEMA_MIGRATIONS_SCHEMA
+
+    conn.execute(SCHEMA_MIGRATIONS_SCHEMA)
+    for migration in MIGRATIONS:
+        if migration.version > 39:
+            break
+        migration.apply(conn)
+        conn.execute(
+            "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+            (migration.version, migration.name, 0.0),
+        )
+
+
+def test_v40_rebuild_preserves_documents_and_enables_trigram():
+    from AssetsManager.core.db_migrations import migrate
+
+    connection = sqlite3.connect(":memory:", check_same_thread=False)
+    connection.executescript(database._SCHEMA)
+    try:
+        # A database that recorded v39 with the unicode61-era index:
+        # documents already exist when v40 runs.
+        _migrate_to_39(connection)
+        _add_assets_index_v2(connection)
+        _insert_asset(connection, "D:/lib/美丽的风景.png", "美丽的风景.png")
+        _insert_asset(connection, "D:/lib/other.png", "other.png")
+        _add_asset_search_fts_v39(connection)
+        assert connection.execute("SELECT count(*) FROM asset_search").fetchone()[0] == 2
+
+        # v40: drop + recreate with trigram + reseed.
+        assert migrate(connection) == CURRENT_SCHEMA_VERSION
+        assert _document(connection, "D:/lib/美丽的风景.png") == ("美丽的风景.png", "", "")
+        assert _document(connection, "D:/lib/other.png") == ("other.png", "", "")
+        ddl = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE name='asset_search'"
+        ).fetchone()[0]
+        assert "trigram" in ddl
+
+        # The rebuilt index answers substring queries through the service.
+        service = SearchIndexService(lambda: connection)
+        assert service.search_file_paths("风景") == ["D:/lib/美丽的风景.png"]
+    finally:
+        connection.close()
+
+
+def test_v40_rebuild_is_idempotent(conn: sqlite3.Connection):
+    from AssetsManager.core.db_migrations import _rebuild_asset_search_fts_trigram_v40
+
+    _add_assets_index_v2(conn)
+    _insert_asset(conn, "D:/lib/sunset.png", "sunset.png")
+    conn.execute(
+        "INSERT INTO file_tags(file_path, tag) VALUES ('D:/lib/sunset.png', '风景')"
+    )
+    conn.commit()
+
+    _rebuild_asset_search_fts_trigram_v40(conn)
+    assert conn.execute("SELECT count(*) FROM asset_search").fetchone()[0] == 1
+
+    # Re-running neither duplicates nor loses documents.
+    _rebuild_asset_search_fts_trigram_v40(conn)
+    assert conn.execute("SELECT count(*) FROM asset_search").fetchone()[0] == 1
+    assert _document(conn, "D:/lib/sunset.png") == ("sunset.png", "风景", "")
 
 
 # ── Incremental maintenance wiring: three services ─────────────────────
@@ -197,6 +271,9 @@ def fts_library(tmp_path, conn: sqlite3.Connection):
     library = tmp_path / "library"
     library.mkdir()
     _insert_asset(conn, str(library / "photo1.png"), "photo1.png")
+    # A CJK-substring document: under the v39 unicode61 tokenizer "风景"
+    # could never match this name (one long run); under v40 trigram it must.
+    _insert_asset(conn, str(library / "美丽的风景.png"), "美丽的风景.png")
     conn.execute(
         "INSERT INTO file_tags(file_path, tag) VALUES (?, '风景')",
         (str(library / "photo1.png"),),
@@ -216,15 +293,24 @@ def test_fts_source_hits_tags_and_notes_text(fts_library, conn: sqlite3.Connecti
         search_index_service=SearchIndexService(lambda: conn),
     )
 
+    # "风景" (2 code points) post-verifies: it hits photo1.png (tag run)
+    # AND 美丽的风景.png (substring of the name) — the latter was
+    # impossible under the v39 unicode61 tokenizer.
     result = service.search_by_fts_detailed(fts_library, "风景")
     assert result.status is SearchStatus.COMPLETE
-    assert result.count == 1
-    assert result.results[0].name == "photo1.png"
+    assert result.count == 2
+    assert {item.name for item in result.results} == {"photo1.png", "美丽的风景.png"}
     assert result.results[0].path == "photo1.png"
     assert result.sources[0].source == "fts"
 
+    # 3+ code points ride the trigram MATCH track (substring semantics).
+    assert service.search_by_fts_detailed(fts_library, "的风景").count == 1
+
     # Field filters scope to one column.
     assert service.search_by_fts_detailed(fts_library, "tag:风景").count == 1
+    # photo1's name is "photo1.png" — only the CJK document's name contains
+    # the substring, even though both documents contain the term overall.
+    assert service.search_by_fts_detailed(fts_library, "name:风景").count == 1
     assert service.search_by_fts_detailed(fts_library, "name:photo1").count == 1
     assert service.search_by_fts_detailed(fts_library, "notes:golden").count == 1
     assert service.search_by_fts_detailed(fts_library, "tag:golden").count == 0
