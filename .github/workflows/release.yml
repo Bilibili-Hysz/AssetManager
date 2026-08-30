@@ -66,6 +66,14 @@ jobs:
           if ($process.ExitCode -ne 0) {
             throw "Frozen Qt/icon package smoke failed with code $($process.ExitCode)"
           }
+      # Per-user Inno Setup installer (A2). Version comes from
+      # AssetsManager/core/constants.py via scripts/build_installer.py, which
+      # also stamps installer/_version.iss and self-checks the .iss script.
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+      - name: Build Windows installer
+        shell: pwsh
+        run: python scripts/build_installer.py
       - name: Prepare release artifact
         shell: pwsh
         run: |
@@ -85,6 +93,14 @@ jobs:
             ${{ runner.temp }}/AssetManager-${{ github.ref_name }}.zip
             ${{ runner.temp }}/AssetManager-${{ github.ref_name }}.zip.sha256
           if-no-files-found: error
+      - name: Transfer installer artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-installer
+          path: |
+            dist/installer/AssetManager-*-setup.exe
+            dist/installer/AssetManager-*-setup.exe.sha256
+          if-no-files-found: error
 
   publish-release:
     name: Publish Release Asset
@@ -98,6 +114,11 @@ jobs:
         with:
           name: release-bundle
           path: ${{ runner.temp }}/release-bundle
+      - name: Download installer artifact
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: release-installer
+          path: ${{ runner.temp }}/release-installer
       - name: Verify and upload release artifacts
         shell: pwsh
         env:
@@ -114,14 +135,29 @@ jobs:
             }
           }
 
+          $installers = @(Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TEMP "release-installer") -Filter "AssetManager-*-setup.exe" -File)
+          if ($installers.Count -ne 1) {
+            throw "Expected exactly one installer, found $($installers.Count)"
+          }
+          $installer = $installers[0]
+          $installerName = $installer.Name
+          $installerChecksumName = "$installerName.sha256"
+          $installerChecksum = Join-Path $installer.DirectoryName $installerChecksumName
+          if (-not (Test-Path -LiteralPath $installerChecksum -PathType Leaf)) {
+            throw "Installer checksum was not downloaded: $installerChecksumName"
+          }
+
           $releaseJson = gh release view $tag --repo "${{ github.repository }}" --json assets
           if ($LASTEXITCODE -ne 0) {
             throw "Release $tag does not exist in ${{ github.repository }}; refusing to create or target another release"
           }
           $release = $releaseJson | ConvertFrom-Json
+          $uploadNames = @(
+            $archiveName, $checksumName, $installerName, $installerChecksumName
+          )
           $existingNames = @(
             $release.assets |
-              Where-Object { $_.name -eq $archiveName -or $_.name -eq $checksumName } |
+              Where-Object { $uploadNames -ccontains $_.name } |
               ForEach-Object { $_.name }
           )
           if ($existingNames.Count -gt 0) {
@@ -134,7 +170,13 @@ jobs:
             throw "SHA-256 mismatch for ${archiveName}: expected $recordedHash, got $actualHash"
           }
 
-          gh release upload --repo "${{ github.repository }}" $tag $archive $checksum
+          $recordedInstallerHash = (Get-Content -LiteralPath $installerChecksum -Raw).Trim() -split '\s+' | Select-Object -First 1
+          $actualInstallerHash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash
+          if ($actualInstallerHash -cne $recordedInstallerHash) {
+            throw "SHA-256 mismatch for ${installerName}: expected $recordedInstallerHash, got $actualInstallerHash"
+          }
+
+          gh release upload --repo "${{ github.repository }}" $tag $archive $checksum $installer.FullName $installerChecksum
           if ($LASTEXITCODE -ne 0) {
             throw "Release upload failed for $tag in ${{ github.repository }}"
           }
