@@ -1538,7 +1538,10 @@ def test_v36_database_with_rating_candidate_rows_upgrades_to_v37_untouched(
 
 def test_v37_media_schema_is_idempotent(memory_db, monkeypatch):
     from AssetsManager.core import database, db_migrations
-    from AssetsManager.core.schema_defs import validate_schema_objects
+    from AssetsManager.core.schema_defs import (
+        validate_schema_object,
+        validate_schema_objects,
+    )
 
     conn = memory_db
     conn.executescript(database._SCHEMA)
@@ -1553,10 +1556,14 @@ def test_v37_media_schema_is_idempotent(memory_db, monkeypatch):
     db_migrations._add_media_derivatives_schema_v37(conn)
     db_migrations._add_media_derivatives_schema_v37(conn)
     conn.commit()
-    validate_schema_objects(
-        conn,
-        ("asset_derivatives", "asset_sequences", "asset_sequence_frames"),
+    # v41 later extended asset_derivatives with the lifecycle columns, so the
+    # raw v37 step's shape satisfies the v37 boundary contract, not the
+    # current one (same pattern as the v35 boundary test).
+    validate_schema_object(
+        conn, "asset_derivatives",
+        db_migrations._versioned_schema_contract("asset_derivatives", 37),
     )
+    validate_schema_objects(conn, ("asset_sequences", "asset_sequence_frames"))
 
     # Full runner passes on the already-migrated database are also no-ops.
     assert db_migrations.migrate(conn) == db_migrations.CURRENT_SCHEMA_VERSION
@@ -1728,3 +1735,111 @@ def test_v37_database_upgrades_to_v38_and_is_idempotent(memory_db, monkeypatch):
         "SELECT file_path, kind FROM asset_derivatives"
     ).fetchall() == [("/lib/keep.png", "viewer_image")]
     validate_schema_objects(conn, ("asset_collections", "asset_collection_members"))
+
+
+def test_v41_adds_derivative_lifecycle_columns(memory_db):
+    from AssetsManager.core import database
+    from AssetsManager.core.db_migrations import CURRENT_SCHEMA_VERSION, migrate
+    from AssetsManager.core.schema_defs import SCHEMA_OBJECT_CONTRACT
+    from AssetsManager.core.schema_defs import validate_schema_object
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+
+    assert migrate(conn) == CURRENT_SCHEMA_VERSION
+    assert conn.execute(
+        "SELECT name FROM schema_migrations WHERE version=41"
+    ).fetchone() == ("asset_derivative_lifecycle",)
+    columns = {row[1]: row for row in conn.execute("PRAGMA table_info('asset_derivatives')")}
+    assert {"status", "error_code", "invalidated_at"} <= set(columns)
+    assert columns["status"][2].upper() == "TEXT"
+    assert columns["status"][3] == 1  # NOT NULL
+    assert columns["status"][4] == "'ready'"  # DEFAULT 'ready'
+    assert not columns["error_code"][3]  # nullable
+    assert not columns["invalidated_at"][3]  # nullable
+    validate_schema_object(
+        conn, "asset_derivatives", SCHEMA_OBJECT_CONTRACT["asset_derivatives"]
+    )
+
+    # The two-state whitelist is enforced by the CHECK constraint; the future
+    # async states ('pending'/'generating') are deliberately NOT admitted.
+    conn.execute(
+        "INSERT INTO asset_derivatives (file_path, kind, rel_path, created_at) "
+        "VALUES ('/lib/a.png', 'viewer_image', 'viewer_image/a.png', 1.0)"
+    )
+    assert conn.execute(
+        "SELECT status FROM asset_derivatives WHERE file_path='/lib/a.png'"
+    ).fetchone() == ("ready",)
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO asset_derivatives (file_path, kind, rel_path, "
+            "created_at, status) VALUES "
+            "('/lib/b.png', 'viewer_image', 'viewer_image/b.png', 1.0, 'pending')"
+        )
+    conn.rollback()
+
+
+def test_v40_database_upgrades_to_v41_and_is_idempotent(memory_db, monkeypatch):
+    from AssetsManager.core import database, db_migrations
+    from AssetsManager.core.schema_defs import SCHEMA_OBJECT_CONTRACT
+    from AssetsManager.core.schema_defs import validate_schema_object
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    original_version = db_migrations.CURRENT_SCHEMA_VERSION
+    try:
+        monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 40)
+        assert db_migrations.migrate(conn) == 40
+    finally:
+        monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", original_version)
+
+    # A pre-v41 derivative row (written by the v37-era recorder) has no
+    # lifecycle state yet.
+    conn.execute(
+        "INSERT INTO asset_derivatives (file_path, kind, rel_path, created_at) "
+        "VALUES ('/lib/legacy.png', 'audio_waveform', 'audio_waveform/x.png', 1.0)"
+    )
+    conn.commit()
+    assert "status" not in {
+        row[1] for row in conn.execute("PRAGMA table_info('asset_derivatives')")
+    }
+
+    assert db_migrations.migrate(conn) == db_migrations.CURRENT_SCHEMA_VERSION
+    # Legacy rows keep their "ready" meaning: the ADD COLUMN default backfills
+    # 'ready' without touching the data columns.
+    assert conn.execute(
+        "SELECT file_path, kind, rel_path, created_at, status, error_code, "
+        "invalidated_at FROM asset_derivatives"
+    ).fetchall() == [
+        ("/lib/legacy.png", "audio_waveform", "audio_waveform/x.png", 1.0,
+         "ready", None, None),
+    ]
+    validate_schema_object(
+        conn, "asset_derivatives", SCHEMA_OBJECT_CONTRACT["asset_derivatives"]
+    )
+
+    # Full runner passes on the already-migrated database are also no-ops.
+    assert db_migrations.migrate(conn) == db_migrations.CURRENT_SCHEMA_VERSION
+    assert conn.execute(
+        "SELECT status, error_code, invalidated_at FROM asset_derivatives"
+    ).fetchall() == [("ready", None, None)]
+
+
+def test_v40_boundary_contract_for_asset_derivatives(memory_db, monkeypatch):
+    """At the v40 boundary the derivatives table lacks the v41 columns."""
+    from AssetsManager.core import database
+    from AssetsManager.core.schema_defs import (
+        InvalidSchemaError,
+        validate_schema_object,
+    )
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    assert _migrate_to(monkeypatch, conn, 40) == 40
+
+    boundary = _db_migrations._versioned_schema_contract("asset_derivatives", 40)
+    validate_schema_object(conn, "asset_derivatives", boundary)
+    with pytest.raises(InvalidSchemaError, match="missing columns"):
+        validate_schema_object(
+            conn, "asset_derivatives", _db_migrations._versioned_schema_contract("asset_derivatives", 41)
+        )

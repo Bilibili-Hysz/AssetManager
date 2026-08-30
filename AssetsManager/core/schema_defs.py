@@ -1382,10 +1382,21 @@ SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {
     # same kind overwrites the row and its file. ``file_path`` is the absolute
     # library-asset key (file_meta style); ``rel_path`` is the stored file
     # relative to <data_dir>/derivatives with POSIX slashes.
+    #
+    # v41 adds the lifecycle columns: ``status`` ('ready' | 'failed'),
+    # ``error_code`` (why the last generation attempt failed) and
+    # ``invalidated_at`` (soft-retire timestamp — a row whose source changed
+    # is retired, its payload deleted, but the row kept for observability;
+    # readers only serve rows with ``invalidated_at IS NULL`` AND
+    # ``status='ready'``). The two-state CHECK deliberately does NOT admit the
+    # future async states ('pending'/'generating'): enum evolution goes through
+    # the application-layer whitelist first and is appended to the CHECK only
+    # by a dedicated migration when the async generator actually ships, so we
+    # never pay SQLite's CHECK-rebuild debt speculatively.
     "asset_derivatives": {
         "columns": (
             "file_path", "kind", "rel_path", "params", "source_mtime",
-            "created_at",
+            "created_at", "status", "error_code", "invalidated_at",
         ),
         "primary_key": ("file_path", "kind"),
         "unique_constraints": (),
@@ -1399,10 +1410,14 @@ SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {
             "params": {"type": "TEXT", "not_null": True},
             "source_mtime": {"type": "REAL", "not_null": False},
             "created_at": {"type": "REAL", "not_null": True},
+            "status": {"type": "TEXT", "not_null": True},
+            "error_code": {"type": "TEXT", "not_null": False},
+            "invalidated_at": {"type": "REAL", "not_null": False},
         },
         "checks": (
             "kind IN ('viewer_image', 'video_poster', 'contact_sheet', "
             "'audio_waveform', 'extracted_palette', 'sequence_manifest')",
+            "status IN ('ready', 'failed')",
         ),
     },
     # v37: file sequences (frame stacks). The anchor is the "directory +

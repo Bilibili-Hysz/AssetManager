@@ -311,6 +311,14 @@ class _ExtractAudioWaveformTask(QRunnable):
         elif ok:
             return
         else:
+            recorder = self._runtime.derivatives_recorder
+            if recorder is not None:
+                # Lifecycle v41: flag the existing audio_waveform row (if any)
+                # as failed so the read side stops serving it; a no-row asset
+                # stays rowless (mark_failed never inserts).
+                recorder.mark_failed(
+                    self._source_path, "audio_waveform", "waveform_render_failed"
+                )
             self._loader._mark_failed(self._source_path, self._runtime)
 
 

@@ -10,6 +10,14 @@ directory, with an optional caller-chosen extension.
 Contract (mirrors ``activity_recorder.py``): derivatives are regenerable
 value-adds, never facts, so a recording or clearing failure is logged and
 swallowed — it must never fail or delay the operation that produced it.
+
+Lifecycle (migration v41): rows carry ``status`` ('ready' | 'failed'),
+``error_code`` and ``invalidated_at``. :meth:`record` keeps the ready
+semantics (a recorded row is fresh and live), :meth:`mark_failed` flags an
+existing row whose regeneration failed, and :meth:`invalidate` soft-retires
+stale rows (payload deleted, row kept). The read side (:meth:`lookup`,
+:meth:`payload_path`, :meth:`list_ready`) only serves rows that are
+``status='ready'`` AND ``invalidated_at IS NULL``.
 """
 
 from __future__ import annotations
@@ -41,6 +49,14 @@ DERIVATIVE_KINDS: frozenset[str] = frozenset(
         "sequence_manifest",
     }
 )
+
+#: Derivative lifecycle states (migration v41). This whitelist — not the
+#: database CHECK — is the source of truth for enum evolution: a future async
+#: generator adds 'pending'/'generating' here first and appends them to the
+#: v41 CHECK only via a dedicated migration, so the value set is never
+#: encoded speculatively into a constraint that SQLite can only change by
+#: rebuilding the table.
+DERIVATIVE_STATUSES: frozenset[str] = frozenset({"ready", "failed"})
 
 _DERIVATIVES_DIR_NAME = "derivatives"
 
@@ -233,11 +249,13 @@ class MediaDerivativesRecorder:
             stale_rel_path = str(row[0]) if row is not None else None
             scope.execute(
                 "INSERT INTO asset_derivatives "
-                "(file_path, kind, rel_path, params, source_mtime, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?) "
+                "(file_path, kind, rel_path, params, source_mtime, created_at, "
+                "status, error_code, invalidated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, 'ready', NULL, NULL) "
                 "ON CONFLICT(file_path, kind) DO UPDATE SET "
                 "rel_path=excluded.rel_path, params=excluded.params, "
-                "source_mtime=excluded.source_mtime, created_at=excluded.created_at",
+                "source_mtime=excluded.source_mtime, created_at=excluded.created_at, "
+                "status='ready', error_code=NULL, invalidated_at=NULL",
                 (
                     path_key,
                     kind,
@@ -315,6 +333,111 @@ class MediaDerivativesRecorder:
                 continue
             _resolve_target(base, str(rel_path)).unlink(missing_ok=True)
 
+    # ── Lifecycle (migration v41) ────────────────────────────────────
+
+    def mark_failed(self, file_path: str | Path, kind: str, error_code: str) -> None:
+        """Flag an EXISTING registry row as failed; never raises, never inserts.
+
+        ``UPDATE``-only by design: a generation attempt for an asset that has
+        no row yet stays rowless (the pre-v41 behavior), so failure rows can
+        never pollute ``list_ready``/``lookup`` results — those queries are
+        the "already computed" signal for the retry paths. A later successful
+        :meth:`record` resets the row to ready.
+        """
+        try:
+            self._mark_failed(file_path, kind, error_code)
+        except Exception:
+            _log.warning(
+                "Media derivative failure marking failed for kind=%s path=%s",
+                kind,
+                file_path,
+                exc_info=True,
+            )
+
+    def _mark_failed(self, file_path: str | Path, kind: str, error_code: str) -> None:
+        if kind not in DERIVATIVE_KINDS:
+            return
+        conn = self._connection_provider()
+        if conn is None:
+            return
+        path_key = self._path_key(file_path)
+        with self._write_scope(conn, "mark_failed") as scope:
+            scope.execute(
+                "UPDATE asset_derivatives SET status='failed', error_code=? "
+                "WHERE file_path=? AND kind=?",
+                (str(error_code or "unknown")[:128], path_key, kind),
+            )
+
+    def invalidate(
+        self,
+        file_path: str | Path,
+        kind: str | None = None,
+        *,
+        data_dir: str | Path | None = None,
+    ) -> None:
+        """Soft-retire derivative rows: stamp ``invalidated_at``, drop payloads.
+
+        A derivative judged stale (e.g. by the ``source_mtime`` comparison in
+        ``analysis.py``) is retired instead of deleted: the payload file goes,
+        but the row stays with ``invalidated_at=now`` so the read side — which
+        only serves ``invalidated_at IS NULL`` rows — stops using it while the
+        row remains observable for diagnostics. With ``kind`` only that
+        derivative is retired; with ``kind=None`` every derivative of the
+        asset is. Never raises; files already gone are not an error.
+        """
+        try:
+            self._invalidate(file_path, kind, data_dir)
+        except Exception:
+            _log.warning(
+                "Media derivative invalidation failed for kind=%s path=%s",
+                kind,
+                file_path,
+                exc_info=True,
+            )
+
+    def _invalidate(
+        self,
+        file_path: str | Path,
+        kind: str | None,
+        data_dir: str | Path | None,
+    ) -> None:
+        base = Path(data_dir) if data_dir is not None else self._data_dir
+        path_key = self._path_key(file_path)
+        conn = self._connection_provider()
+        if conn is None:
+            return
+        if kind is None:
+            rows = conn.execute(
+                "SELECT rel_path FROM asset_derivatives WHERE file_path=?",
+                (path_key,),
+            ).fetchall()
+        else:
+            if kind not in DERIVATIVE_KINDS:
+                return
+            rows = conn.execute(
+                "SELECT rel_path FROM asset_derivatives "
+                "WHERE file_path=? AND kind=?",
+                (path_key, kind),
+            ).fetchall()
+        with self._write_scope(conn, "invalidate") as scope:
+            if kind is None:
+                scope.execute(
+                    "UPDATE asset_derivatives SET invalidated_at=? "
+                    "WHERE file_path=? AND invalidated_at IS NULL",
+                    (time(), path_key),
+                )
+            else:
+                scope.execute(
+                    "UPDATE asset_derivatives SET invalidated_at=? "
+                    "WHERE file_path=? AND kind=? AND invalidated_at IS NULL",
+                    (time(), path_key, kind),
+                )
+        for (rel_path,) in rows:
+            if not rel_path:
+                # Params-only rows have no payload file on disk.
+                continue
+            _resolve_target(base, str(rel_path)).unlink(missing_ok=True)
+
     # ── Read side ────────────────────────────────────────────────────
 
     def lookup(
@@ -327,7 +450,10 @@ class MediaDerivativesRecorder:
         The row's existence is the "already computed once" signal for the
         on-demand analysis passes (waveform, palette): consumers must skip
         regeneration whenever this returns a row, even a params-only one.
-        Mirrors the write-side contract: failures are logged and swallowed.
+        Only rows fit to serve are visible — ``status='ready'`` AND
+        ``invalidated_at IS NULL`` — so failed and soft-retired rows keep the
+        retry paths regenerating instead of trusting stale state. Mirrors the
+        write-side contract: failures are logged and swallowed.
         """
         try:
             return self._lookup(file_path, kind)
@@ -353,7 +479,9 @@ class MediaDerivativesRecorder:
         path_key = self._path_key(file_path)
         row = conn.execute(
             "SELECT rel_path, params, source_mtime, created_at "
-            "FROM asset_derivatives WHERE file_path=? AND kind=?",
+            "FROM asset_derivatives "
+            "WHERE file_path=? AND kind=? "
+            "AND status='ready' AND invalidated_at IS NULL",
             (path_key, kind),
         ).fetchone()
         if row is None:
@@ -372,6 +500,73 @@ class MediaDerivativesRecorder:
             source_mtime=row[2],
             created_at=row[3],
         )
+
+    def list_ready(
+        self,
+        file_path: str | Path | None = None,
+        kind: str | None = None,
+    ) -> list[MediaDerivative]:
+        """List registry rows fit to serve; never raises (errors log, empty).
+
+        Fit to serve means ``status='ready'`` AND ``invalidated_at IS NULL`` —
+        failed rows and soft-retired (stale) rows are invisible here. With
+        ``file_path`` the list narrows to one asset, with ``kind`` to one
+        derivative kind; both filters may combine or be omitted.
+        """
+        try:
+            return self._list_ready(file_path, kind)
+        except Exception:
+            _log.warning(
+                "Media derivative listing failed for kind=%s path=%s",
+                kind,
+                file_path,
+                exc_info=True,
+            )
+            return []
+
+    def _list_ready(
+        self,
+        file_path: str | Path | None,
+        kind: str | None,
+    ) -> list[MediaDerivative]:
+        if kind is not None and kind not in DERIVATIVE_KINDS:
+            return []
+        conn = self._connection_provider()
+        if conn is None:
+            return []
+        clauses = ["status='ready'", "invalidated_at IS NULL"]
+        parameters: list[object] = []
+        if file_path is not None:
+            clauses.append("file_path=?")
+            parameters.append(self._path_key(file_path))
+        if kind is not None:
+            clauses.append("kind=?")
+            parameters.append(kind)
+        rows = conn.execute(
+            "SELECT file_path, kind, rel_path, params, source_mtime, created_at "
+            "FROM asset_derivatives WHERE " + " AND ".join(clauses) +
+            " ORDER BY file_path, kind",
+            tuple(parameters),
+        ).fetchall()
+        derivatives: list[MediaDerivative] = []
+        for row in rows:
+            try:
+                params = json.loads(row[3]) if row[3] else {}
+                if not isinstance(params, dict):
+                    params = {}
+            except (TypeError, ValueError):
+                params = {}
+            derivatives.append(
+                MediaDerivative(
+                    file_path=str(row[0]),
+                    kind=str(row[1]),
+                    rel_path=str(row[2]),
+                    params=params,
+                    source_mtime=row[4],
+                    created_at=row[5],
+                )
+            )
+        return derivatives
 
     def payload_path(
         self,

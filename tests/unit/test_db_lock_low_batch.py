@@ -62,6 +62,7 @@ _EXPECTED_HISTORY = (
     (38, "asset_collections"),
     (39, "asset_search_fts"),
     (40, "asset_search_trigram"),
+    (41, "asset_derivative_lifecycle"),
 )
 
 

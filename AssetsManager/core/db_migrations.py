@@ -47,7 +47,7 @@ from AssetsManager.core.schema_defs import (
 )
 
 
-CURRENT_SCHEMA_VERSION = 40
+CURRENT_SCHEMA_VERSION = 41
 _BASELINE_SCHEMA_CONTRACT = {
     "file_tags": {
         "columns": ("file_path", "tag"),
@@ -279,6 +279,23 @@ def _versioned_schema_contract(table: str, version: int) -> SchemaObjectContract
         column_contracts = dict(cast(dict[str, Any], contract.get("column_contracts", {})))
         column_contracts.pop("rating", None)
         contract["column_contracts"] = column_contracts
+
+    if table == "asset_derivatives" and version < 41:
+        contract["columns"] = tuple(
+            column
+            for column in contract["columns"]
+            if column not in {"status", "error_code", "invalidated_at"}
+        )
+        column_contracts = dict(cast(dict[str, Any], contract.get("column_contracts", {})))
+        column_contracts.pop("status", None)
+        column_contracts.pop("error_code", None)
+        column_contracts.pop("invalidated_at", None)
+        contract["column_contracts"] = column_contracts
+        contract["checks"] = tuple(
+            check
+            for check in contract.get("checks", ())
+            if "status" not in check
+        )
 
     if table == "shop_cart_checkouts":
         if version < 19:
@@ -1186,10 +1203,14 @@ def _add_media_derivatives_schema_v37(conn: sqlite3.Connection) -> None:
     columns = {str(row[1]) for row in conn.execute(f"PRAGMA table_info('{table}')")}
     if "rating" not in columns:
         conn.execute("ALTER TABLE file_meta ADD COLUMN rating INTEGER")
-    validate_schema_objects(
-        conn,
-        ("asset_derivatives", "asset_sequences", "asset_sequence_frames"),
+    # v41 later extended asset_derivatives with the lifecycle columns (status,
+    # error_code, invalidated_at), so validating the derivatives table against
+    # the current contract here would fail mid-sequence; validate the v37
+    # boundary shape instead (same pattern as v35's step).
+    validate_schema_object(
+        conn, "asset_derivatives", _versioned_schema_contract("asset_derivatives", 37)
     )
+    validate_schema_objects(conn, ("asset_sequences", "asset_sequence_frames"))
     validate_schema_object(conn, table, SCHEMA_OBJECT_CONTRACT[table])
 
 
@@ -1275,6 +1296,46 @@ def _rebuild_asset_search_fts_trigram_v40(conn: sqlite3.Connection) -> None:
     validate_schema_object(conn, "asset_search", SCHEMA_OBJECT_CONTRACT["asset_search"])
 
 
+def _add_asset_derivative_lifecycle_schema_v41(conn: sqlite3.Connection) -> None:
+    """Add the derivative lifecycle columns: status, error_code, invalidated_at.
+
+    ``asset_derivatives`` rows previously had exactly one implicit state
+    ("ready"): a row's existence was the "already computed" signal, so a
+    stale/failed generation could only be retried by overwriting or deleting
+    the row. v41 makes the lifecycle explicit:
+
+    - ``status`` ('ready' | 'failed', DEFAULT 'ready'): the last generation
+      attempt's outcome. Legacy rows and the legacy write path keep the ready
+      semantics unchanged. The CHECK intentionally covers only the two states
+      that exist today — 'pending'/'generating' are reserved for a future
+      async generator and evolve through the application-layer whitelist
+      (``DERIVATIVE_STATUSES``) plus a dedicated migration that appends them
+      to this CHECK, never through speculative CHECK values that would turn
+      every enum addition into a SQLite table rebuild.
+    - ``error_code``: stable short code for why the last attempt failed
+      (observable only; failures are still logged-and-swallowed upstream).
+    - ``invalidated_at``: soft-retire timestamp. A derivative judged stale by
+      ``source_mtime`` comparison is retired (payload file deleted, row kept)
+      instead of deleted; readers only serve ``invalidated_at IS NULL`` rows.
+
+    Every statement is an idempotent, probed ALTER (same pattern as
+    v18/v28/v35); pre-v41 rows get the defaults (status='ready', no error,
+    never invalidated), which keeps their "ready" meaning byte-compatible.
+    """
+    table = "asset_derivatives"
+    columns = {str(row[1]) for row in conn.execute(f"PRAGMA table_info('{table}')")}
+    if "status" not in columns:
+        conn.execute(
+            "ALTER TABLE asset_derivatives ADD COLUMN status "
+            "TEXT NOT NULL DEFAULT 'ready' CHECK (status IN ('ready', 'failed'))"
+        )
+    if "error_code" not in columns:
+        conn.execute("ALTER TABLE asset_derivatives ADD COLUMN error_code TEXT")
+    if "invalidated_at" not in columns:
+        conn.execute("ALTER TABLE asset_derivatives ADD COLUMN invalidated_at REAL")
+    validate_schema_object(conn, table, SCHEMA_OBJECT_CONTRACT[table])
+
+
 def _add_thumbnail_cache_lifecycle_schema_v32(conn: sqlite3.Connection) -> None:
     """Persist precise source timing and artifact kind for cache lifecycle work."""
     table = "thumbnail_cache"
@@ -1358,6 +1419,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(38, "asset_collections", _add_asset_collections_schema_v38),
     Migration(39, "asset_search_fts", _add_asset_search_fts_v39),
     Migration(40, "asset_search_trigram", _rebuild_asset_search_fts_trigram_v40),
+    Migration(41, "asset_derivative_lifecycle", _add_asset_derivative_lifecycle_schema_v41),
 )
 
 
@@ -1440,6 +1502,8 @@ def _migrate_once(conn: sqlite3.Connection) -> int:
             required_objects += ("asset_collections", "asset_collection_members")
         if version >= 39:
             required_objects += ("asset_search",)
+        if version >= 41:
+            required_objects += ("asset_derivatives",)
         if version < 17 and "reconciliation_tasks" in required_objects:
             required_objects = tuple(
                 table for table in required_objects if table != "reconciliation_tasks"

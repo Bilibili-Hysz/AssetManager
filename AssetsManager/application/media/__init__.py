@@ -22,12 +22,14 @@ from AssetsManager.application.media.decoders import (
 )
 from AssetsManager.application.media.derivatives import (
     DERIVATIVE_KINDS,
+    DERIVATIVE_STATUSES,
     MediaDerivativesRecorder,
     derivatives_root,
 )
 
 __all__ = [
     "DERIVATIVE_KINDS",
+    "DERIVATIVE_STATUSES",
     "MEDIA_IMAGE_EXTS",
     "MediaDecoder",
     "MediaDerivativesRecorder",

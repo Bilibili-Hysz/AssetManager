@@ -354,12 +354,21 @@ def ensure_audio_waveform(
     otherwise — and recorded under ``data_dir/derivatives/``. Without a
     recorder the computation still happens but nothing is registered. Returns
     ``None`` on any failure; never raises.
+
+    Lifecycle wiring (migration v41): a row that exists but is no longer
+    servable (stale ``source_mtime``, missing payload) is soft-invalidated —
+    payload dropped, row kept with ``invalidated_at`` — before regeneration,
+    and a failed regeneration marks the existing row ``failed`` so the read
+    side stops serving stale state while the retry semantics stay unchanged.
+    A failed attempt for an asset without a row stays rowless: failure rows
+    must never pollute the ready-only queries.
     """
     path = Path(audio_path)
     fd, temp_png = tempfile.mkstemp(suffix=".png")
     os.close(fd)
     temp_out = Path(temp_png)
     try:
+        had_row = False
         if recorder is not None:
             found = recorder.lookup(path, "audio_waveform")
             payload = recorder.payload_path(path, "audio_waveform")
@@ -367,6 +376,12 @@ def ensure_audio_waveform(
                 data = payload.read_bytes()
                 if data:
                     return data
+            had_row = found is not None
+            if had_row:
+                # The registered row is stale or its payload is gone: retire
+                # it (keep the row, drop the stale payload) so no consumer can
+                # serve it while this regeneration runs.
+                recorder.invalidate(path, "audio_waveform")
         if source_body is not None:
             rendered = generate_waveform_from_bytes(
                 source_body, source_suffix, temp_out,
@@ -377,9 +392,13 @@ def ensure_audio_waveform(
                 path, temp_out, width=width, height=height, ffmpeg=ffmpeg,
             )
         if not rendered:
+            if recorder is not None and had_row:
+                recorder.mark_failed(path, "audio_waveform", "waveform_render_failed")
             return None
         data = temp_out.read_bytes()
         if not data:
+            if recorder is not None and had_row:
+                recorder.mark_failed(path, "audio_waveform", "waveform_render_failed")
             return None
         if recorder is not None:
             recorder.record(path, "audio_waveform", data, ext=".png",
@@ -408,10 +427,13 @@ def ensure_extracted_palette(
     factory runs only when the row is still missing, so callers can pass a
     cheap lazy decode). A registered row whose recorded ``source_mtime`` still
     matches the source file short-circuits recomputation; a row whose mtime
-    does not match (source changed) is recomputed and re-recorded. The palette
-    is stored as recorder ``params`` JSON — a params-only row without a
-    payload file. Missing rows stay missing after a failed extraction (no
-    tombstones), and every failure is swallowed.
+    does not match (source changed) is soft-invalidated (payload/row semantics
+    of migration v41: row kept, ``invalidated_at`` stamped) and recomputed.
+    The palette is stored as recorder ``params`` JSON — a params-only row
+    without a payload file. Missing rows stay missing after a failed
+    extraction — failures only mark rows that already exist (never insert
+    failure rows, so the ready-only queries stay clean) — and every failure
+    is swallowed.
     """
     path = Path(file_path)
     try:
@@ -420,11 +442,20 @@ def ensure_extracted_palette(
         found = recorder.lookup(path, "extracted_palette")
         if found is not None and _derivative_matches_source(found, path):
             return
+        had_row = found is not None
+        if had_row:
+            # The registered row is stale (source changed): retire it before
+            # recomputing so the read side cannot serve the outdated palette.
+            recorder.invalidate(path, "extracted_palette")
         source = image() if callable(image) else image
         if source is None:
+            if had_row:
+                recorder.mark_failed(path, "extracted_palette", "palette_source_unreadable")
             return
         palette = extract_palette(source, colors=colors)
         if palette is None:
+            if had_row:
+                recorder.mark_failed(path, "extracted_palette", "palette_extract_failed")
             return
         recorder.record(path, "extracted_palette", params=palette, payload=False,
                         source_mtime=_safe_source_mtime(path))

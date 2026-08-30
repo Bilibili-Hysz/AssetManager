@@ -281,3 +281,172 @@ def test_sqlite_enforces_asset_derivatives_primary_key():
         conn.execute(
             "INSERT INTO asset_derivatives VALUES ('/a.png', 'viewer_image')"
         )
+
+
+# ── Lifecycle (migration v41) ────────────────────────────────────────
+
+
+def test_record_keeps_ready_semantics(recorder, db, tmp_path):
+    """The legacy write path stays ready-only: a fresh record resets state."""
+    source = tmp_path / "library" / "hero.png"
+    recorder.record(source, "viewer_image", b"v", ext=".png")
+    recorder.mark_failed(source, "viewer_image", "waveform_render_failed")
+
+    ready = recorder.list_ready(source, "viewer_image")
+    assert ready == []
+    assert db.execute(
+        "SELECT status, error_code FROM asset_derivatives"
+    ).fetchone() == ("failed", "waveform_render_failed")
+
+    recorder.record(source, "viewer_image", b"v2", ext=".png")
+    assert [d.rel_path for d in recorder.list_ready(source, "viewer_image")] != []
+    assert db.execute(
+        "SELECT status, error_code, invalidated_at FROM asset_derivatives"
+    ).fetchone() == ("ready", None, None)
+
+
+def test_mark_failed_never_inserts_and_survives_broken_provider(db, tmp_path):
+    source = tmp_path / "library" / "hero.png"
+
+    recorder = MediaDerivativesRecorder(lambda: db, tmp_path / "data_dir")
+    recorder.mark_failed(source, "viewer_image", "waveform_render_failed")
+    assert _rows(db) == []  # UPDATE-only: no failure row appears
+
+    def broken_provider():
+        raise RuntimeError("session closed")
+
+    MediaDerivativesRecorder(broken_provider, tmp_path / "data_dir").mark_failed(
+        source, "viewer_image", "waveform_render_failed"
+    )  # no raise
+    MediaDerivativesRecorder(lambda: None, tmp_path / "data_dir").mark_failed(
+        source, "viewer_image", "waveform_render_failed"
+    )  # no raise
+
+
+def test_mark_failed_unknown_kind_is_ignored(recorder, db, tmp_path):
+    source = tmp_path / "library" / "hero.png"
+    recorder.record(source, "viewer_image", b"v", ext=".png")
+
+    recorder.mark_failed(source, "wallpaper", "waveform_render_failed")  # no raise
+
+    assert db.execute(
+        "SELECT status FROM asset_derivatives"
+    ).fetchone() == ("ready",)
+
+
+def test_invalidate_keeps_row_drops_payload_and_hides_from_queries(
+    recorder, db, tmp_path
+):
+    source = tmp_path / "library" / "hero.png"
+    recorder.record(source, "viewer_image", b"v", ext=".png")
+    payload = (
+        tmp_path
+        / "data_dir"
+        / "derivatives"
+        / _expected_rel_path(str(source.resolve()), "viewer_image", ".png")
+    )
+    assert payload.exists()
+
+    recorder.invalidate(source, "viewer_image")
+
+    # The payload file is gone but the row is kept (soft-retire).
+    assert not payload.exists()
+    rows = db.execute(
+        "SELECT status, error_code, invalidated_at FROM asset_derivatives"
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0][0] == "ready"  # status untouched by invalidation
+    assert rows[0][1] is None
+    assert rows[0][2] is not None  # invalidated_at stamped
+    assert recorder.list_ready(source, "viewer_image") == []
+    assert recorder.lookup(source, "viewer_image") is None
+    assert recorder.payload_path(source, "viewer_image") is None
+
+    # Re-invalidating an already-retired row is a no-op on the timestamp...
+    first_invalidated_at = rows[0][2]
+    recorder.invalidate(source, "viewer_image")
+    assert db.execute(
+        "SELECT invalidated_at FROM asset_derivatives"
+    ).fetchone()[0] == pytest.approx(first_invalidated_at)
+
+
+def test_invalidate_without_kind_retires_every_derivative(recorder, db, tmp_path):
+    source = tmp_path / "library" / "hero.png"
+    recorder.record(source, "viewer_image", b"v", ext=".png")
+    recorder.record(source, "extracted_palette", b"p", ext=".json")
+
+    recorder.invalidate(source)  # kind=None
+
+    assert recorder.list_ready(source) == []
+    assert recorder.list_ready() == []
+    assert list(derivatives_root(tmp_path / "data_dir").rglob("*.*")) == []
+    assert db.execute("SELECT COUNT(*) FROM asset_derivatives").fetchone() == (2,)
+
+
+def test_invalidate_survives_broken_provider_and_none_connection(tmp_path):
+    def broken_provider():
+        raise RuntimeError("session closed")
+
+    source = tmp_path / "hero.png"
+    MediaDerivativesRecorder(broken_provider, tmp_path / "data_dir").invalidate(
+        source, "viewer_image"
+    )  # no raise
+    MediaDerivativesRecorder(lambda: None, tmp_path / "data_dir").invalidate(source)
+    MediaDerivativesRecorder(lambda: None, tmp_path / "data_dir").invalidate(source, "viewer_image")
+
+
+def test_invalidate_unknown_kind_is_ignored(recorder, db, tmp_path):
+    source = tmp_path / "library" / "hero.png"
+    recorder.record(source, "viewer_image", b"v", ext=".png")
+
+    recorder.invalidate(source, "wallpaper")  # no raise
+
+    assert len(recorder.list_ready(source)) == 1
+
+
+def test_list_ready_filters_by_asset_and_kind(recorder, db, tmp_path):
+    hero = tmp_path / "library" / "hero.png"
+    other = tmp_path / "library" / "other.png"
+    recorder.record(hero, "viewer_image", b"v", ext=".png")
+    recorder.record(hero, "video_poster", b"p", ext=".jpg")
+    recorder.record(other, "viewer_image", b"v", ext=".png")
+
+    assert len(recorder.list_ready()) == 3
+    assert {d.kind for d in recorder.list_ready(hero)} == {
+        "viewer_image", "video_poster",
+    }
+    assert [d.file_path for d in recorder.list_ready(kind="viewer_image")] == [
+        str(hero.resolve()), str(other.resolve()),
+    ]
+    assert recorder.list_ready(other, "video_poster") == []
+
+
+def test_list_ready_and_lookup_exclude_failed_rows(recorder, db, tmp_path):
+    source = tmp_path / "library" / "hero.png"
+    recorder.record(source, "viewer_image", b"v", ext=".png")
+    recorder.record(source, "video_poster", b"p", ext=".jpg")
+    recorder.mark_failed(source, "viewer_image", "waveform_render_failed")
+
+    ready = recorder.list_ready(source)
+    assert [d.kind for d in ready] == ["video_poster"]
+    assert recorder.lookup(source, "viewer_image") is None
+    assert recorder.lookup(source, "video_poster") is not None
+
+
+def test_legacy_row_without_status_defaults_ready(recorder, db, tmp_path):
+    """A v37-era row (no lifecycle state) reads as ready after the migration."""
+    source = tmp_path / "library" / "hero.png"
+    path_key = str(source.resolve())
+    digest = hashlib.sha1(path_key.encode("utf-8")).hexdigest()
+    db.execute(
+        "INSERT INTO asset_derivatives (file_path, kind, rel_path, created_at) "
+        "VALUES (?, 'viewer_image', ?, 1.0)",
+        (path_key, f"viewer_image/{digest}.png"),
+    )
+    db.commit()
+
+    ready = recorder.list_ready(source, "viewer_image")
+    assert len(ready) == 1
+    assert ready[0].file_path == path_key
+    assert recorder.lookup(source, "viewer_image") is not None
+    assert recorder.payload_path(source, "viewer_image") is None  # no file on disk

@@ -451,3 +451,94 @@ def test_recorder_exceptions_do_not_break_waveform_pass(tmp_path):
     write_wav(source)
 
     assert ensure_audio_waveform(_BrokenRecorder(), source) is None  # no raise
+
+
+# ── lifecycle wiring (migration v41): stale rows retire, failures mark ──
+
+
+def test_ensure_audio_waveform_stale_row_invalidated_then_failed_on_render_failure(
+    recorder, db, tmp_path, monkeypatch
+):
+    """v41 wiring: a stale row is soft-invalidated before regeneration, and a
+    failed regeneration marks the existing row failed — payload dropped, row
+    kept, ready queries stay clean."""
+    source = tmp_path / "library" / "tone.wav"
+    write_wav(source)
+
+    first = ensure_audio_waveform(recorder, source)
+    assert first is not None
+    payload = recorder.payload_path(source, "audio_waveform")
+    assert payload is not None
+
+    # The source changes and the regeneration fails (render returns False).
+    os.utime(source, (source.stat().st_atime, source.stat().st_mtime + 2.0))
+    monkeypatch.setattr(
+        "AssetsManager.application.media.analysis.generate_waveform",
+        lambda *args, **kwargs: False,
+    )
+    assert ensure_audio_waveform(recorder, source) is None
+
+    row = db.execute(
+        "SELECT status, error_code, invalidated_at FROM asset_derivatives "
+        "WHERE file_path=? AND kind='audio_waveform'",
+        (str(source.resolve()),),
+    ).fetchone()
+    assert row[0] == "failed"
+    assert row[1] == "waveform_render_failed"
+    assert row[2] is not None, "invalidated_at was stamped by the retire step"
+    assert not payload.exists(), "the stale payload must not survive the retire"
+    assert recorder.list_ready(source, "audio_waveform") == []
+    assert recorder.lookup(source, "audio_waveform") is None
+
+    # A later successful pass re-records the row as ready (retry semantics).
+    recorder.record(source, "audio_waveform", b"\x89PNG-fresh", ext=".png",
+                    source_mtime=os.path.getmtime(source))
+    assert len(recorder.list_ready(source, "audio_waveform")) == 1
+    assert db.execute(
+        "SELECT status, error_code, invalidated_at FROM asset_derivatives"
+    ).fetchone() == ("ready", None, None)
+
+
+def test_ensure_audio_waveform_failure_without_row_stays_rowless(recorder, db, tmp_path):
+    """A failed first generation never writes a failure row (no pollution)."""
+    source = tmp_path / "library" / "noise.bin"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(b"not audio")
+
+    assert ensure_audio_waveform(recorder, source, ffmpeg="missing-ffmpeg-xyz") is None
+
+    assert db.execute("SELECT COUNT(*) FROM asset_derivatives").fetchone() == (0,)
+    assert recorder.list_ready() == []
+
+
+def test_ensure_extracted_palette_source_change_failure_marks_existing_row(
+    recorder, db, tmp_path
+):
+    """v41 wiring: a stale palette row is invalidated and, when the retry also
+    fails to decode, marked failed instead of silently staying ready."""
+    source = tmp_path / "library" / "hero.png"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(b"image")
+    ensure_extracted_palette(recorder, source, _synthetic_two_tone)
+    assert len(recorder.list_ready(source, "extracted_palette")) == 1
+
+    # The source changes; the retry cannot decode anything (factory None).
+    os.utime(source, (source.stat().st_atime, source.stat().st_mtime + 2.0))
+    ensure_extracted_palette(recorder, source, lambda: None)
+
+    row = db.execute(
+        "SELECT status, error_code, invalidated_at FROM asset_derivatives "
+        "WHERE file_path=? AND kind='extracted_palette'",
+        (str(source.resolve()),),
+    ).fetchone()
+    assert row[0] == "failed"
+    assert row[1] == "palette_source_unreadable"
+    assert row[2] is not None
+    assert recorder.list_ready(source, "extracted_palette") == []
+
+    # A later successful extraction re-records the row as ready.
+    ensure_extracted_palette(recorder, source, _synthetic_two_tone)
+    assert len(recorder.list_ready(source, "extracted_palette")) == 1
+    assert db.execute(
+        "SELECT status, error_code, invalidated_at FROM asset_derivatives"
+    ).fetchone() == ("ready", None, None)
