@@ -426,6 +426,11 @@ T9 大目录优化  →  T10 只读连接池（最高风险，最后做）
 | T5 撤销栈 | `00cac55` `0503c91` | batch 复合 entry（删 50 一次恢复）；备份迁 data_dir/undo_backups、90 天（temp legacy 7 天）；**回归修复 `53e4a65`**：库备份排除 undo_backups 子树（T5b 曾把已删文件副本打进 .assetbackup） |
 | T6 活动日志 | `7d0e3e4` | 桌面文件/批量打标/导入写 activity_log（批量一行、记录失败不影响操作）；Web AdminPage 面板零改动兼容 |
 | T7 结构化检索 | `e42e9bf` `64e1fe8` `aa01918` | 仓储组合查询 + LAN indexed-only + 桌面高级过滤弹层 + Web q 通路；EXPLAIN 确认走索引未加新索引 |
+| T0-1 派生物 mtime | `85e9cf2` | 派生物 mtime 失效真 bug：源文件变更后重建波形/调色板（**未推送**） |
+| T0-2 路径迁移缺口 | `cb03617` | 派生物/合集成员纳入路径重映射 + clear() 接调用点，改名不再丢派生物与合集成员（**未推送**） |
+| T0-3 rating + ai 标签 | `b547c0a` `e141ae5` `6afe91b` | T0-3a 三源标签聚合（tag 树接通 ai/plugin 分表，非 human 只读）；T0-3b rating 读写链路（事件+仓库+服务+`PUT /api/rating`+迁移补列）；T0-3c 信息面板 5 星 UI（点击写入/重击清除，跨会话刷新）（**未推送**） |
+
+**T0 止血系列进度**：T0-1 / T0-2 / T0-3 已实施并通过测试（T0-3 相关 99 passed），提交在 master 未推送；T0-4（v39 FTS 接线或删表）与 T0-5（ShareReceivePage 访客链路）未开始。
 
 **缓办（证据驱动，非搁置）**：
 - **T9**：前提已过时——桌面 file_list 不消费 `asset_service.list`（自带 scandir + 本地过滤）；Web 主列表传 `summaries:false`（useProjects.ts:42），昂贵路径只剩有界按需 hydrate（`files.py:145`）。消费者审计详见 `outputs/task-package-research-2026-08-30.md`。
