@@ -104,11 +104,18 @@ $PY scripts/gen_web_tokens.py --check
 
 ### 2.6 推送：SSL 握手失败先重试
 
-环境有代理（`HTTPS_PROXY=http://127.0.0.1:22348`），失败多为代理抖动。**直接重试，第二次通常成功**，不要改 git 配置。
+环境有代理，但**端口会随代理应用重启而变**（2026-08-30 曾为 22348，后变为 55329）。旧端口拒连时重新探测：
 
 ```bash
-timeout 200 git push origin feat/quality-audit-2026-08-17
+# 1) 列出本地监听端口
+netstat -ano | grep LISTENING | grep -oE "127\.0\.0\.1:[0-9]+" | sort -t: -k2 -n -u
+# 2) 逐个验证哪个能当 HTTP 代理（返回非 000 即可用）
+for p in <候选端口>; do r=$(curl -s -o /dev/null -w "%{http_code}" -x http://127.0.0.1:$p -I https://github.com --connect-timeout 4 --max-time 8); [ "$r" != "000" ] && echo "PORT $p -> $r"; done
+# 3) 用可用端口推送；失败重试一次
+HTTPS_PROXY=http://127.0.0.1:<端口> timeout 180 git push origin master
 ```
+
+**直接重试，第二次通常成功**，不要改 git 配置。
 
 ### 2.7 下载外网资源
 
