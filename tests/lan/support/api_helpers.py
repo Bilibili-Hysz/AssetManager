@@ -165,8 +165,23 @@ def _init_lan_schemas(conn):
         "created_at REAL DEFAULT (strftime('%s','now'))"
         ")"
     )
-    # file_meta.rating arrives via DB migration v37; the baseline _SCHEMA
-    # lacks the column, so mirror the migrated shape for the rating routes.
+    # file_meta (v1 baseline table) plus file_meta.rating (migration v37):
+    # the fixture schema never created file_meta, so mirror the migrated
+    # end-state shape for the rating routes and the search reindex path.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS file_meta ("
+        "file_path TEXT PRIMARY KEY, "
+        "notes TEXT NOT NULL DEFAULT '', "
+        "cached_size INTEGER, "
+        "cached_mtime REAL, "
+        "cached_file_count INTEGER, "
+        "cached_file_count_mtime REAL, "
+        "urls TEXT NOT NULL DEFAULT '', "
+        "rating INTEGER"
+        ")"
+    )
+    # Some fixture paths create file_meta before this helper runs; make sure
+    # the rating column exists in that case too.
     meta_columns = {
         str(row[1]) for row in conn.execute("PRAGMA table_info(file_meta)")
     }

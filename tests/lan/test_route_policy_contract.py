@@ -29,7 +29,7 @@ _OLD_BROWSE = frozenset({
 })
 _OLD_BROWSE_PREFIX = (
     "/api/gallery", "/api/favorites", "/api/quicksearch", "/api/notes",
-    "/api/tree",
+    "/api/tree", "/api/rating",
 )
 _OLD_BROWSE_EXACT = frozenset({
     "/api/home", "/api/search", "/api/quota", "/api/activity",

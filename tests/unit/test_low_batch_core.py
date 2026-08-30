@@ -218,7 +218,7 @@ def test_get_tag_with_files_uses_single_batch_query():
         def __init__(self):
             self.list_file_tags_calls = 0
 
-        def list_file_tags(self):
+        def list_file_tags(self, source="human"):
             self.list_file_tags_calls += 1
             return [
                 ("/lib/a.txt", "hero"),
@@ -233,7 +233,7 @@ def test_get_tag_with_files_uses_single_batch_query():
         def _repo(self, db_conn, library_root):
             return self.repo
 
-        def get_all_tags(self, library_root):
+        def get_all_tags(self, library_root, source="human"):
             return ["hero", "villain"]
 
         def get_tags_with_metadata(self, library_root):
@@ -244,7 +244,9 @@ def test_get_tag_with_files_uses_single_batch_query():
 
     ctrl = TagTreeController("/lib", tag_svc=_FakeTagSvc())
     result = ctrl.get_tag_with_files()
-    assert ctrl._tag_svc.repo.list_file_tags_calls == 1
+    # Three-source aggregation (v36): one batched call per source
+    # (human/ai/plugin), never per-tag or per-file queries.
+    assert ctrl._tag_svc.repo.list_file_tags_calls == 3
     by_tag = {entry["tag"]: entry["files"] for entry in result}
     assert by_tag == {"hero": ["/lib/a.txt", "/lib/b.txt"], "villain": ["/lib/b.txt"]}
 
