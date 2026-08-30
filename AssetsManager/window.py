@@ -943,7 +943,12 @@ class MainWindow(LanSharingMixin, QMainWindow):
             QMessageBox.information(
                 self, tr("menu.activity_log"), tr("activity_panel.no_library"))
             return
-        dlg = ActivityPanelDialog(session, parent=self)
+        runtime = self._bootstrap.runtime_for(session)
+        if runtime.services.activity_recorder is None:
+            QMessageBox.information(
+                self, tr("menu.activity_log"), tr("activity_panel.no_library"))
+            return
+        dlg = ActivityPanelDialog(runtime, parent=self)
         dlg.exec()
 
     def _show_shortcuts(self):

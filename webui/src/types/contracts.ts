@@ -25,8 +25,7 @@ export interface Collection {
   member_count: number;
   created_at: number;
   updated_at: number;
-  /** Live evaluated total for smart collections; null/absent when unknown. */
-  asset_count?: number | null;
+  asset_count: number | null;
 }
 
 export interface CollectionEvaluateResponse {

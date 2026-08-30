@@ -63,6 +63,37 @@ class ActivityRecorder:
     def __init__(self, connection_provider: Callable[[], Connection]):
         self._connection_provider = connection_provider
 
+    def recent(
+        self,
+        *,
+        cutoff: float | None = None,
+        limit: int = 200,
+    ) -> list[tuple] | None:
+        """Return the newest ``activity_log`` rows, newest first.
+
+        Read side of the desktop activity panel (H1-b): same lock
+        discipline as :meth:`record` — the library shares one
+        ``check_same_thread=False`` connection across surfaces, so an
+        unguarded read could race an in-flight write. ``cutoff`` is a
+        ``timestamp >`` floor (``None`` = all rows). Same
+        swallow-on-error contract as the write side: a viewer never
+        escalates a read failure, ``None`` signals one.
+        """
+        try:
+            conn = self._connection_provider()
+            sql = "SELECT timestamp, action, username, details FROM activity_log "
+            parameters: list = []
+            if cutoff is not None:
+                sql += "WHERE timestamp > ? "
+                parameters.append(cutoff)
+            sql += "ORDER BY timestamp DESC, id DESC LIMIT ?"
+            parameters.append(limit)
+            with db_write_lock(conn):
+                return conn.execute(sql, tuple(parameters)).fetchall()
+        except Exception:
+            _log.exception("Activity log read failed")
+            return None
+
     def record(
         self,
         action: str,

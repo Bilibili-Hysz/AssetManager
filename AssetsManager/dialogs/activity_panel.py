@@ -26,7 +26,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from AssetsManager.core.database import db_write_lock
 from AssetsManager.core.ui_scale import scaled_px
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
 from AssetsManager import i18n
@@ -66,14 +65,15 @@ def _cutoff_timestamp(filter_index: int, *, now: float | None = None) -> float |
 class ActivityPanelDialog(TabbedDialog):
     """Read-only viewer for the library's ``activity_log`` (H1-b E-C3).
 
-    Binds one open ``LibrarySession`` and reads through
-    ``session.connection_for`` — the same session connection every desktop
-    service uses — so no second connection is opened and the shared write
-    lock keeps the SELECT from racing in-flight writers.
+    Binds the library's :class:`ActivityRecorder` (the application-layer
+    owner of the activity domain) and reads through its ``recent()`` —
+    the same session connection every desktop service uses, under the
+    shared write lock, with the swallow-on-error contract living in the
+    application layer where it belongs.
     """
 
-    def __init__(self, session, parent=None):
-        self._session = session
+    def __init__(self, runtime, parent=None):
+        self._recorder = runtime.services.activity_recorder
         super().__init__(
             parent, title=tr("activity_panel.title"), min_size=(680, 420))
         self.setObjectName("ActivityPanelDialog")
@@ -137,33 +137,14 @@ class ActivityPanelDialog(TabbedDialog):
     # ── Data ─────────────────────────────────────────────────────
 
     def _fetch_rows(self) -> list[tuple] | None:
-        """Read the newest rows; ``None`` signals a read error.
+        """Read the newest rows via the application-layer recorder.
 
-        Read-only SELECT under the connection's write lock (the LAN
-        ``recent()`` discipline): the library shares one
-        ``check_same_thread=False`` connection across surfaces, so an
-        unguarded read could race an in-flight write transaction. Connection
-        acquisition failures degrade to the same ``None`` as query failures —
-        a viewer never escalates.
+        ``None`` signals a read error — the recorder owns the
+        swallow-on-error contract and the write-lock discipline; the panel
+        renders the inline error hint instead of raising.
         """
-        try:
-            conn = self._session.connection_for(self._session.root)
-            cutoff = _cutoff_timestamp(self._filter_combo.currentIndex())
-            sql = (
-                "SELECT timestamp, action, username, details FROM activity_log "
-            )
-            if cutoff is not None:
-                sql += "WHERE timestamp > ? "
-            sql += "ORDER BY timestamp DESC, id DESC LIMIT ?"
-            parameters: tuple = (
-                (cutoff, MAX_ROWS) if cutoff is not None else (MAX_ROWS,))
-            with db_write_lock(conn):
-                return conn.execute(sql, parameters).fetchall()
-        except Exception:
-            # A read failure must never surface as an exception from a
-            # viewer; the caller renders the inline error hint instead.
-            _log.exception("Activity log read failed")
-            return None
+        cutoff = _cutoff_timestamp(self._filter_combo.currentIndex())
+        return self._recorder.recent(cutoff=cutoff, limit=MAX_ROWS)
 
     def _refresh(self):
         rows = self._fetch_rows()

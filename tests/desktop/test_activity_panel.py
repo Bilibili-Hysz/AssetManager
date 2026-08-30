@@ -51,7 +51,9 @@ def session(tmp_path):
 
 
 def _dialog(session):
-    return ActivityPanelDialog(session)
+    recorder = ActivityRecorder(lambda: session.connection_for(session.root))
+    runtime = SimpleNamespace(services=SimpleNamespace(activity_recorder=recorder))
+    return ActivityPanelDialog(runtime)
 
 
 def _insert_row(session, *, action, details="", timestamp=None):
@@ -147,12 +149,9 @@ def test_read_failure_degrades_to_inline_hint(session):
         app.processEvents()
         assert dialog._table.rowCount() == 0
 
-        # Point the panel at a session whose connection acquisition fails.
-        dialog._session = SimpleNamespace(
-            root=session.root,
-            connection_for=lambda root: (_ for _ in ()).throw(
-                RuntimeError("session closed")),
-        )
+        # Point the panel at a recorder whose connection acquisition fails.
+        dialog._recorder = ActivityRecorder(
+            lambda: (_ for _ in ()).throw(RuntimeError("session closed")))
         dialog._refresh()  # must not raise
 
         assert dialog._table.rowCount() == 0
