@@ -4,6 +4,11 @@ Installs sys.excepthook and threading.excepthook overrides that write crash
 dumps to RuntimeData/Shared/crash.log. Essential for console=False PyInstaller
 builds where stderr is invisible.
 
+Also owns the opt-in crash report channel (H1-d A4): helpers that turn the
+on-disk crash log into a pre-filled GitHub issue URL. Nothing here performs
+network I/O — the URL is opened by the USER clicking the report button in the
+startup notice (app.py), i.e. webbrowser.open is user-triggered.
+
 Usage (in app.py, before QApplication.exec):
     from AssetsManager.core.crash_handler import install
     install()
@@ -15,6 +20,7 @@ import traceback
 from collections import deque
 from datetime import datetime
 from time import time
+from urllib.parse import urlencode
 
 from AssetsManager.core.path_resolver import SHARED_DIR
 
@@ -135,6 +141,106 @@ def consume_pending_crash() -> bool:
     except OSError:
         pass
     return True
+
+
+# ── Opt-in GitHub report channel (A4) ─────────────────────────
+# Zero-server crash feedback: the startup notice offers a "report on GitHub"
+# button; clicking it opens a PRE-FILLED issue with the sanitized log. The
+# repo is private, so this is an owner/maintainer convenience channel for
+# now — a public endpoint can replace the base URL later without touching
+# the redaction or truncation logic.
+
+GITHUB_ISSUE_URL = "https://github.com/Bilibili-Hysz/AssetManager/issues/new"
+# Practical ceiling: GitHub itself truncates long issue bodies, and browsers
+# get brittle beyond a few thousand characters. Keep the whole URL under ~6k.
+MAX_REPORT_URL_LENGTH = 6000
+_TRUNCATION_MARKER = "\n... [truncated]"
+
+_CRASH_SEPARATOR_RE = re.compile(r"={60}\n")
+_CRASH_BLOCK_RE = re.compile(
+    r"Type: (?P<type>[^\n]*)\n"
+    r"Message: (?P<message>[^\n]*)\n"
+    r"(?:Traceback:\n(?P<traceback>.*))?",
+    re.DOTALL,
+)
+
+
+def read_last_crash(limit: int = 16384) -> str:
+    """Tail of the crash log (last ``limit`` characters) for report building.
+
+    Empty string when the log is missing or unreadable — the report dialog
+    must still open, just without log content.
+    """
+    try:
+        text = CRASH_LOG.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    return text[-limit:]
+
+
+def parse_last_crash_summary(text: str) -> tuple[str, str, str] | None:
+    """Extract (type, message, traceback) of the LAST crash block in ``text``.
+
+    Blocks are delimited by the 60-char separator lines written by
+    ``_write_report``; the scan runs backwards over them. The returned
+    traceback excludes the ``Traceback:`` header line (frame indentation is
+    preserved). Returns None when the text holds no recognizable crash block
+    (truncated tail or foreign file) so the caller can still compose a
+    minimal report.
+    """
+    for block in reversed(_CRASH_SEPARATOR_RE.split(text)):
+        match = _CRASH_BLOCK_RE.search(block)
+        if match is None:
+            continue
+        return (
+            match.group("type"),
+            match.group("message"),
+            (match.group("traceback") or "").rstrip(),
+        )
+    return None
+
+
+def build_github_issue_url(
+    exc_type: str,
+    exc_message: str,
+    traceback_text: str,
+    *,
+    app_version: str,
+    platform_text: str,
+    note: str = "",
+    base_url: str = GITHUB_ISSUE_URL,
+    max_length: int = MAX_REPORT_URL_LENGTH,
+) -> str:
+    """Compose a pre-filled GitHub issue URL from one crash.
+
+    Everything crash-derived is re-run through ``_redact`` even though the
+    log was sanitized at write time — the URL may travel through browser
+    history. The traceback shrinks (annotated with a truncation marker)
+    until the encoded URL fits ``max_length`` characters. No network I/O
+    happens here; the URL is opened by an explicit user click.
+    """
+    title = f"[crash] AssetManager {app_version} - {exc_type}"
+    head = (
+        f"AssetManager {app_version}\n"
+        f"OS: {platform_text}\n"
+        f"\n"
+        f"Type: {_redact(exc_type)}\n"
+        f"Message: {_redact(exc_message)}\n"
+        f"\n"
+        "```text\n"
+    )
+    trace = _redact(traceback_text)
+    while True:
+        body = head + trace + "\n```"
+        if note:
+            body += f"\n\n{note}"
+        query = urlencode({"title": title, "body": body})
+        url = f"{base_url}?{query}"
+        if len(url) <= max_length or not trace:
+            return url
+        trace = trace[:(len(trace) * 3) // 4]
+        if trace:
+            trace += _TRUNCATION_MARKER
 
 
 def _excepthook(exc_type, exc_value, exc_tb) -> None:

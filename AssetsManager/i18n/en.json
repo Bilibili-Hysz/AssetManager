@@ -892,5 +892,7 @@
   "startup.open_existing_sub": "Choose a folder that is already an AssetManager library.",
   "startup.new_library_dialog_title": "Choose the Root Folder for Your New Library",
   "startup.new_library_confirm_title": "Folder Is Not Empty",
-  "startup.new_library_confirm_body": "The selected folder contains files. It will become the asset library root and existing files will be indexed. Continue?"
+  "startup.new_library_confirm_body": "The selected folder contains files. It will become the asset library root and existing files will be indexed. Continue?",
+  "crash.report_button": "Report This Crash on GitHub",
+  "crash.report_generated_note": "This report was generated automatically by AssetManager (sensitive data redacted)."
 }

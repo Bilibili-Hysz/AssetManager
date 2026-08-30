@@ -58,6 +58,72 @@ def _bind_single_instance(app: QApplication) -> bool:
         return True
 
 
+def build_crash_report_dialog(owner):
+    """Construct (not exec) the crash-recovery notice with an opt-in
+    GitHub report action.
+
+    Buttons: Ok (dismiss) plus "report this crash on GitHub" — the ONLY
+    outbound channel, and it fires on an explicit user click; the app never
+    initiates any network request for crash data by itself.
+    """
+    from PySide6.QtWidgets import QMessageBox
+
+    from AssetsManager.i18n import tr
+
+    box = QMessageBox(owner)
+    box.setIcon(QMessageBox.Icon.Warning)
+    box.setWindowTitle(tr("crash.recovered_title"))
+    box.setText(tr("crash.recovered_body"))
+    ok_button = box.addButton(QMessageBox.StandardButton.Ok)
+    report_button = box.addButton(
+        tr("crash.report_button"), QMessageBox.ButtonRole.ActionRole)
+    box.setDefaultButton(ok_button)
+    # Identity handle for the dispatch below (text comparison would break
+    # if the language changes while the dialog is open).
+    box.setProperty("report_button", report_button)
+    return box
+
+
+def launch_github_crash_report() -> str:
+    """Open the pre-filled GitHub issue URL for the last recorded crash.
+
+    Returns the URL that was handed to ``webbrowser.open`` (user-triggered
+    navigation; no request is made by the app itself).
+    """
+    import platform
+    import webbrowser
+
+    from AssetsManager.core.constants import APP_VERSION
+    from AssetsManager.core.crash_handler import (
+        build_github_issue_url,
+        parse_last_crash_summary,
+        read_last_crash,
+    )
+    from AssetsManager.i18n import tr
+
+    summary = parse_last_crash_summary(read_last_crash())
+    exc_type, exc_message, traceback_text = summary or ("Unknown", "", "")
+    url = build_github_issue_url(
+        exc_type=exc_type,
+        exc_message=exc_message,
+        traceback_text=traceback_text,
+        app_version=APP_VERSION,
+        platform_text=platform.platform(),
+        note=tr("crash.report_generated_note"),
+    )
+    webbrowser.open(url)
+    return url
+
+
+def show_crash_report_dialog(owner) -> None:
+    """Exec the crash notice; the report action opens the issue URL."""
+    box = build_crash_report_dialog(owner)
+    box.exec()
+    if box.clickedButton() is not box.property("report_button"):
+        return
+    launch_github_crash_report()
+
+
 def main():
     from AssetsManager.core.crash_handler import install as install_crash_handler
     install_crash_handler()
@@ -233,11 +299,7 @@ def main():
             from AssetsManager.core.crash_handler import consume_pending_crash
             if not consume_pending_crash():
                 return
-            QMessageBox.warning(
-                owner,
-                tr("crash.recovered_title"),
-                tr("crash.recovered_body"),
-            )
+            show_crash_report_dialog(owner)
 
         from PySide6.QtCore import QTimer
         QTimer.singleShot(0, lambda: _notify_pending_crash(window))

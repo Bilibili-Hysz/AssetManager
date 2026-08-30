@@ -892,5 +892,7 @@
   "startup.open_existing_sub": "选择一个已经是 AssetManager 资产库的文件夹。",
   "startup.new_library_dialog_title": "选择新库的根目录",
   "startup.new_library_confirm_title": "目录非空",
-  "startup.new_library_confirm_body": "所选文件夹内已有文件。它将作为资产库根目录，已有文件会被索引。是否继续？"
+  "startup.new_library_confirm_body": "所选文件夹内已有文件。它将作为资产库根目录，已有文件会被索引。是否继续？",
+  "crash.report_button": "在 GitHub 报告此崩溃",
+  "crash.report_generated_note": "本报告由 AssetManager 自动生成（已脱敏）。"
 }
