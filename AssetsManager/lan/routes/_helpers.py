@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import re
 import concurrent.futures
 import logging
@@ -54,6 +55,49 @@ PUBLIC_PREVIEW_HEADERS = {
     "Cache-Control": "public, max-age=3600",
     "X-Content-Type-Options": "nosniff",
 }
+
+# Media routes (/api/image, /api/thumbnails) serve immutable-per-source bytes,
+# so unlike the JSON API (no-store) they may be privately cached for an hour
+# and revalidated with ETag/If-None-Match.  The cache MUST stay private: the
+# LAN server fronts a multi-user library and a shared proxy must not reuse
+# one user's bytes for another.  Blurred output is excluded - it keeps
+# PRIVATE_PREVIEW_HEADERS because blur policy can tighten at any time and a
+# cached pre-blur copy would be a privacy leak.
+MEDIA_CACHE_HEADERS = {
+    "Cache-Control": "private, max-age=3600",
+    "X-Content-Type-Options": "nosniff",
+}
+
+
+def build_media_etag(*identity_parts: object, query: dict[str, str] | None = None) -> str:
+    """Weak ETag over the source identity plus the normalized request query.
+
+    The query participates in the hash so different processing parameters
+    (e.g. thumbnail ``size``) produce different validators, and routes pass
+    the blur decision as an identity part so a policy flip invalidates
+    previously cached copies.
+    """
+    hasher = hashlib.sha256()
+    for part in identity_parts:
+        hasher.update(f"{part}".encode("utf-8", "replace"))
+    if query:
+        for key in sorted(query):
+            hasher.update(f"{key}={query[key]}".encode("utf-8", "replace"))
+    return f'W/"{hasher.hexdigest()[:32]}"'
+
+
+def etag_matches(request: web.Request, etag: str) -> bool:
+    """RFC 7232 If-None-Match comparison (comma lists and ``*``)."""
+    header = request.headers.get("If-None-Match")
+    if not header:
+        return False
+    candidates = [candidate.strip() for candidate in header.split(",")]
+    return "*" in candidates or etag in candidates
+
+
+def media_not_modified(etag: str) -> web.Response:
+    """304 short-circuit that keeps the validator and cache policy alive."""
+    return web.Response(status=304, headers={**MEDIA_CACHE_HEADERS, "ETag": etag})
 
 # Blurred output is resized to this bound (like the high-resolution
 # thumbnail route) so a hostile multi-GB raster cannot force unbounded
@@ -217,8 +261,12 @@ __all__ = [
     "IMAGE_EXTS",
     "AUTH_SERVICE_APP_KEY",
     "PRINCIPAL_REQUEST_KEY",
+    "MEDIA_CACHE_HEADERS",
     "PRIVATE_PREVIEW_HEADERS",
     "PUBLIC_PREVIEW_HEADERS",
+    "build_media_etag",
+    "etag_matches",
+    "media_not_modified",
     "LAN_APP_KEY",
     "LanScopedServices",
     "ROLE_ADMIN",
@@ -541,6 +589,7 @@ async def serve_blur_gated_raster(
     should_blur: bool,
     content_type: str,
     max_size: int,
+    etag: str | None = None,
 ) -> web.StreamResponse:
     """Deliver a raster after the shared blur-policy decision.
 
@@ -594,7 +643,7 @@ async def serve_blur_gated_raster(
     return web.Response(
         body=body,
         content_type=content_type,
-        headers=PRIVATE_PREVIEW_HEADERS,
+        headers={**MEDIA_CACHE_HEADERS, **({"ETag": etag} if etag else {})},
     )
 
 

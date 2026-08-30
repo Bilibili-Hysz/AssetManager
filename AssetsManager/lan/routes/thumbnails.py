@@ -26,11 +26,14 @@ from AssetsManager.core.constants import AUDIO_EXTS
 from AssetsManager.domain.asset import IMAGE_EXTS, VIDEO_EXTS
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import (
+    MEDIA_CACHE_HEADERS,
     PRIVATE_PREVIEW_HEADERS,
-    PUBLIC_PREVIEW_HEADERS,
+    build_media_etag,
+    etag_matches,
     get_lan,
     get_services,
     get_thumbnail_service,
+    media_not_modified,
     require_permission,
     validate_path,
 )
@@ -122,6 +125,31 @@ async def handle_thumbnail(request):
             else decoder_for(source_path.suffix)
         )
 
+        # Validator + revalidation short-circuit: after permission/PathGuard
+        # and the existence checks, before any source read or decode.  The
+        # ETag binds the source identity (mtime+size) and the normalized
+        # query so different processing params revalidate separately.
+        # Blurred output never revalidates against a cached copy (see
+        # MEDIA_CACHE_HEADERS): blur policy can tighten any time and a cached
+        # pre-blur copy would be a privacy leak.
+        media_headers = _NOSNIFF_HEADERS
+        etag = None
+        if not result.should_blur:
+            try:
+                source_stat = target.stat()
+            except OSError:
+                source_stat = None
+            if source_stat is not None:
+                etag = build_media_etag(
+                    "thumb", source_stat.st_mtime_ns, source_stat.st_size,
+                    result.should_blur, query=dict(request.query),
+                )
+                media_headers = {**MEDIA_CACHE_HEADERS, "ETag": etag}
+                if etag_matches(request, etag):
+                    status = 304
+                    outcome = "not_modified"
+                    return media_not_modified(etag)
+
         # Re-check immediately before either FileResponse or processing. This
         # narrows the admission/consumption gap but cannot make a path open
         # atomic against replacement between this check and the consumer.
@@ -152,7 +180,7 @@ async def handle_thumbnail(request):
             return web.Response(
                 body=body,
                 content_type=mimetypes.guess_type(source_path.name)[0] or "application/octet-stream",
-                headers=_NOSNIFF_HEADERS,
+                headers=media_headers,
             )
 
         source_root = lan.library_root
@@ -250,7 +278,7 @@ async def handle_thumbnail(request):
             return web.Response(
                 body=source_body,
                 content_type=mimetypes.guess_type(source_path.name)[0] or "application/octet-stream",
-                headers=_NOSNIFF_HEADERS,
+                headers=media_headers,
             )
 
         body, content_type = processed
@@ -263,7 +291,7 @@ async def handle_thumbnail(request):
             headers=(
                 PRIVATE_PREVIEW_HEADERS
                 if result.should_blur
-                else PUBLIC_PREVIEW_HEADERS
+                else media_headers
             ),
         )
     except ThumbnailAdmissionError as exc:

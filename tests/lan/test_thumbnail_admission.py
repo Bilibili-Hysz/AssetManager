@@ -123,7 +123,7 @@ async def test_thumbnail_route_marks_blurred_output_private(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_thumbnail_route_keeps_unblurred_processed_output_public(tmp_path):
+async def test_thumbnail_route_marks_unblurred_processed_output_private_cacheable(tmp_path):
     pytest.importorskip("PIL")
     app, library, _conn = _make_lan_app(tmp_path)
     source = library / "image.png"
@@ -133,7 +133,8 @@ async def test_thumbnail_route_keeps_unblurred_processed_output_public(tmp_path)
         response = await client.get("/api/thumbnails/image.png?size=128")
         await response.read()
         assert response.status == 200
-        assert response.headers["Cache-Control"] == "public, max-age=3600"
+        assert response.headers["Cache-Control"] == "private, max-age=3600"
+        assert response.headers["ETag"].startswith('W/"')
     finally:
         await client.close()
 

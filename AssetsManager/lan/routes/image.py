@@ -14,10 +14,14 @@ from AssetsManager.application.media.decoders import decoder_for
 from AssetsManager.application.thumbnail_service import finalize_pil_image, process_image_snapshot
 from AssetsManager.lan.routes._helpers import (
     BLURRED_PREVIEW_SIZE,
+    MEDIA_CACHE_HEADERS,
     PRIVATE_PREVIEW_HEADERS,
     PUBLIC_PREVIEW_HEADERS,
+    build_media_etag,
+    etag_matches,
     get_lan,
     get_thumbnail_service,
+    media_not_modified,
     require_permission,
     serve_blur_gated_raster,
     should_blur_target,
@@ -75,6 +79,23 @@ def _not_found() -> web.Response:
     return web.Response(status=404)
 
 
+def _media_source_etag(request: web.Request, target: Path, *, blurred: bool) -> str:
+    """Source-identity validator for /api/image: mtime+size plus the
+    normalized query, with the blur decision bound in so a policy flip
+    invalidates cached copies."""
+    try:
+        source_stat = target.stat()
+    except OSError:
+        source_stat = None
+    return build_media_etag(
+        "image",
+        source_stat.st_mtime_ns if source_stat else None,
+        source_stat.st_size if source_stat else None,
+        blurred,
+        query=dict(request.query),
+    )
+
+
 async def _serve_decoded_raster(
     request: web.Request,
     target: Path,
@@ -82,6 +103,7 @@ async def _serve_decoded_raster(
     *,
     max_size: int,
     public: bool = False,
+    etag: str | None = None,
 ) -> web.StreamResponse:
     """Deliver a decoder-backed format (RAW/PSD) through the WEBP pipeline.
 
@@ -115,8 +137,11 @@ async def _serve_decoded_raster(
     body, content_type = processed
     if should_blur:
         headers = PRIVATE_PREVIEW_HEADERS
+    elif public:
+        headers = PUBLIC_PREVIEW_HEADERS
     else:
-        headers = PUBLIC_PREVIEW_HEADERS if public else PRIVATE_PREVIEW_HEADERS
+        # LAN image route: private hour-cache revalidated via If-None-Match.
+        headers = {**MEDIA_CACHE_HEADERS, **({"ETag": etag} if etag else {})}
     return web.Response(body=body, content_type=content_type, headers=headers)
 
 
@@ -224,20 +249,38 @@ async def handle_image(request: web.Request) -> web.StreamResponse:
         return _not_found()
 
     if media_decoder is not None:
+        # The blur decision must precede the validator so a 304 can never
+        # mask newly blurred content.
+        if await should_blur_target(request, target):
+            return await _serve_decoded_raster(
+                request, target, media_decoder, max_size=BLURRED_PREVIEW_SIZE,
+            )
+        etag = _media_source_etag(request, target, blurred=False)
+        if etag_matches(request, etag):
+            return media_not_modified(etag)
         return await _serve_decoded_raster(
-            request, target, media_decoder, max_size=BLURRED_PREVIEW_SIZE,
+            request, target, media_decoder, max_size=BLURRED_PREVIEW_SIZE, etag=etag,
         )
 
     content_type = await asyncio.to_thread(_inspect_image, target)
     if content_type is None:
         return _not_found()
 
+    should_blur = await should_blur_target(request, target)
+    etag = None
+    if not should_blur:
+        # Revalidation lands after permission/PathGuard/blur checks and
+        # before the file read: a hit skips the decode and transfer.
+        etag = _media_source_etag(request, target, blurred=False)
+        if etag_matches(request, etag):
+            return media_not_modified(etag)
     return await serve_blur_gated_raster(
         request,
         target,
-        should_blur=await should_blur_target(request, target),
+        should_blur=should_blur,
         content_type=content_type,
         max_size=BLURRED_PREVIEW_SIZE,
+        etag=etag,
     )
 
 

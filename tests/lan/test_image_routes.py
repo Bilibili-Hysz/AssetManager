@@ -79,8 +79,11 @@ async def test_image_route_streams_verified_image_with_conservative_headers(tmp_
         )
         assert response.status == 200
         assert response.headers["Content-Type"] == "image/png"
-        assert response.headers["Cache-Control"] == "private, no-store"
+        # Non-blur media is privately cacheable and carries a revalidation
+        # validator (E-D3); blurred output keeps "private, no-store".
+        assert response.headers["Cache-Control"] == "private, max-age=3600"
         assert response.headers["X-Content-Type-Options"] == "nosniff"
+        assert response.headers["ETag"].startswith('W/"')
         assert await response.read() == expected
     finally:
         await client.close()
