@@ -165,6 +165,13 @@ def _init_lan_schemas(conn):
         "created_at REAL DEFAULT (strftime('%s','now'))"
         ")"
     )
+    # file_meta.rating arrives via DB migration v37; the baseline _SCHEMA
+    # lacks the column, so mirror the migrated shape for the rating routes.
+    meta_columns = {
+        str(row[1]) for row in conn.execute("PRAGMA table_info(file_meta)")
+    }
+    if "rating" not in meta_columns:
+        conn.execute("ALTER TABLE file_meta ADD COLUMN rating INTEGER")
     # asset_collections/asset_collection_members arrive via DB migration v38;
     # mirror the migrated shape for the collection routes.
     from AssetsManager.core.schema_defs import ASSET_COLLECTIONS_SCHEMA

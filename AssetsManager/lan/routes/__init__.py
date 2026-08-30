@@ -28,6 +28,7 @@ from AssetsManager.lan.routes.gallery import (
 from AssetsManager.lan.routes.metadata import (
     handle_meta,
     handle_save_notes,
+    handle_save_rating,
     handle_search,
     handle_home,
     handle_tree,
@@ -136,6 +137,7 @@ __all__ = [
     "handle_search",
     "handle_meta",
     "handle_save_notes",
+    "handle_save_rating",
     "handle_info",
     "handle_login",
     "handle_register",

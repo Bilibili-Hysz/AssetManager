@@ -1374,25 +1374,26 @@ def _migrate_path_metadata_impl(conn: sqlite3.Connection, thumb_dir: Path,
             )
 
         meta_rows = conn.execute(
-            "SELECT file_path, notes, cached_size, cached_mtime, cached_file_count, urls "
+            "SELECT file_path, notes, cached_size, cached_mtime, cached_file_count, urls, rating "
             "FROM file_meta WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
             (old, descendant_pattern),
         ).fetchall()
-        for path, notes, cached_size, cached_mtime, cached_file_count, urls in meta_rows:
+        for path, notes, cached_size, cached_mtime, cached_file_count, urls, rating in meta_rows:
             conn.execute(
                 "INSERT INTO file_meta "
-                "(file_path, notes, cached_size, cached_mtime, cached_file_count, urls) "
-                "VALUES (?,?,?,?,?,?) "
+                "(file_path, notes, cached_size, cached_mtime, cached_file_count, urls, rating) "
+                "VALUES (?,?,?,?,?,?,?) "
                 "ON CONFLICT(file_path) DO UPDATE SET "
                 "notes=CASE WHEN excluded.notes!='' THEN excluded.notes ELSE file_meta.notes END, "
                 "cached_size=COALESCE(excluded.cached_size, file_meta.cached_size), "
                 "cached_mtime=COALESCE(excluded.cached_mtime, file_meta.cached_mtime), "
                 "cached_file_count=COALESCE(excluded.cached_file_count, file_meta.cached_file_count), "
-                "urls=CASE WHEN excluded.urls!='[]' THEN excluded.urls ELSE file_meta.urls END",
-                (remap(path), notes, cached_size, cached_mtime, cached_file_count, urls),
+                "urls=CASE WHEN excluded.urls!='[]' THEN excluded.urls ELSE file_meta.urls END, "
+                "rating=COALESCE(excluded.rating, file_meta.rating)",
+                (remap(path), notes, cached_size, cached_mtime, cached_file_count, urls, rating),
             )
         stale_meta_paths = sorted({
-            path for path, _notes, _size, _mtime, _count, _urls in meta_rows
+            path for path, _notes, _size, _mtime, _count, _urls, _rating in meta_rows
             if remap(path) != path
         })
         if stale_meta_paths:

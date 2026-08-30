@@ -96,6 +96,33 @@ def test_get_file_info_basic(lib_env):
     assert info.tags == ()
 
 
+def test_rating_operations_and_file_info(lib_env):
+    from AssetsManager.controllers.info_controller import InfoController
+
+    lib_root, conn = lib_env
+    file_path = lib_root + "/file.txt"
+    open(file_path, "w").close()
+
+    ctrl = InfoController(lib_root, conn)
+    assert ctrl.get_rating(file_path) is None
+
+    ctrl.set_rating(file_path, 3)
+    assert ctrl.get_rating(file_path) == 3
+
+    info = ctrl.get_file_info(
+        file_path,
+        is_dir=False,
+        file_type="File (TXT)",
+        size_display="0 B",
+        modified_display="2026-01-01",
+        parent_path=lib_root,
+    )
+    assert info.rating == 3
+
+    ctrl.set_rating(file_path, None)
+    assert ctrl.get_rating(file_path) is None
+
+
 def test_tag_operations(lib_env):
     from AssetsManager.controllers.info_controller import InfoController
 

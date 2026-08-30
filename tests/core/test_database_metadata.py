@@ -187,6 +187,42 @@ def test_migrate_path_metadata_moves_file_rows(tmp_path, monkeypatch):
         manager.close()
 
 
+def test_migrate_path_metadata_carries_rating(tmp_path, monkeypatch):
+    """v37's file_meta.rating must survive a path migration."""
+    from AssetsManager.core import database, path_resolver
+
+    runtime = tmp_path / "RuntimeData"
+    lib = tmp_path / "Library"
+    old = lib / "old.png"
+    new = lib / "new.png"
+    lib.mkdir()
+    old.write_text("old", encoding="utf-8")
+    new.write_text("new", encoding="utf-8")
+
+    monkeypatch.setattr(path_resolver, "runtime_root", lambda: runtime)
+    monkeypatch.setattr(database, "RUNTIME_ROOT", runtime)
+    try:
+        manager = database.DatabaseManager()
+        conn = manager.connection_for(lib)
+        conn.execute(
+            "INSERT INTO file_meta (file_path, notes, rating) VALUES (?,?,?)",
+            (str(old.resolve()), "note", 4),
+        )
+        conn.commit()
+
+        database.migrate_path_metadata(conn, manager.thumb_dir_for(lib), old, new)
+
+        moved = conn.execute(
+            "SELECT notes, rating FROM file_meta WHERE file_path=?", (str(new.resolve()),)
+        ).fetchone()
+        assert moved == ("note", 4)
+        assert conn.execute(
+            "SELECT 1 FROM file_meta WHERE file_path=?", (str(old.resolve()),)
+        ).fetchone() is None
+    finally:
+        manager.close()
+
+
 def test_migrate_path_metadata_preserves_caller_outer_transaction(tmp_path):
     from AssetsManager.core.database import DatabaseManager, migrate_path_metadata
 

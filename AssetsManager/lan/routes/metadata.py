@@ -107,7 +107,57 @@ async def handle_meta(request):
         "tags": list(metadata.tags),
         "notes": metadata.notes,
         "urls": urls,
+        "rating": metadata.rating,
     })
+
+
+async def handle_save_rating(request):
+    """Persist a 0-5 rating for an existing library path (admin or can_write user)."""
+    if not require_user_write(request):
+        return error_response("Write access required", status=403, code="forbidden")
+
+    lan = get_lan(request)
+    rel_path = request.match_info.get("path", "")  # aiohttp decodes match_info once
+    if not rel_path:
+        return error_response("path required", status=400, code="bad_request")
+
+    try:
+        body = await request.json()
+    except Exception:
+        return error_response("Invalid request", status=400, code="bad_request")
+    if not isinstance(body, dict):
+        return error_response("Invalid request", status=400, code="bad_request")
+
+    rating = body.get("rating")
+    if rating is not None and not (
+        isinstance(rating, int) and not isinstance(rating, bool) and 0 <= rating <= 5
+    ):
+        return error_response(
+            "rating must be an integer 0-5 or null",
+            status=400,
+            code="bad_request",
+        )
+
+    try:
+        key = validated_existing_key(lan, rel_path)
+        await asyncio.to_thread(
+            get_metadata_service(request).set_rating,
+            lan.library_root,
+            key,
+            rating,
+        )
+    except web.HTTPException:
+        raise
+    except DomainError as exc:
+        # validated_existing_key now propagates domain path errors
+        # (escape / missing) instead of bare HTTPExceptions; they keep
+        # their centrally mapped JSON contract here (shape unification).
+        return error_response(exc)
+    except Exception:
+        _log.exception("Failed to save LAN rating")
+        return error_response("Failed to save rating", status=500, code="internal_error")
+
+    return web.json_response({"ok": True, "path": rel_path, "rating": rating})
 
 
 async def handle_save_notes(request):

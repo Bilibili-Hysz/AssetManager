@@ -131,6 +131,18 @@ class AssetUrlsChanged(DomainEvent):
     new_urls: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class AssetRatingChanged(DomainEvent):
+    """Rating for one asset changed within a specific library session.
+
+    ``rating`` is the new 0-5 value (``None`` means cleared/unrated).
+    """
+    library_root: str = ""
+    session_token: str = ""
+    file_path: str = ""
+    rating: int | None = None
+
+
 # ── Quota events ────────────────────────────────────────────────
 
 @dataclass(frozen=True)

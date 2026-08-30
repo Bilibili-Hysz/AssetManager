@@ -70,7 +70,10 @@ def test_metadata_service_combines_notes_and_urls_into_one_metadata_query(tmp_pa
         # check; count only the business queries.
         assert len([r for r in reads if r != "SELECT 1"]) == 2
         assert any("SELECT tag FROM file_tags WHERE file_path=" in statement for statement in reads)
-        assert any("SELECT notes, urls FROM file_meta WHERE file_path=" in statement for statement in reads)
+        assert any(
+            "SELECT notes, urls, rating FROM file_meta WHERE file_path=" in statement
+            for statement in reads
+        )
     finally:
         conn.set_trace_callback(None)
         conn.close()
@@ -95,6 +98,56 @@ def test_metadata_service_writes_notes_and_urls(tmp_path):
 
         service.remove_url(library, asset, "https://example.com")
         assert service.get_urls(library, asset) == []
+    finally:
+        conn.close()
+
+
+def test_metadata_service_rating_roundtrip_and_validation(tmp_path):
+    from AssetsManager.application import MetadataService
+
+    library = tmp_path / "library"
+    library.mkdir()
+    asset = library / "asset.txt"
+    asset.write_text("asset", encoding="utf-8")
+
+    conn = _memory_conn()
+    try:
+        service = MetadataService(connection_provider=lambda _root: conn)
+        assert service.get_rating(library, asset) is None
+
+        service.set_rating(library, asset, 4)
+        assert service.get_rating(library, asset) == 4
+        # get_metadata carries the rating too.
+        assert service.get_metadata(library, asset).rating == 4
+
+        # Updating an existing rating overwrites it.
+        service.set_rating(library, asset, 5)
+        assert service.get_rating(library, asset) == 5
+
+        # None clears back to unrated.
+        service.set_rating(library, asset, None)
+        assert service.get_rating(library, asset) is None
+        assert service.get_metadata(library, asset).rating is None
+    finally:
+        conn.close()
+
+
+def test_metadata_service_rating_rejects_out_of_range(tmp_path):
+    from AssetsManager.application import MetadataService
+
+    library = tmp_path / "library"
+    library.mkdir()
+    asset = library / "asset.txt"
+    asset.write_text("asset", encoding="utf-8")
+
+    conn = _memory_conn()
+    try:
+        service = MetadataService(connection_provider=lambda _root: conn)
+        for bad in (-1, 6, 1.5, "4", True):
+            with pytest.raises(ValueError, match="rating"):
+                service.set_rating(library, asset, bad)
+        # No partial write from a rejected value.
+        assert service.get_rating(library, asset) is None
     finally:
         conn.close()
 

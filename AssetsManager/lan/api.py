@@ -57,6 +57,7 @@ from AssetsManager.lan.routes import (
     handle_search,
     handle_meta,
     handle_save_notes,
+    handle_save_rating,
     handle_info,
     handle_login,
     handle_register,
@@ -264,6 +265,7 @@ def setup_routes(app: web.Application):
     _add(app, "GET", "/api/sequence/neighbors", handle_sequence_neighbors,
          policy=RoutePolicy(capabilities=_BROWSE))
     _add(app, "PUT", "/api/notes/{path:.*}", handle_save_notes, policy=_WRITE_NOTES_BROWSE)
+    _add(app, "PUT", "/api/rating/{path:.*}", handle_save_rating, policy=_WRITE_NOTES_BROWSE)
     _add(app, "GET", "/api/info", handle_info, policy=_OPTIONAL_BROWSE)
     _add(app, "GET", "/api/revision", handle_revision, policy=_SKIP)
     _add(app, "POST", "/api/auth/login", handle_login, policy=_PUBLIC_AUTH_STRICT_CAP)

@@ -18,7 +18,7 @@ from AssetsManager.core.project_data import ProjectData, _SIZE_CACHE_TTL_SECONDS
 from AssetsManager.domain.errors import OperationNotPermitted, PathEscapeError
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import (
-    AssetNotesChanged, AssetUrlsChanged,
+    AssetNotesChanged, AssetRatingChanged, AssetUrlsChanged,
 )
 from AssetsManager.repositories.metadata_repository import MetadataRepository
 from AssetsManager.repositories.tag_repository import TagRepository
@@ -35,6 +35,7 @@ class AssetMetadata:
     tags: tuple[str, ...]
     notes: str
     urls: tuple[str, ...]
+    rating: int | None = None
 
 
 class MetadataService:
@@ -205,6 +206,16 @@ class MetadataService:
             new_urls=urls,
         ))
 
+    def _publish_rating_changed(self, file_path: str, rating: int | None) -> None:
+        if self._session is None:
+            return
+        get_event_bus().publish(AssetRatingChanged(
+            library_root=self._session.root_str,
+            session_token=self._session.event_token,
+            file_path=file_path,
+            rating=rating,
+        ))
+
     def _reindex_search_document(self, file_path: str) -> None:
         """Refresh the ``asset_search`` document for one path; never raises.
 
@@ -246,12 +257,13 @@ class MetadataService:
             if self._session is not None and self._tag_repository is not None
             else TagRepository(meta_repo._conn)
         )
-        notes, urls = meta_repo.get_notes_and_urls(str(target))
+        notes, urls, rating = meta_repo.get_notes_urls_rating(str(target))
         return AssetMetadata(
             path=target,
             tags=tuple(tag_repo.get_tags(str(target))),
             notes=notes,
             urls=tuple(urls),
+            rating=rating,
         )
 
     @session_operation
@@ -299,6 +311,38 @@ class MetadataService:
             result = tuple(urls)
             self._publish_urls_changed(key, result)
             self._reindex_search_document(key)
+
+    # ── Rating ──────────────────────────────────────────────────
+
+    @session_operation
+    def get_rating(self, library_root: str | Path, path: str | Path) -> int | None:
+        """Return the 0-5 rating for a path, or None when unrated."""
+        root, target = self._resolve_under_root(library_root, path)
+        return self._repo(root).get_rating(str(target))
+
+    @session_operation
+    def set_rating(
+        self, library_root: str | Path, path: str | Path, rating: int | None
+    ) -> None:
+        """Set (or clear) the 0-5 rating for a path and publish the change.
+
+        ``rating=None`` clears the rating back to unrated. Values outside
+        0-5 raise :class:`ValueError` (rejected before any write).
+        """
+        if rating is not None and not (
+            isinstance(rating, int)
+            and not isinstance(rating, bool)
+            and 0 <= rating <= 5
+        ):
+            raise ValueError(
+                f"rating must be an integer 0-5 or None, got {rating!r}"
+            )
+        root, target = self._resolve_under_root(library_root, path)
+        key = str(target)
+        repo = self._repo(root)
+        self._require_event_safe_transaction(repo)
+        repo.set_rating(key, rating)
+        self._publish_rating_changed(key, rating)
 
     @session_operation
     def get_dir_size(self, library_root: str | Path, dir_path: str | Path,

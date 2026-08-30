@@ -80,6 +80,7 @@ class FileInfo:
     dir_summary: str | None
     preview_path: str | None
     is_project: bool
+    rating: int | None = None
 
 
 class InfoController:
@@ -242,6 +243,21 @@ class InfoController:
             dir_summary=dir_summary,
             preview_path=preview_path,
             is_project=is_project,
+            rating=metadata.rating,
+        )
+
+    # ── Rating ──────────────────────────────────────────────────
+
+    def get_rating(self, file_path: str) -> int | None:
+        """Return the 0-5 rating for a file, or None when unrated."""
+        return self._metadata_svc.get_rating(
+            self._library_root, self._resolve_under_root(file_path)
+        )
+
+    def set_rating(self, file_path: str, rating: int | None) -> None:
+        """Set (or clear) the 0-5 rating for a file."""
+        self._metadata_svc.set_rating(
+            self._library_root, self._resolve_under_root(file_path), rating
         )
 
     # ── Tag operations ──────────────────────────────────────────

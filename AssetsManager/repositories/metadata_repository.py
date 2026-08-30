@@ -282,6 +282,31 @@ class MetadataRepository:
 
     @_repository_operation
     @locked_read
+    def get_notes_urls_rating(
+        self, file_path: str
+    ) -> tuple[str, list[str], int | None]:
+        """Return notes, URLs, and rating from one metadata row.
+
+        Single-row variant of :meth:`get_notes_and_urls` that also carries
+        the v37 rating column, so metadata reads never pay a second
+        file_meta query for the rating. A missing row means unrated.
+        """
+        file_path = self._path_key(file_path)
+        row = self._conn.execute(
+            "SELECT notes, urls, rating FROM file_meta WHERE file_path=?",
+            (file_path,),
+        ).fetchone()
+        if not row:
+            return ("", [], None)
+        rating = row[2]
+        return (
+            row[0] or "",
+            self._decode_urls(file_path, row[1]),
+            int(rating) if rating is not None else None,
+        )
+
+    @_repository_operation
+    @locked_read
     def list_file_metadata(self) -> list[tuple[str, str, list[str]]]:
         """Return all file metadata rows for export and maintenance reads."""
         rows = self._conn.execute(
@@ -667,6 +692,51 @@ class MetadataRepository:
         with db_write_lock(self._conn):
             return delete_rows()
 
+    # ── Rating ──────────────────────────────────────────────────
+
+    @_repository_operation
+    @locked_read
+    def get_rating(self, file_path: str) -> int | None:
+        """Return the 0-5 rating for a file path, or None when unrated."""
+        file_path = self._path_key(file_path)
+        row = self._conn.execute(
+            "SELECT rating FROM file_meta WHERE file_path=?",
+            (file_path,),
+        ).fetchone()
+        if not row or row[0] is None:
+            return None
+        return int(row[0])
+
+    @_repository_operation
+    def set_rating(self, file_path: str, rating: int | None) -> None:
+        """Set (or clear) the 0-5 rating for a file path.
+
+        ``rating=None`` clears the rating back to unrated (NULL); a missing
+        row needs no write because NULL is already the default state.
+        Values outside 0-5 raise :class:`ValueError`.
+        """
+        if rating is not None and not (
+            isinstance(rating, int)
+            and not isinstance(rating, bool)
+            and 0 <= rating <= 5
+        ):
+            raise ValueError(
+                f"rating must be an integer 0-5 or None, got {rating!r}"
+            )
+        file_path = self._path_key(file_path)
+        with self._write_scope("set_rating"):
+            if rating is None:
+                self._conn.execute(
+                    "UPDATE file_meta SET rating=NULL WHERE file_path=?",
+                    (file_path,),
+                )
+            else:
+                self._conn.execute(
+                    "INSERT INTO file_meta (file_path, rating) VALUES (?, ?) "
+                    "ON CONFLICT(file_path) DO UPDATE SET rating=excluded.rating",
+                    (file_path, rating),
+                )
+
     # ── Migration ────────────────────────────────────────────────
 
     @_repository_operation
@@ -681,24 +751,25 @@ class MetadataRepository:
         descendant_pattern = sql_like_descendant_pattern(old_path)
         with self._write_scope("migrate_path"):
             rows = self._conn.execute(
-                "SELECT file_path, notes, cached_size, cached_mtime, cached_file_count, urls "
+                "SELECT file_path, notes, cached_size, cached_mtime, cached_file_count, urls, rating "
                 "FROM file_meta WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
                 (old_path, descendant_pattern),
             ).fetchall()
             count = 0
-            for path, notes, cached_size, cached_mtime, cached_file_count, urls in rows:
+            for path, notes, cached_size, cached_mtime, cached_file_count, urls, rating in rows:
                 mapped = remap_path_subtree(old_path, new_path, path)
                 self._conn.execute(
                     "INSERT INTO file_meta "
-                    "(file_path, notes, cached_size, cached_mtime, cached_file_count, urls) "
-                    "VALUES (?, ?, ?, ?, ?, ?) "
+                    "(file_path, notes, cached_size, cached_mtime, cached_file_count, urls, rating) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?) "
                     "ON CONFLICT(file_path) DO UPDATE SET "
                     "notes=CASE WHEN excluded.notes!='' THEN excluded.notes ELSE file_meta.notes END, "
                     "cached_size=COALESCE(excluded.cached_size, file_meta.cached_size), "
                     "cached_mtime=COALESCE(excluded.cached_mtime, file_meta.cached_mtime), "
                     "cached_file_count=COALESCE(excluded.cached_file_count, file_meta.cached_file_count), "
-                    "urls=CASE WHEN excluded.urls!='[]' THEN excluded.urls ELSE file_meta.urls END",
-                    (mapped, notes, cached_size, cached_mtime, cached_file_count, urls),
+                    "urls=CASE WHEN excluded.urls!='[]' THEN excluded.urls ELSE file_meta.urls END, "
+                    "rating=COALESCE(excluded.rating, file_meta.rating)",
+                    (mapped, notes, cached_size, cached_mtime, cached_file_count, urls, rating),
                 )
                 count += 1
             if rows:
