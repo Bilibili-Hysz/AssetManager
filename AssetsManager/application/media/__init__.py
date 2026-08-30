@@ -1,12 +1,25 @@
-"""Media-stack application package (port batch N-A).
+"""Media-stack application package (port batches N-A/N-B).
 
-N-A ships only the derivative write side (``derivatives.py``): the registry
+N-A ships the derivative write side (``derivatives.py``): the registry
 recorder that persists regenerable media artifacts under the library data
-directory and their ``asset_derivatives`` rows (migration v37). Decoder
-registration and sequence recognition land in later batches
-(outputs/port-architecture-2026-08-30.md §5).
+directory and their ``asset_derivatives`` rows (migration v37). N-B ships the
+professional-format decoder registry (``decoders.py``): extension-routed
+RAW/PSD decoding through optional dependencies, with an empty registry when
+the media extras are not installed (outputs/port-architecture-2026-08-30.md
+§一.2). Sequence recognition lands in a later batch (§5).
 """
 
+from AssetsManager.application.media.decoders import (
+    MEDIA_IMAGE_EXTS,
+    MediaDecoder,
+    PsdDecoder,
+    RAW_EXTS,
+    PSD_EXTS,
+    decoder_for,
+    normalize_ext,
+    register,
+    supported_extensions,
+)
 from AssetsManager.application.media.derivatives import (
     DERIVATIVE_KINDS,
     MediaDerivativesRecorder,
@@ -15,6 +28,15 @@ from AssetsManager.application.media.derivatives import (
 
 __all__ = [
     "DERIVATIVE_KINDS",
+    "MEDIA_IMAGE_EXTS",
+    "MediaDecoder",
     "MediaDerivativesRecorder",
+    "PSD_EXTS",
+    "PsdDecoder",
+    "RAW_EXTS",
+    "decoder_for",
     "derivatives_root",
+    "normalize_ext",
+    "register",
+    "supported_extensions",
 ]

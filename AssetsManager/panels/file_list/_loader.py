@@ -22,10 +22,13 @@ from PySide6.QtGui import QImage, QImageReader
 
 from AssetsManager.application.thumbnail_service import (
     MAX_THUMBNAIL_SOURCE_BYTES,
+    ThumbnailAdmissionError,
     ThumbnailService,
     ThumbnailSourceIdentity,
+    admit_thumbnail_source,
     thumbnail_cache_key,
 )
+from AssetsManager.application.media.decoders import decoder_for
 from AssetsManager.core.file_snapshot import FileIdentity, read_snapshot
 from AssetsManager.core.thumbnail_key import (
     WEBP_RENDER_PROFILES,
@@ -37,7 +40,11 @@ from AssetsManager.application.thumbnail_cache_lifecycle import (
     remove_artifacts,
 )
 from AssetsManager.core.performance import PerformanceRecorder
-from AssetsManager.panels.file_list._common import IMAGE_EXTS, VIDEO_EXTS
+from AssetsManager.panels.file_list._common import (
+    IMAGE_EXTS,
+    VIDEO_EXTS,
+    pil_image_to_qimage,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -965,7 +972,11 @@ class ThumbnailLoader(QObject):
         ext = Path(path).suffix.lower()
         if ext in VIDEO_EXTS:
             return self._load_video_frame(path, runtime)
-        if ext not in IMAGE_EXTS:
+        # Professional formats (RAW/PSD) route through the media decoder
+        # registry; with the extras missing decoder_for returns None and the
+        # behavior is identical to the pre-decoder code (failure marker).
+        media_decoder = decoder_for(ext)
+        if ext not in IMAGE_EXTS and media_decoder is None:
             return None
         key = self._disk_key(path)
         bake_size = get_bake_size()
@@ -995,6 +1006,8 @@ class ThumbnailLoader(QObject):
                 return cached
             if runtime.recorder is not None:
                 self._record("thumbnail.cache", runtime=runtime, path=path, attributes={"tier": "disk", "outcome": "miss"})
+        if media_decoder is not None:
+            return self._load_with_media_decoder(path, media_decoder, runtime)
         snapshot = self._snapshot_source(path, runtime)
         if snapshot is None:
             return None
@@ -1061,6 +1074,66 @@ class ThumbnailLoader(QObject):
         """Queue one ffmpeg extraction from a captured source body."""
         task = _ExtractVideoFrameTask(self, source_path, body, frame_path, runtime)
         ffmpeg_pool.start(task)
+
+    def _load_with_media_decoder(
+        self, path: str, media_decoder, runtime: _Runtime,
+    ) -> QImage | None:
+        """Decode one professional-format source (RAW/PSD) via the registry.
+
+        Worker-thread path parallel to ``_read_with_qimagereader``: same 64 MiB
+        source admission as the snapshot path, decode bounded by the bake size
+        (or the display size when baking is off), and the decoded image is
+        baked into the shared webp disk cache so later sessions skip the
+        expensive decode. Any failure returns ``None`` so the caller walks the
+        existing failure path (failure marker + cooldown); the generation /
+        backpressure machinery above is untouched.
+        """
+        if not self._is_current_generation(runtime.generation):
+            return None
+        source = Path(path)
+        try:
+            admit_thumbnail_source(source)
+            identity = FileIdentity.from_stat(os.stat(path))
+        except (OSError, ThumbnailAdmissionError):
+            return None
+        bake_size = get_bake_size()
+        max_dim = bake_size if bake_size >= 0 else self._size
+        try:
+            pil = media_decoder.decode(source, max_dim=max_dim if max_dim > 0 else None)
+        except Exception:
+            _log.debug("Media decoder failed: %s", path, exc_info=True)
+            return None
+        if pil is None or not self._is_current_generation(runtime.generation):
+            return None
+        img = pil_image_to_qimage(pil)
+        if img.isNull():
+            return None
+        if (
+            bake_size >= 0
+            and runtime.cache_dir
+            and max(img.width(), img.height()) >= bake_size
+            and self._should_bake(path, runtime.lib_root)
+        ):
+            # Only bake at/above the profile size: the cache-artifact
+            # admission rejects smaller webp files for the requested profile.
+            profile = self._webp_profile(bake_size)
+            self._store_baked_image(
+                self._disk_profile_key(path, profile, identity),
+                path, bake_size, img, runtime, source_identity=identity,
+            )
+        if self._size > 0 and max(img.width(), img.height()) > self._size:
+            img = img.scaled(
+                self._size, self._size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        self._mutex.lock()
+        try:
+            if self._is_current_generation_locked(runtime.generation):
+                self._source_identities[path] = identity
+        finally:
+            self._mutex.unlock()
+        return img
 
     def _on_video_frame_extracted(
         self, source_path: str, frame_path: str, runtime: _Runtime

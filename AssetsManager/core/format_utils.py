@@ -3,6 +3,8 @@
 from threading import RLock
 from typing import TypeVar, overload
 
+from AssetsManager.core.constants import MEDIA_IMAGE_EXTS
+
 _T = TypeVar("_T")
 
 
@@ -34,6 +36,10 @@ _BUILTIN_CATEGORY_MAP: dict[str, str] = {
     ".xlsx": "documents", ".pptx": "documents", ".md": "documents",
     ".json": "documents", ".py": "documents", ".xml": "documents",
 }
+
+# Professional-format images (RAW/PSD/EXR) share the "images" category even
+# though QImageReader/Pillow cannot decode them; see core/constants.py.
+_BUILTIN_CATEGORY_MAP.update({ext: "images" for ext in MEDIA_IMAGE_EXTS})
 
 class LiveCategoryMap(dict[str, str]):
     """Stable dict-compatible category mapping with atomic snapshot publication.

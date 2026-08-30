@@ -10,7 +10,8 @@ from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.lan.path_guard import PathGuardError, assert_under_root
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.safe_open import SafeOpenError, read_safe_file
-from AssetsManager.application.thumbnail_service import process_image_snapshot
+from AssetsManager.application.media.decoders import decoder_for
+from AssetsManager.application.thumbnail_service import finalize_pil_image, process_image_snapshot
 from AssetsManager.lan.routes._helpers import (
     BLURRED_PREVIEW_SIZE,
     PRIVATE_PREVIEW_HEADERS,
@@ -74,6 +75,51 @@ def _not_found() -> web.Response:
     return web.Response(status=404)
 
 
+async def _serve_decoded_raster(
+    request: web.Request,
+    target: Path,
+    media_decoder,
+    *,
+    max_size: int,
+    public: bool = False,
+) -> web.StreamResponse:
+    """Deliver a decoder-backed format (RAW/PSD) through the WEBP pipeline.
+
+    The successful decode IS the content gate: a file that merely carries a
+    media suffix fails ``decode_bytes`` and gets the same fail-closed 404 as
+    the Pillow ``verify`` gate below. RAW/PSD originals are not
+    browser-renderable rasters, so the original-bytes delivery paths never
+    apply here — the response is always the shared WEBP pipeline output.
+    """
+    lan = get_lan(request)
+    try:
+        source_body, _identity = await asyncio.to_thread(
+            read_safe_file, lan.library_root, target,
+        )
+    except (SafeOpenError, OSError, ValueError):
+        return _not_found()
+    pil = await asyncio.to_thread(
+        media_decoder.decode_bytes, source_body, max_dim=max_size,
+    )
+    if pil is None:
+        return _not_found()
+    should_blur = await should_blur_target(request, target)
+    processed = await asyncio.to_thread(finalize_pil_image, pil, max_size, should_blur)
+    if processed is None:
+        # Privacy invariant from serve_blur_gated_raster: a processing failure
+        # is a 500 — the original is never served for a blurred asset.
+        return error_response(
+            "Failed to process image", status=500, code="internal_error",
+            headers=PRIVATE_PREVIEW_HEADERS,
+        )
+    body, content_type = processed
+    if should_blur:
+        headers = PRIVATE_PREVIEW_HEADERS
+    else:
+        headers = PUBLIC_PREVIEW_HEADERS if public else PRIVATE_PREVIEW_HEADERS
+    return web.Response(body=body, content_type=content_type, headers=headers)
+
+
 async def serve_verified_image(
     request: web.Request,
     target: Path,
@@ -82,13 +128,24 @@ async def serve_verified_image(
     public: bool = False,
 ) -> web.StreamResponse:
     """Deliver a root-confined, verified raster using thumbnail/blur policy."""
-    if not target.is_file() or target.suffix.lower() not in _SAFE_IMAGE_EXTS:
+    media_decoder = (
+        None
+        if target.suffix.lower() in _SAFE_IMAGE_EXTS
+        else decoder_for(target.suffix)
+    )
+    if not target.is_file() or (
+        target.suffix.lower() not in _SAFE_IMAGE_EXTS and media_decoder is None
+    ):
         return _not_found()
     lan = get_lan(request)
     try:
         target = assert_under_root(lan.library_root, target)
     except PathGuardError:
         return _not_found()
+    if media_decoder is not None:
+        return await _serve_decoded_raster(
+            request, target, media_decoder, max_size=max_size, public=public,
+        )
     try:
         source_body, _source_identity = await asyncio.to_thread(
             read_safe_file, lan.library_root, target,
@@ -152,12 +209,24 @@ async def handle_image(request: web.Request) -> web.StreamResponse:
     # to FileResponse or Pillow.  PathGuard resolves symlinks and rejects
     # escapes, but the on-disk entry may have been swapped since; the single
     # shared predicate keeps this TOCTOU defense out of route-local logic.
-    if not target.is_file() or target.suffix.lower() not in _SAFE_IMAGE_EXTS:
+    media_decoder = (
+        None
+        if target.suffix.lower() in _SAFE_IMAGE_EXTS
+        else decoder_for(target.suffix)
+    )
+    if not target.is_file() or (
+        target.suffix.lower() not in _SAFE_IMAGE_EXTS and media_decoder is None
+    ):
         return _not_found()
     try:
         target = assert_under_root(lan.library_root, target)
     except PathGuardError:
         return _not_found()
+
+    if media_decoder is not None:
+        return await _serve_decoded_raster(
+            request, target, media_decoder, max_size=BLURRED_PREVIEW_SIZE,
+        )
 
     content_type = await asyncio.to_thread(_inspect_image, target)
     if content_type is None:

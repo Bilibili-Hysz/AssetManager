@@ -1,7 +1,8 @@
 """Shared constants and helpers for the file_list package."""
-from typing import cast
+from typing import Any, cast
 
-from PySide6.QtGui import QColor
+from PIL import Image
+from PySide6.QtGui import QColor, QImage
 from AssetsManager.core import themes
 from AssetsManager.core.constants import (  # noqa: F401
     IMAGE_EXTS as IMAGE_EXTS,
@@ -14,6 +15,30 @@ from AssetsManager.application.asset_filters import (  # noqa: F401
     natural_key as natural_key,
 )
 ZOOM_PRESETS = [48, 72, 96, 128]
+
+
+def pil_image_to_qimage(image: Any) -> QImage:
+    """Convert a PIL image to a QImage that owns its pixel data.
+
+    Media-decoder pipeline seam: ``decoders.decode`` returns RGB PIL images.
+    Pillow packs 32-bit samples little-endian, so the "BGRA" raw order is
+    exactly Qt's little-endian ``Format_ARGB32`` memory layout (blue at the
+    lowest address — getting this wrong shows red/blue swapped). Converting
+    to RGBA first keeps alpha sources correct, and ``.copy()`` detaches the
+    result from the temporary Python buffer so the QImage stays valid after
+    the bytes object is garbage-collected.
+    """
+    source = image if isinstance(image, Image.Image) else None
+    if source is None:
+        return QImage()
+    if source.mode != "RGBA":
+        source = source.convert("RGBA")
+    data = source.tobytes("raw", "BGRA")
+    qimage = QImage(
+        data, source.width, source.height, source.width * 4,
+        QImage.Format.Format_ARGB32,
+    )
+    return qimage.copy()
 
 class ExtensionCategoryLookup(dict[str, str]):
     """Live extension lookup backed by the current filter category registry."""

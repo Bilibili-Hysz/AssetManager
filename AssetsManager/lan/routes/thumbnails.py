@@ -8,11 +8,13 @@ from time import perf_counter
 
 from aiohttp import web
 
+from AssetsManager.application.media.decoders import decoder_for
 from AssetsManager.application.thumbnail_service import (
     MAX_THUMBNAIL_BATCH_BYTES,
     ThumbnailAdmissionError,
     ThumbnailSourceChangedError,
     admit_thumbnail_source,
+    finalize_pil_image,
     process_image_snapshot,
     validate_thumbnail_source,
 )
@@ -74,15 +76,30 @@ async def handle_thumbnail(request):
         source_path = result.source_path
 
         if source_path.suffix.lower() not in _SAFE_IMAGE_EXTS:
-            status = 404
-            return web.Response(status=status)
+            # Professional formats (RAW/PSD) are not Pillow-readable but are
+            # safe raster sources when the media decoder registry routes the
+            # extension; without the optional extras this stays a plain 404.
+            if decoder_for(source_path.suffix) is None:
+                status = 404
+                return web.Response(status=status)
+        media_decoder = (
+            None
+            if source_path.suffix.lower() in _SAFE_IMAGE_EXTS
+            else decoder_for(source_path.suffix)
+        )
 
         # Re-check immediately before either FileResponse or processing. This
         # narrows the admission/consumption gap but cannot make a path open
         # atomic against replacement between this check and the consumer.
         validate_thumbnail_source(source_path, result.source_identity)
 
-        if not result.should_blur and max_size >= 256 and not result.cache_hit:
+        # RAW/PSD originals are not browser-renderable rasters, so the
+        # original-bytes delivery path is decoder-formats-only excluded: the
+        # processed WEBP branch below is the only delivery.
+        if (
+            not result.should_blur and max_size >= 256 and not result.cache_hit
+            and media_decoder is None
+        ):
             delivery = "original"
             try:
                 body, _identity = await asyncio.to_thread(
@@ -119,6 +136,14 @@ async def handle_thumbnail(request):
             raise ThumbnailSourceChangedError(source_path) from None
 
         def _process():
+            if media_decoder is not None:
+                # Content gate for decoder formats: the successful decode IS
+                # the validation (fail closed like the Pillow verify gate);
+                # encoding reuses the shared WEBP pipeline tail.
+                pil = media_decoder.decode_bytes(source_body, max_dim=max_size)
+                if pil is None:
+                    return None
+                return finalize_pil_image(pil, max_size, result.should_blur)
             return process_image_snapshot(
                 svc,
                 source_path,
@@ -130,6 +155,21 @@ async def handle_thumbnail(request):
 
         processed = await asyncio.to_thread(_process)
         if processed is None:
+            if media_decoder is not None:
+                # Never fall back to serving the RAW/PSD original bytes (a
+                # browser cannot render them; for blurred assets serving the
+                # original would leak content). Blur keeps the 500 semantics
+                # of serve_blur_gated_raster; non-blur fails closed with 404.
+                if result.should_blur:
+                    status = 500
+                    return error_response(
+                        "Failed to process image",
+                        status=status,
+                        code="internal_error",
+                        headers=_NOSNIFF_HEADERS,
+                    )
+                status = 404
+                return web.Response(status=status)
             if result.should_blur:
                 status = 500
                 return error_response(
@@ -235,7 +275,10 @@ async def handle_thumbnail_batch(request):
                 if aliases is not None:
                     aliases.append(rel_path)
                     continue
-                if target.suffix.lower() not in IMAGE_EXTS | VIDEO_EXTS or not target.is_file():
+                if not target.is_file() or (
+                    target.suffix.lower() not in IMAGE_EXTS | VIDEO_EXTS
+                    and decoder_for(target.suffix) is None
+                ):
                     continue
                 source_bytes = admit_thumbnail_source(target)
                 if source_bytes is None:
@@ -291,14 +334,24 @@ async def handle_thumbnail_batch(request):
                         source_path,
                         expected_identity=resolved.source_identity,
                     )
-                    processed = process_image_snapshot(
-                        svc,
-                        source_path,
-                        source_body,
-                        max_size,
-                        resolved.should_blur,
-                        resolved.source_identity,
-                    )
+                    batch_decoder = decoder_for(source_path.suffix)
+                    if batch_decoder is not None:
+                        # Same content-gate/encode tail as the single route.
+                        pil = batch_decoder.decode_bytes(source_body, max_dim=max_size)
+                        processed = (
+                            finalize_pil_image(pil, max_size, resolved.should_blur)
+                            if pil is not None
+                            else None
+                        )
+                    else:
+                        processed = process_image_snapshot(
+                            svc,
+                            source_path,
+                            source_body,
+                            max_size,
+                            resolved.should_blur,
+                            resolved.source_identity,
+                        )
                     if processed is None:
                         continue
 

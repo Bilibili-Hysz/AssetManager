@@ -40,10 +40,12 @@ from PySide6.QtWidgets import (
 from AssetsManager.core import icons, themes
 from AssetsManager.core.constants import IMAGE_EXTS
 from AssetsManager.application.thumbnail_service import MAX_THUMBNAIL_SOURCE_BYTES
+from AssetsManager.application.media.decoders import decoder_for
 from AssetsManager.core.file_snapshot import read_snapshot
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core.workers import BoundedPool, CancellationToken, CancellableRunnable
 from AssetsManager.panels.file_list._loader import _suppress_libpng_warnings
+from AssetsManager.panels.file_list._common import pil_image_to_qimage
 from AssetsManager import i18n
 tr = i18n.tr
 
@@ -72,6 +74,11 @@ class _ViewerBridge(QObject):
     image_ready = Signal(int, str, QImage)       # (generation, path, image)
     strip_ready = Signal(int, int, str, QImage)  # (generation, index, path, thumb)
     exif_ready = Signal(int, str, object)       # (generation, path, metadata)
+
+
+def _is_viewable_ext(ext: str) -> bool:
+    """True when the viewer can decode *ext* (Pillow/Qt or media registry)."""
+    return ext in IMAGE_EXTS or decoder_for(ext) is not None
 
 
 def _decode_image_bytes(body: bytes, max_dim: int, label: str = "<snapshot>") -> QImage | None:
@@ -124,6 +131,24 @@ def _decode_captured_image(path: str, body: bytes, max_dim: int) -> QImage | Non
     return decoder(path, max_dim)
 
 
+def _decode_media_image(path: str, media_decoder, max_dim: int) -> QImage | None:
+    """Decode one professional-format source (RAW/PSD) via the registry.
+
+    Worker-thread seam parallel to ``_decode_captured_image``; module-level so
+    tests can monkeypatch it the same way. The decoder respects *max_dim*
+    (the viewer's MAX_DIM pre-downsampling cap), so a 500-megapixel RAW never
+    materializes beyond a display-size buffer.
+    """
+    try:
+        pil = media_decoder.decode(Path(path), max_dim=max_dim)
+    except Exception:
+        _log.warning("Media decode failed: %s", path, exc_info=True)
+        return None
+    if pil is None:
+        return None
+    return pil_image_to_qimage(pil)
+
+
 def _snapshot_path(path: str, library_root: str | None = None) -> bytes | None:
     source = Path(path)
     root = Path(library_root) if library_root else source.parent
@@ -151,11 +176,18 @@ class _FullImageTask(CancellableRunnable):
     def run(self):
         if self.is_cancelled():
             return
-        body = _snapshot_path(self._path, self._library_root)
-        if body is None or self.is_cancelled():
-            img = None
+        media_decoder = decoder_for(Path(self._path).suffix)
+        if media_decoder is not None:
+            img = (
+                None if self.is_cancelled()
+                else _decode_media_image(self._path, media_decoder, self._max_dim)
+            )
         else:
-            img = _decode_captured_image(self._path, body, self._max_dim)
+            body = _snapshot_path(self._path, self._library_root)
+            if body is None or self.is_cancelled():
+                img = None
+            else:
+                img = _decode_captured_image(self._path, body, self._max_dim)
         if self.is_cancelled():
             return
         try:
@@ -204,11 +236,18 @@ class _StripThumbTask(CancellableRunnable):
     def run(self):
         if self.is_cancelled():
             return
-        body = _snapshot_path(self._path, self._library_root)
-        if body is None or self.is_cancelled():
-            img = None
+        media_decoder = decoder_for(Path(self._path).suffix)
+        if media_decoder is not None:
+            img = (
+                None if self.is_cancelled()
+                else _decode_media_image(self._path, media_decoder, self._size)
+            )
         else:
-            img = _decode_captured_image(self._path, body, self._size)
+            body = _snapshot_path(self._path, self._library_root)
+            if body is None or self.is_cancelled():
+                img = None
+            else:
+                img = _decode_captured_image(self._path, body, self._size)
         if self.is_cancelled():
             return
         try:
@@ -348,7 +387,10 @@ class ImageViewerOverlay(QFrame):
         if not os.path.isfile(path):
             return
         ext = Path(path).suffix.lower()
-        if ext not in IMAGE_EXTS:
+        # Professional formats (RAW/PSD) are viewable when the media decoder
+        # registry can route them; without the extras this stays closed and
+        # only Pillow/QImageReader-readable extensions load.
+        if ext not in IMAGE_EXTS and decoder_for(ext) is None:
             return
         self._cancel_pending_decode()
         self._library_root = str(Path(library_root).resolve()) if library_root else None
@@ -529,7 +571,7 @@ class ImageViewerOverlay(QFrame):
             try:
                 entries = sorted(
                     [e for e in os.scandir(parent)
-                     if e.is_file() and Path(e.name).suffix.lower() in IMAGE_EXTS],
+                     if e.is_file() and _is_viewable_ext(Path(e.name).suffix.lower())],
                     key=lambda e: e.name.lower())
                 self._image_list = [e.path for e in entries]
                 if len(self._dir_list_cache) >= 5:

@@ -10,7 +10,7 @@ import tempfile
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from AssetsManager.application.context import (
     ConnectionProvider,
@@ -35,6 +35,9 @@ from AssetsManager.application.thumbnail_cache_lifecycle import (
     cache_owner_lock,
 )
 from AssetsManager.repositories.thumbnail_repository import ThumbnailMetadata, ThumbnailRepository
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 _log = logging.getLogger(__name__)
 
@@ -451,6 +454,17 @@ class ThumbnailService:
         is_original_request = max_size >= 1024
         is_image = target.suffix.lower() in IMAGE_EXTS
         is_video = target.suffix.lower() in VIDEO_EXTS
+        # Professional formats (RAW/PSD, port batch N-B): not Pillow-decodable,
+        # but resolvable as image sources when the media decoder registry
+        # routes their extension. Without the optional extras decoder_for is
+        # always None and this flag stays False — behavior unchanged. Imported
+        # lazily so importing this module (e.g. via thumbnail_cache_lifecycle
+        # in short-lived helper processes) does not pay for PIL/plugin import.
+        from AssetsManager.application.media.decoders import decoder_for
+
+        is_decoder_media = (
+            not is_image and not is_video and decoder_for(target.suffix) is not None
+        )
 
         # Try cache before admitting the original. A cache hit does not consume
         # the source bytes, so it can still be served when the source changed.
@@ -482,12 +496,12 @@ class ThumbnailService:
         # This is a pre-open size check. It bounds the source before blur policy
         # lookup or decoding, but does not make a later path-based open atomic.
         source_identity = None
-        if (is_image or is_video) and target.is_file():
+        if (is_image or is_video or is_decoder_media) and target.is_file():
             source_identity = validate_thumbnail_source(target)
 
         should_blur = self._check_blur(target, blur_tags, db_conn, library_root)
 
-        if is_image and target.is_file():
+        if (is_image or is_decoder_media) and target.is_file():
             return ThumbnailResult(
                 source_path=target,
                 should_blur=should_blur,
@@ -660,7 +674,7 @@ class ThumbnailService:
     ) -> tuple[bytes, str] | None:
         """Process an already captured image snapshot using a file object."""
         try:
-            from PIL import Image, ImageFilter, ImageOps
+            from PIL import Image, ImageOps
         except ImportError:
             _log.warning("Pillow not installed — cannot process thumbnails")
             return None
@@ -669,20 +683,7 @@ class ThumbnailService:
                 with Image.open(source) as original:
                     original.load()
                     img = ImageOps.exif_transpose(original)
-                    w, h = img.size
-                    if max(w, h) > max_size:
-                        ratio = max_size / max(w, h)
-                        resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
-                        img = img.resize((int(w * ratio), int(h * ratio)), resample)
-                    if should_blur:
-                        img = img.filter(ImageFilter.GaussianBlur(radius=15))
-                    has_alpha = "A" in img.getbands() or img.mode in ("LA", "PA", "RGBA")
-                    if img.mode not in ("RGB", "RGBA"):
-                        img = img.convert("RGBA" if has_alpha else "RGB")
-                    buf = io.BytesIO()
-                    with img:
-                        img.save(buf, format="WEBP", quality=80)
-                    return buf.getvalue(), "image/webp"
+                    return finalize_pil_image(img, max_size, should_blur)
         except (OSError, ValueError) as exc:
             _log.debug("process_image bytes failed: %s", exc)
             return None
@@ -757,6 +758,43 @@ class ThumbnailService:
     @staticmethod
     def _legacy_cache_key(target: Path) -> str:
         return legacy_thumbnail_cache_key(target)
+
+
+def finalize_pil_image(
+    img: Image.Image,
+    max_size: int = 512,
+    should_blur: bool = False,
+) -> tuple[bytes, str] | None:
+    """Shared WEBP encode tail of the thumbnail pipeline (port batch N-B).
+
+    Takes an already-decoded PIL image — from Pillow or from a media decoder
+    (RAW/PSD) — and applies exactly the same size cap, blur policy and
+    WEBP encoding as ``process_image_bytes`` so every LAN consumer ships
+    identical bytes regardless of which decoder produced the pixels.
+    """
+    try:
+        from PIL import Image, ImageFilter
+    except ImportError:  # pragma: no cover - Pillow is a core dependency
+        _log.warning("Pillow not installed — cannot process thumbnails")
+        return None
+    try:
+        w, h = img.size
+        if max(w, h) > max_size:
+            ratio = max_size / max(w, h)
+            resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+            img = img.resize((int(w * ratio), int(h * ratio)), resample)
+        if should_blur:
+            img = img.filter(ImageFilter.GaussianBlur(radius=15))
+        has_alpha = "A" in img.getbands() or img.mode in ("LA", "PA", "RGBA")
+        if img.mode not in ("RGB", "RGBA"):
+            img = img.convert("RGBA" if has_alpha else "RGB")
+        buf = io.BytesIO()
+        with img:
+            img.save(buf, format="WEBP", quality=80)
+        return buf.getvalue(), "image/webp"
+    except (OSError, ValueError) as exc:
+        _log.debug("finalize_pil_image failed: %s", exc)
+        return None
 
 
 def process_image_snapshot(

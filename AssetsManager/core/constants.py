@@ -8,6 +8,20 @@ IMAGE_EXTS: frozenset[str] = frozenset({
     ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".ico", ".svg",
 })
 
+# Professional-format image extensions (port batch N-B): RAW camera files,
+# Photoshop documents, and OpenEXR. Deliberately NOT part of IMAGE_EXTS —
+# QImageReader/Pillow cannot decode them, so adding them there would route
+# them into decode paths that always fail. They are merged into the image
+# *category* (format_utils CATEGORY_MAP + asset_filters FILTER_CATEGORY_EXTS)
+# so badges, filters and include_types agree across desktop and LAN; actual
+# decoding goes through application/media/decoders.py when the optional
+# requirements-media.txt extras are installed (.exr is category-only for now).
+MEDIA_IMAGE_EXTS: frozenset[str] = frozenset({
+    ".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf", ".raf", ".rw2",
+    ".psd", ".psb",
+    ".exr",
+})
+
 # Video container extensions eligible for first-frame thumbnail extraction.
 VIDEO_EXTS: frozenset[str] = frozenset({
     ".mp4", ".mov", ".avi", ".mkv", ".webm", ".wmv",

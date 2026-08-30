@@ -8,6 +8,7 @@ from pathlib import Path
 from threading import RLock
 from typing import Callable, TypeVar, overload
 
+from AssetsManager.core.constants import MEDIA_IMAGE_EXTS
 from AssetsManager.domain.asset import IMAGE_EXTS, category_for_extension
 
 
@@ -176,8 +177,12 @@ class CategoryExtensionRegistry(dict[str, frozenset[str]]):
 
 
 _BUILTIN_CATEGORY_MAP: dict[str, str] = {}
+# The image category also carries the professional-format extensions
+# (RAW/PSD/EXR, core.constants.MEDIA_IMAGE_EXTS) so filters and include_types
+# treat a .cr2/.psd like any other image even before decoding support exists.
+_IMAGE_CATEGORY_EXTS = frozenset(IMAGE_EXTS) | MEDIA_IMAGE_EXTS
 for _key, _extensions in {
-    "images": IMAGE_EXTS,
+    "images": _IMAGE_CATEGORY_EXTS,
     "models": {".blend", ".fbx", ".obj", ".gltf", ".glb", ".max", ".ma", ".mb", ".3ds", ".stl"},
     "videos": {".mp4", ".mov", ".avi", ".mkv", ".webm", ".wmv"},
     "documents": {".txt", ".pdf", ".docx", ".xlsx", ".pptx", ".md", ".json", ".py", ".xml"},
@@ -188,7 +193,7 @@ for _key, _extensions in {
 FILTER_CATEGORY_EXTS: CategoryExtensionRegistry = CategoryExtensionRegistry(
     {
         "all": set(),
-        "images": IMAGE_EXTS,
+        "images": _IMAGE_CATEGORY_EXTS,
         "models": {".blend", ".fbx", ".obj", ".gltf", ".glb", ".max", ".ma", ".mb", ".3ds", ".stl"},
         "videos": {".mp4", ".mov", ".avi", ".mkv", ".webm", ".wmv"},
         "documents": {".txt", ".pdf", ".docx", ".xlsx", ".pptx", ".md", ".json", ".py", ".xml"},
