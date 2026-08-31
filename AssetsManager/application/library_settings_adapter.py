@@ -150,6 +150,21 @@ class LibrarySettingsAdapter:
             self._session.root, thumb_dir, max_bytes=max_bytes,
         )
 
+    def prune_activity_log(self) -> int:
+        """Delete activity rows past the retention window (H2-a3 maintenance entry).
+
+        Returns the deleted row count; ``0`` also covers a session without a
+        bound recorder (UI fakes), mirroring the swallow-on-error contract.
+        """
+        self._ensure_live("activity_prune")
+        recorder = getattr(
+            getattr(self._services, "file_operation_service", None),
+            "activity_recorder", None,
+        )
+        if recorder is None:
+            return 0
+        return recorder.prune()
+
     def start_wal_checkpoint(self, mode: str = "PASSIVE") -> bool:
         self._ensure_live("wal_checkpoint")
         return self._services.maintenance_service.schedule("checkpoint", mode=mode)

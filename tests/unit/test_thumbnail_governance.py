@@ -1,12 +1,14 @@
-"""H2-a2: startup governance scheduling and settings round-trip.
+"""H2-a2/a3: startup governance scheduling and settings round-trip.
 
 Covers the silent per-session startup pass (daemon thread, once per session,
-swallow-on-error) and the ``thumbnail_cache_max_bytes`` setting contract
-(default, 0 = unlimited, validation).
+swallow-on-error), the activity-retention branch, and the
+``thumbnail_cache_max_bytes`` setting contract (default, 0 = unlimited,
+validation).
 """
 import threading
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
@@ -34,15 +36,11 @@ class _BoomThumbnailService:
 
 
 class _StubSettings:
-    """Stubbed AppSettings seam; ``read`` doubles as a worker-sync event."""
+    """Stubbed settings seam; ``read`` doubles as a worker-sync event."""
 
     def __init__(self, max_bytes):
         self._max_bytes = max_bytes
         self.read = threading.Event()
-
-    @classmethod
-    def instance(cls):
-        return cls._current
 
     def get_thumbnail_cache_max_bytes(self):
         self.read.set()
@@ -95,12 +93,36 @@ def test_run_startup_governance_swallows_enforcement_failure():
     )
 
 
+# ── H2-a3: activity retention branch of the startup pass ─────────
+
+def test_run_startup_governance_prunes_activity_rows():
+    recorder = SimpleNamespace(prune=Mock(return_value=4))
+    governance.run_startup_governance(
+        activity_recorder=recorder,
+        library_root=Path("Z:/library"),
+        thumb_dir=Path("Z:/data/.thumbnails"),
+        max_bytes=0,
+    )
+    recorder.prune.assert_called_once_with(governance.ACTIVITY_RETENTION_DAYS)
+
+
+def test_run_startup_governance_prune_failure_is_swallowed():
+    recorder = SimpleNamespace(prune=Mock(side_effect=RuntimeError("boom")))
+    # Must not raise.
+    governance.run_startup_governance(
+        activity_recorder=recorder,
+        library_root=Path("Z:/library"),
+        thumb_dir=Path("Z:/data/.thumbnails"),
+        max_bytes=0,
+    )
+    recorder.prune.assert_called_once()
+
+
 # ── schedule_startup_governance ───────────────────────────────────
 
 def test_schedule_startup_governance_runs_once_per_session(monkeypatch):
-    _StubSettings._current = _StubSettings(THUMBNAIL_CACHE_DEFAULT_MAX_BYTES)
-    monkeypatch.setattr(
-        governance, "AppSettings", _StubSettings)
+    stub = _StubSettings(THUMBNAIL_CACHE_DEFAULT_MAX_BYTES)
+    monkeypatch.setattr(governance, "get_app_settings", lambda: stub)
     service = _FakeThumbnailService()
     scoped = _scoped(thumbnail_service=service)
 
@@ -125,13 +147,12 @@ def test_schedule_startup_governance_skips_closed_or_fake_sessions():
 
 def test_schedule_startup_governance_reads_cap_from_settings(monkeypatch):
     stub = _StubSettings(0)
-    _StubSettings._current = stub
-    monkeypatch.setattr(governance, "AppSettings", _StubSettings)
+    monkeypatch.setattr(governance, "get_app_settings", lambda: stub)
     service = _FakeThumbnailService()
     scoped = _scoped(thumbnail_service=service)
 
     assert governance.schedule_startup_governance(scoped) is True
-    # The worker provably ran and consulted the cap setting...
+    # The worker provably ran and consulted the G3 settings seam...
     assert stub.read.wait(timeout=5.0)
     # ...and the unlimited cap kept it a no-op.
     assert service.calls == []

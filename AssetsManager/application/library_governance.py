@@ -23,12 +23,13 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from AssetsManager.application.app_settings_provider import get_app_settings
 from AssetsManager.core.constants import (
+    ACTIVITY_RETENTION_DAYS,
     THUMBNAIL_CACHE_DEFAULT_MAX_BYTES,
     THUMBNAIL_CACHE_WARNING_BYTES,
     WAL_FILE_WARNING_BYTES,
 )
-from AssetsManager.core.settings import AppSettings
 
 _log = logging.getLogger(__name__)
 
@@ -154,7 +155,7 @@ def _count_rows(conn, sql: str) -> int | None:
         return None
 
 
-# ── Startup retention governance (H2-a2) ─────────────────────────
+# ── Startup retention governance (H2-a2/a3) ──────────────────────
 
 _governed_tokens: set[str] = set()
 _governed_tokens_lock = threading.Lock()
@@ -163,19 +164,33 @@ _governed_tokens_lock = threading.Lock()
 def run_startup_governance(
     *,
     thumbnail_service=None,
+    activity_recorder=None,
     library_root,
     thumb_dir,
     max_bytes: int,
+    retention_days: int = ACTIVITY_RETENTION_DAYS,
 ) -> None:
-    """Run one silent thumbnail-cache capacity pass against an open library.
+    """Run one silent retention pass against an open library.
 
-    Low-priority chore that keeps a large library bounded without user
-    attention: evict thumbnail artifacts down to the configured capacity
+    Two low-priority chores that keep a large library bounded without user
+    attention: prune ``activity_log`` rows past the retention window
+    (H2-a3) and evict thumbnail artifacts down to the configured capacity
     cap, preserving the most recently accessed (H2-a2). Every failure is
     logged and swallowed — governance must never turn a library open into
     an error surface. ``max_bytes <= 0`` means the user disabled the cap
-    ("unlimited") and the pass becomes a no-op.
+    ("unlimited") and the eviction becomes a no-op.
     """
+    if activity_recorder is not None:
+        try:
+            pruned = activity_recorder.prune(retention_days)
+            if pruned:
+                _log.info(
+                    "Startup prune removed %d activity rows "
+                    "(retention %d days)",
+                    pruned, retention_days,
+                )
+        except Exception:
+            _log.exception("Startup activity log prune failed")
     if thumbnail_service is None or max_bytes <= 0:
         return
     try:
@@ -210,19 +225,27 @@ def schedule_startup_governance(scoped) -> bool:
             return False
         _governed_tokens.add(token)
     thumbnail_service = getattr(scoped, "thumbnail_service", None)
+    recorder = getattr(
+        getattr(scoped, "file_operation_service", None),
+        "activity_recorder", None,
+    )
     library_root = getattr(session, "root", None)
     thumb_dir = getattr(session, "thumb_dir", None)
-    if thumbnail_service is None or library_root is None or thumb_dir is None:
+    if (thumbnail_service is None and recorder is None) \
+            or library_root is None or thumb_dir is None:
         return False
 
     def _run() -> None:
         try:
-            max_bytes = AppSettings.instance().get_thumbnail_cache_max_bytes()
+            # G3 seam: application modules resolve settings through the
+            # provider installed by ApplicationBootstrap, never the singleton.
+            max_bytes = get_app_settings().get_thumbnail_cache_max_bytes()
         except Exception:
             _log.exception("Thumbnail cache cap lookup failed; using default")
             max_bytes = THUMBNAIL_CACHE_DEFAULT_MAX_BYTES
         run_startup_governance(
             thumbnail_service=thumbnail_service,
+            activity_recorder=recorder,
             library_root=library_root,
             thumb_dir=thumb_dir,
             max_bytes=max_bytes,

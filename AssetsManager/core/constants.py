@@ -66,3 +66,9 @@ WAL_FILE_WARNING_BYTES = 256 * 1024 * 1024
 #: a stock install starts evicting the least-recently-viewed long tail before
 #: the extrapolated footprint doubles.
 THUMBNAIL_CACHE_DEFAULT_MAX_BYTES = 2 * 1024 * 1024 * 1024
+#: ``activity_log`` retention window in days (H2-a3). The per-library table
+#: previously had no cleanup at all; 90 days covers the audit/QA needs the
+#: desktop panel and LAN activity feed were built for without letting the
+#: table grow unbounded. Enforced once per library open by the startup
+#: governance pass.
+ACTIVITY_RETENTION_DAYS = 90

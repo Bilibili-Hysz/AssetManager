@@ -18,6 +18,7 @@ from sqlite3 import Connection
 from time import time
 from typing import Callable, Iterable
 
+from AssetsManager.core.constants import ACTIVITY_RETENTION_DAYS
 from AssetsManager.core.database import db_write_lock
 
 _log = logging.getLogger(__name__)
@@ -125,3 +126,32 @@ class ActivityRecorder:
             _log.warning(
                 "Activity recording failed for action=%s", action, exc_info=True
             )
+
+    def prune(self, retention_days: int = ACTIVITY_RETENTION_DAYS) -> int:
+        """Delete activity rows older than the retention window.
+
+        H2-a3 retention enforcement entry point: the per-library
+        ``activity_log`` previously grew without bound. One
+        ``DELETE ... WHERE timestamp < now - days * 86400`` statement, run
+        under the shared write lock; ``retention_days`` is clamped to >= 0
+        and defaults to :data:`ACTIVITY_RETENTION_DAYS`. Returns the deleted
+        row count. Same swallow-on-error contract as the write side —
+        retention must never break a library open (the startup governance
+        pass calls this from a daemon thread).
+        """
+        try:
+            conn = self._connection_provider()
+            if conn is None:
+                return 0
+            cutoff = time() - max(0, int(retention_days)) * 86400
+            with db_write_lock(conn):
+                cursor = conn.execute(
+                    "DELETE FROM activity_log WHERE timestamp < ?", (cutoff,)
+                )
+                deleted = max(cursor.rowcount, 0)
+                conn.commit()
+                return deleted
+        except Exception:
+            # Retention enforcement must never affect the operation itself.
+            _log.warning("Activity log prune failed", exc_info=True)
+            return 0

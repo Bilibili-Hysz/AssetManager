@@ -13,7 +13,10 @@ from PySide6.QtWidgets import (
     QInputDialog, QLabel, QComboBox,
 )
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
-from AssetsManager.core.constants import THUMBNAIL_CACHE_DEFAULT_MAX_BYTES
+from AssetsManager.core.constants import (
+    ACTIVITY_RETENTION_DAYS,
+    THUMBNAIL_CACHE_DEFAULT_MAX_BYTES,
+)
 from AssetsManager.panels._event_bridge import DomainEventSubscription
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.core.signal_bus import get as bus
@@ -745,6 +748,11 @@ class SettingsDialog(TabbedDialog):
             tr("settings.health_open_data_dir"), self._on_open_data_dir)
         hl.addWidget(self._health_open_dir_btn)
 
+        # H2-a3: manual retention pass over the per-library activity_log.
+        self._health_prune_btn = self.make_secondary_btn(
+            tr("settings.health_prune"), self._on_prune_activity)
+        hl.addWidget(self._health_prune_btn)
+
         layout.addWidget(self._health_group)
 
         # ── H2-a2: thumbnail cache capacity cap ────────────
@@ -1082,7 +1090,9 @@ class SettingsDialog(TabbedDialog):
                 False),
         ]
         if snapshot.activity_rows is None:
-            lines.append(tr("settings.health_activity_empty"))
+            lines.append(tr(
+                "settings.health_activity_empty",
+                days=ACTIVITY_RETENTION_DAYS))
         else:
             age = (
                 "—"
@@ -1091,7 +1101,8 @@ class SettingsDialog(TabbedDialog):
             )
             lines.append(tr(
                 "settings.health_activity",
-                rows=snapshot.activity_rows, age=age))
+                rows=snapshot.activity_rows, age=age,
+                days=ACTIVITY_RETENTION_DAYS))
         if snapshot.favorites_count is not None:
             lines.append(tr("settings.health_favorites", count=snapshot.favorites_count))
         if snapshot.asset_rows is not None:
@@ -1160,6 +1171,32 @@ class SettingsDialog(TabbedDialog):
             "settings.thumb_cap_done",
             count=evicted, size=self._format_bytes(reclaimed)))
 
+    # ── H2-a3: activity log retention ─────────────────────────
+
+    def _on_prune_activity(self):
+        adapter = self.library_settings_adapter
+        if adapter is None:
+            QMessageBox.warning(self, tr("dialog.error"), tr("settings.error_no_library"))
+            return
+        # A large log can hold millions of rows: run the delete through the
+        # shared maintenance runner (worker thread + busy dialog + re-entry
+        # guard) instead of blocking the GUI.
+        self._ensure_maintenance_runner().run(
+            adapter.prune_activity_log,
+            title=tr("settings.health_title"),
+            busy_text=tr("settings.health_prune_running"),
+            reentry_text=tr("maintenance.task_running"),
+            disable=(self._health_prune_btn, self._health_refresh_btn),
+            on_success=self._on_prune_activity_success,
+            on_error=lambda exc: QMessageBox.warning(
+                self, tr("dialog.error"),
+                tr("settings.health_prune_error", error=exc)),
+        )
+
+    def _on_prune_activity_success(self, deleted):
+        self._health_status.setText(
+            tr("settings.health_prune_done", count=deleted))
+
     def _refresh_maintenance_status(self):
         """Pull the adapter view model and render the maintenance state."""
         status = self._maintenance_status
@@ -1172,6 +1209,7 @@ class SettingsDialog(TabbedDialog):
             self._integrity_status.setText(tr("settings.error_no_library"))
             self._health_refresh_btn.setEnabled(False)
             self._health_open_dir_btn.setEnabled(False)
+            self._health_prune_btn.setEnabled(False)
             self._thumb_evict_btn.setEnabled(False)
             return
         vm = adapter.view_model()
@@ -1204,6 +1242,7 @@ class SettingsDialog(TabbedDialog):
         # Health card affordances: refresh needs a live adapter and the
         # data-dir button additionally requires the directory to still exist.
         self._health_refresh_btn.setEnabled(True)
+        self._health_prune_btn.setEnabled(True)
         try:
             data_dir_ok = Path(adapter.library_data_dir).is_dir()
         except OSError:
@@ -1311,6 +1350,7 @@ class SettingsDialog(TabbedDialog):
         self._health_group.setTitle(tr("settings.health_title"))
         self._health_refresh_btn.setText(tr("settings.health_refresh"))
         self._health_open_dir_btn.setText(tr("settings.health_open_data_dir"))
+        self._health_prune_btn.setText(tr("settings.health_prune"))
         self._thumb_cap_group.setTitle(tr("settings.thumb_cap_group"))
         self._thumb_cap_label.setText(tr("settings.thumb_cap_label"))
         self._thumb_evict_btn.setText(tr("settings.thumb_cap_evict"))

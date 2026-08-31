@@ -14,6 +14,7 @@ import sqlite3
 import time
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QApplication
@@ -145,7 +146,7 @@ def test_health_card_renders_all_fields_and_refresh_updates(tmp_path):
         assert "Database: 2.0 KB (WAL 4.0 KB)" in text
         assert "Thumbnail cache: 1.0 KB (2 files)" in text
         assert "Derivatives: 256 B (1 files)" in text
-        assert "Activity log: 2 rows (oldest 2.0 days ago)" in text
+        assert "Activity log: 2 rows (oldest 2.0 days ago, kept 90 days)" in text
         assert "Favorites: 2" in text
         assert "Asset index: 3 rows" in text
 
@@ -289,3 +290,51 @@ def test_collect_library_health_handles_dead_connection(tmp_path):
     assert snapshot.asset_rows is None
     # Filesystem metrics are still collected.
     assert snapshot.thumbnail_files == 2
+
+
+def test_prune_activity_button_reports_deleted_rows(tmp_path):
+    """H2-a3: the manual prune entry runs through the maintenance runner."""
+    original_language = i18n.current_language()
+    i18n.set_language("en")
+    adapter, session, _conn_obj = _adapter(tmp_path)
+    _prefill(session, _conn_obj)
+    recorder = SimpleNamespace(prune=Mock(return_value=7))
+    adapter._services.file_operation_service = SimpleNamespace(
+        activity_recorder=recorder)
+    app, dialog = _dialog(adapter)
+    try:
+        dialog.show()
+        app.processEvents()
+
+        assert dialog._health_prune_btn.text() == "Clean Up Expired Activity"
+        assert dialog._health_prune_btn.isEnabled()
+
+        dialog._health_prune_btn.click()
+        assert _wait_until(
+            dialog,
+            lambda: "Pruned 7 activity rows." in dialog._health_status.text(),
+        )
+        # The manual entry relies on the recorder's retention default (90 d).
+        recorder.prune.assert_called_once_with()
+        assert dialog._health_prune_btn.isEnabled()
+    finally:
+        i18n.set_language(original_language)
+        dialog.close()
+        dialog.deleteLater()
+        app.processEvents()
+
+
+def test_prune_activity_disabled_without_adapter():
+    original_language = i18n.current_language()
+    try:
+        i18n.set_language("en")
+        app = QApplication.instance() or QApplication([])
+        dialog = SettingsDialog()
+        try:
+            assert not dialog._health_prune_btn.isEnabled()
+        finally:
+            dialog.close()
+            dialog.deleteLater()
+            app.processEvents()
+    finally:
+        i18n.set_language(original_language)
