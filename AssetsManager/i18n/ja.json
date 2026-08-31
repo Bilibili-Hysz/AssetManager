@@ -964,5 +964,20 @@
   "activity_panel.col_user": "ユーザー",
   "activity_panel.col_details": "詳細",
   "activity_panel.empty": "選択した範囲にアクティビティがありません。",
-  "activity_panel.read_error": "アクティビティログを読み込めませんでした。テーブルが利用できない可能性があります。"
+  "activity_panel.read_error": "アクティビティログを読み込めませんでした。テーブルが利用できない可能性があります。",
+  "settings.relink_title": "失効リンク",
+  "settings.relink_scan": "失効リンクをスキャン",
+  "settings.relink_scanning": "失効リンクをスキャン中…",
+  "settings.relink_idle": "未スキャンです。外部で移動されたファイルの再リンク候補がここに表示されます。",
+  "settings.relink_clean": "失効リンクは見つかりませんでした。",
+  "settings.relink_failed": "操作に失敗しました：{error}",
+  "settings.relink_summary": "メタデータ孤児 {lost} 件、新規ファイル {newcomers} 件、ペア候補 {pairs} 件。",
+  "settings.relink_confidence_high": "高信頼度",
+  "settings.relink_confidence_low": "低信頼度（個別確認が必要）",
+  "settings.relink_no_suggestion": "候補なし",
+  "settings.relink_row_action": "再リンク",
+  "settings.relink_relink_all": "全て再リンク（高信頼度）",
+  "settings.relink_done": "{count} 件を再リンクしました。",
+  "settings.relink_truncated": "ディレクトリ予算を使い切ったため、結果が不完全な可能性があります。",
+  "settings.relink_capped": "先頭 {limit} 行のみ表示しています。"
 }

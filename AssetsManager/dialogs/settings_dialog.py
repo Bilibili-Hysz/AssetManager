@@ -10,7 +10,7 @@ from PySide6.QtCore import Qt, Signal, QObject, QSignalBlocker, QSize, QTimer
 from PySide6.QtWidgets import (
     QMessageBox, QProgressBar, QVBoxLayout, QHBoxLayout, QWidget,
     QRadioButton, QFrame, QPushButton, QFileDialog, QSlider,
-    QInputDialog, QLabel, QComboBox,
+    QInputDialog, QLabel, QComboBox, QListWidget, QListWidgetItem,
 )
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
 from AssetsManager.core.constants import (
@@ -25,6 +25,28 @@ from AssetsManager.core import icons
 from AssetsManager.core.ui_scale import scaled_px
 from AssetsManager import i18n
 tr = i18n.tr
+
+# H2-b: row cap for the broken-link result list — a pathological library can
+# report thousands of orphans, so the card renders the first slice and says so.
+_RELINK_ROW_LIMIT = 500
+
+
+class _RelinkRowWidget(QWidget):
+    """One broken-link result row: paths/confidence text + optional action."""
+
+    def __init__(self, text: str, on_relink=None, parent=None):
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(scaled_px(6))
+        self.path_label = QLabel(text)
+        layout.addWidget(self.path_label, 1)
+        self.relink_button: QPushButton | None = None
+        if on_relink is not None:
+            self.relink_button = QPushButton(tr("settings.relink_row_action"))
+            themes.set_button_variant(self.relink_button, "secondary")
+            self.relink_button.clicked.connect(on_relink)
+            layout.addWidget(self.relink_button)
 
 
 class _ThumbnailLoader(Protocol):
@@ -796,6 +818,45 @@ class SettingsDialog(TabbedDialog):
 
         layout.addWidget(self._thumb_cap_group)
 
+        # ── H2-b: broken-link (relink) card ─────────────────
+        # Files moved outside the app leave tags/notes/ratings orphaned on
+        # the dead path. The scan walks the library on a worker thread
+        # (run_task, the H2-a1 health-card pattern) and pairs lost metadata
+        # rows with newcomer files; relinking then runs the same core
+        # metadata migration the in-app move uses. Low-confidence pairs are
+        # never batch-applied: no "relink all (low)" button exists.
+        self._relink_group = self.make_groupbox(tr("settings.relink_title"))
+        rl = QVBoxLayout(self._relink_group)
+        self._relink_group_layout = rl
+        rl.setSpacing(scaled_px(6))
+        rl.setContentsMargins(
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "sm"))))
+
+        self._relink_scan_btn = self.make_secondary_btn(
+            tr("settings.relink_scan"), self._on_scan_relink)
+        rl.addWidget(self._relink_scan_btn)
+
+        self._relink_status = self.make_muted(tr("settings.relink_idle"))
+        self._relink_status.setWordWrap(True)
+        rl.addWidget(self._relink_status)
+
+        self._relink_all_btn = self.make_secondary_btn(
+            tr("settings.relink_relink_all"), self._on_relink_all_high)
+        self._relink_all_btn.setVisible(False)
+        rl.addWidget(self._relink_all_btn)
+
+        self._relink_list = QListWidget()
+        self._relink_list.setVisible(False)
+        rl.addWidget(self._relink_list, 1)
+
+        self._relink_suggestions: list = []
+        self._relink_last_action = ""
+
+        layout.addWidget(self._relink_group)
+
         layout.addStretch()
         self._add_tab(tab, tr("settings.maintenance_title"), scrollable=True,
                       label_key="settings.maintenance_title")
@@ -1197,6 +1258,170 @@ class SettingsDialog(TabbedDialog):
         self._health_status.setText(
             tr("settings.health_prune_done", count=deleted))
 
+    # ── H2-b: broken-link (relink) card ───────────────────────
+
+    def _on_scan_relink(self):
+        adapter = self.library_settings_adapter
+        if adapter is None:
+            QMessageBox.warning(self, tr("dialog.error"), tr("settings.error_no_library"))
+            return
+        self._set_relink_busy(True)
+        self._relink_status.setText(tr("settings.relink_scanning"))
+        # Full directory walk + read-only SQL: collect off the GUI thread and
+        # let the queued completion (run_task) deliver the report back — the
+        # same async mode as the health card refresh above.
+        from AssetsManager.panels.file_list._background import run_task
+
+        run_task(adapter.scan_relink, on_done=self._on_relink_scanned)
+
+    def _on_relink_scanned(self, report, exc):
+        if exc is not None:
+            self._set_relink_busy(False)
+            self._relink_status.setText(tr("settings.relink_failed", error=exc))
+            return
+        self._render_relink_report(report)
+
+    def _render_relink_report(self, report):
+        """Render one RelinkReport as capped result rows + status summary."""
+        self._set_relink_busy(False)
+        self._relink_list.clear()
+        self._relink_suggestions = []
+        prefix = self._relink_last_action
+        self._relink_last_action = ""
+        if not report.lost and not report.newcomers:
+            self._relink_status.setText(
+                (prefix + " " if prefix else "") + tr("settings.relink_clean"))
+            self._relink_list.setVisible(False)
+            self._relink_all_btn.setVisible(False)
+            return
+
+        rows: list[tuple[str, object]] = [
+            ("pair", suggestion) for suggestion in report.suggestions
+        ]
+        rows.extend(("lost", entry) for entry in report.unpaired_lost)
+        for kind, payload in rows[:_RELINK_ROW_LIMIT]:
+            if kind == "pair":
+                suggestion = payload
+                badge = (
+                    tr("settings.relink_confidence_high")
+                    if suggestion.confidence == "high"
+                    else tr("settings.relink_confidence_low"))
+                text = (f"{suggestion.lost.file_path}  →  "
+                        f"{suggestion.newcomer.file_path}  ·  {badge}")
+                row = _RelinkRowWidget(
+                    text,
+                    on_relink=lambda checked=False, s=suggestion:
+                        self._on_relink_one(s))
+                self._relink_suggestions.append(suggestion)
+            else:
+                text = f"{payload.file_path}"
+                row = _RelinkRowWidget(
+                    f"{payload.file_path}  ·  {tr('settings.relink_no_suggestion')}")
+            item = QListWidgetItem(text)
+            self._relink_list.addItem(item)
+            self._relink_list.setItemWidget(item, row)
+
+        parts = [prefix] if prefix else []
+        parts.append(tr(
+            "settings.relink_summary",
+            lost=len(report.lost),
+            newcomers=len(report.newcomers),
+            pairs=len(report.suggestions)))
+        if report.truncated:
+            parts.append(tr("settings.relink_truncated"))
+        if len(rows) > _RELINK_ROW_LIMIT:
+            parts.append(tr("settings.relink_capped", limit=_RELINK_ROW_LIMIT))
+        self._relink_status.setText(" ".join(parts))
+
+        high_count = sum(
+            1 for suggestion in report.suggestions
+            if suggestion.confidence == "high")
+        self._relink_all_btn.setVisible(high_count > 0)
+        self._relink_all_btn.setEnabled(high_count > 0)
+        self._relink_list.setVisible(True)
+
+    def _on_relink_one(self, suggestion):
+        adapter = self.library_settings_adapter
+        if adapter is None:
+            return
+        self._set_relink_busy(True)
+        from AssetsManager.panels.file_list._background import run_task
+
+        run_task(
+            lambda: adapter.relink_file(
+                suggestion.lost.file_path, suggestion.newcomer.file_path),
+            on_done=lambda result, exc: self._on_relink_done(
+                1 if result else 0, exc),
+        )
+
+    def _on_relink_all_high(self):
+        adapter = self.library_settings_adapter
+        if adapter is None:
+            return
+        # Semantic safety: only high-confidence pairs are batch-applied.
+        # Low-confidence suggestions stay per-row and must be confirmed one
+        # by one; no "relink all (low)" entry exists anywhere.
+        high = [s for s in self._relink_suggestions if s.confidence == "high"]
+        if not high:
+            return
+        self._set_relink_busy(True)
+
+        def _relink_all():
+            relinked = 0
+            first_error = None
+            for suggestion in high:
+                try:
+                    if adapter.relink_file(
+                            suggestion.lost.file_path,
+                            suggestion.newcomer.file_path):
+                        relinked += 1
+                except Exception as exc:  # noqa: BLE001 — reported per batch
+                    if first_error is None:
+                        first_error = exc
+            return relinked, first_error
+
+        from AssetsManager.panels.file_list._background import run_task
+
+        run_task(_relink_all, on_done=self._on_relink_all_done)
+
+    def _on_relink_all_done(self, result, exc):
+        if exc is not None:
+            self._relink_last_action = ""
+            self._set_relink_busy(False)
+            self._relink_status.setText(tr("settings.relink_failed", error=exc))
+            return
+        relinked, first_error = result
+        if first_error is not None:
+            self._relink_last_action = tr(
+                "settings.relink_failed", error=first_error)
+        else:
+            self._relink_last_action = tr("settings.relink_done", count=relinked)
+        # Every applied action re-runs the scan so the list reflects reality.
+        self._on_scan_relink()
+
+    def _on_relink_done(self, count, exc):
+        if exc is not None:
+            self._relink_last_action = ""
+            self._set_relink_busy(False)
+            self._relink_status.setText(tr("settings.relink_failed", error=exc))
+            return
+        self._relink_last_action = tr("settings.relink_done", count=count)
+        self._on_scan_relink()
+
+    def _set_relink_busy(self, busy: bool):
+        """Disable relink affordances while a scan or relink task runs."""
+        enabled = self.library_settings_adapter is not None and not busy
+        self._relink_scan_btn.setEnabled(enabled)
+        # isVisibleTo: the maintenance tab is not necessarily the current
+        # tab, plain isVisible() would always be False there.
+        self._relink_all_btn.setEnabled(
+            enabled and self._relink_all_btn.isVisibleTo(self))
+        for row in range(self._relink_list.count()):
+            widget = self._relink_list.itemWidget(self._relink_list.item(row))
+            button = getattr(widget, "relink_button", None)
+            if button is not None:
+                button.setEnabled(enabled)
+
     def _refresh_maintenance_status(self):
         """Pull the adapter view model and render the maintenance state."""
         status = self._maintenance_status
@@ -1211,6 +1436,8 @@ class SettingsDialog(TabbedDialog):
             self._health_open_dir_btn.setEnabled(False)
             self._health_prune_btn.setEnabled(False)
             self._thumb_evict_btn.setEnabled(False)
+            self._relink_scan_btn.setEnabled(False)
+            self._relink_all_btn.setEnabled(False)
             return
         vm = adapter.view_model()
         self._run_checkpoint_btn.setEnabled(not vm.maintenance_running)
@@ -1251,6 +1478,9 @@ class SettingsDialog(TabbedDialog):
         # Thumbnail-cap button only makes sense with a configured (non-zero)
         # cap; "unlimited" has nothing to enforce down to.
         self._thumb_evict_btn.setEnabled(self._current_thumb_cap_bytes() > 0)
+        # Relink scan affordance follows the live adapter; the batch button
+        # stays governed by the last scan result (high-confidence pairs).
+        self._relink_scan_btn.setEnabled(True)
 
     @staticmethod
     def _format_result_text(result) -> str:
@@ -1354,6 +1584,14 @@ class SettingsDialog(TabbedDialog):
         self._thumb_cap_group.setTitle(tr("settings.thumb_cap_group"))
         self._thumb_cap_label.setText(tr("settings.thumb_cap_label"))
         self._thumb_evict_btn.setText(tr("settings.thumb_cap_evict"))
+        self._relink_group.setTitle(tr("settings.relink_title"))
+        self._relink_scan_btn.setText(tr("settings.relink_scan"))
+        self._relink_all_btn.setText(tr("settings.relink_relink_all"))
+        for _row in range(self._relink_list.count()):
+            _widget = self._relink_list.itemWidget(self._relink_list.item(_row))
+            _button = getattr(_widget, "relink_button", None)
+            if _button is not None:
+                _button.setText(tr("settings.relink_row_action"))
         for _i in range(self._thumb_cap_combo.count()):
             data = self._thumb_cap_combo.itemData(_i)
             if isinstance(data, int) and data > 0:
@@ -1424,6 +1662,12 @@ class SettingsDialog(TabbedDialog):
             scaled_px(int(themes.prop("spacing", "sm"))))
         self._thumb_cap_group_layout.setSpacing(scaled_px(6))
         self._thumb_cap_group_layout.setContentsMargins(
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "sm"))))
+        self._relink_group_layout.setSpacing(scaled_px(6))
+        self._relink_group_layout.setContentsMargins(
             scaled_px(int(themes.prop("spacing", "md"))),
             scaled_px(int(themes.prop("spacing", "md"))),
             scaled_px(int(themes.prop("spacing", "md"))),

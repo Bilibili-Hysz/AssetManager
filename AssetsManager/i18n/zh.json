@@ -964,5 +964,20 @@
   "activity_panel.col_user": "用户",
   "activity_panel.col_details": "详情",
   "activity_panel.empty": "所选范围内没有活动记录。",
-  "activity_panel.read_error": "活动日志读取失败，数据表可能不可用。"
+  "activity_panel.read_error": "活动日志读取失败，数据表可能不可用。",
+  "settings.relink_title": "失链文件",
+  "settings.relink_scan": "扫描失链文件",
+  "settings.relink_scanning": "正在扫描失链文件…",
+  "settings.relink_idle": "尚未扫描。被外部移动过的文件会在这里给出重新挂接建议。",
+  "settings.relink_clean": "未发现失链文件。",
+  "settings.relink_failed": "操作失败：{error}",
+  "settings.relink_summary": "元数据孤儿 {lost} 个，磁盘新文件 {newcomers} 个，配对建议 {pairs} 对。",
+  "settings.relink_confidence_high": "高置信",
+  "settings.relink_confidence_low": "低置信（需逐条确认）",
+  "settings.relink_no_suggestion": "无建议",
+  "settings.relink_row_action": "重新挂接",
+  "settings.relink_relink_all": "全部挂接（高置信）",
+  "settings.relink_done": "已重新挂接 {count} 对。",
+  "settings.relink_truncated": "目录预算耗尽，结果可能不完整。",
+  "settings.relink_capped": "仅显示前 {limit} 行。"
 }

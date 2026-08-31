@@ -964,5 +964,20 @@
   "activity_panel.col_user": "User",
   "activity_panel.col_details": "Details",
   "activity_panel.empty": "No activity in the selected range.",
-  "activity_panel.read_error": "The activity log could not be read; the table may be unavailable."
+  "activity_panel.read_error": "The activity log could not be read; the table may be unavailable.",
+  "settings.relink_title": "Broken Links",
+  "settings.relink_scan": "Scan Broken Links",
+  "settings.relink_scanning": "Scanning for broken links...",
+  "settings.relink_idle": "Not scanned yet. Files moved outside the app get relink suggestions here.",
+  "settings.relink_clean": "No broken links found.",
+  "settings.relink_failed": "Operation failed: {error}",
+  "settings.relink_summary": "{lost} metadata orphan(s), {newcomers} new file(s), {pairs} pairing suggestion(s).",
+  "settings.relink_confidence_high": "High confidence",
+  "settings.relink_confidence_low": "Low confidence (confirm individually)",
+  "settings.relink_no_suggestion": "No suggestion",
+  "settings.relink_row_action": "Relink",
+  "settings.relink_relink_all": "Relink All (High Confidence)",
+  "settings.relink_done": "Relinked {count} pair(s).",
+  "settings.relink_truncated": "Directory budget exhausted; results may be incomplete.",
+  "settings.relink_capped": "Showing first {limit} rows only."
 }
