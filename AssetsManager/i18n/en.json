@@ -1001,5 +1001,6 @@
   "settings.relink_relink_all": "Relink All (High Confidence)",
   "settings.relink_done": "Relinked {count} pair(s).",
   "settings.relink_truncated": "Directory budget exhausted; results may be incomplete.",
-  "settings.relink_capped": "Showing first {limit} rows only."
+  "settings.relink_capped": "Showing first {limit} rows only.",
+  "filelist.dedup_skipped": "Skipped: this exact delete batch was just executed."
 }

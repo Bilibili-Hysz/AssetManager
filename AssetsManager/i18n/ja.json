@@ -1001,5 +1001,6 @@
   "settings.relink_relink_all": "全て再リンク（高信頼度）",
   "settings.relink_done": "{count} 件を再リンクしました。",
   "settings.relink_truncated": "ディレクトリ予算を使い切ったため、結果が不完全な可能性があります。",
-  "settings.relink_capped": "先頭 {limit} 行のみ表示しています。"
+  "settings.relink_capped": "先頭 {limit} 行のみ表示しています。",
+  "filelist.dedup_skipped": "スキップ：同じ削除バッチを直前に実行しました。"
 }

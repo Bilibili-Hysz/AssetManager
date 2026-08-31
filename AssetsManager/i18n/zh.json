@@ -1001,5 +1001,6 @@
   "settings.relink_relink_all": "全部挂接（高置信）",
   "settings.relink_done": "已重新挂接 {count} 对。",
   "settings.relink_truncated": "目录预算耗尽，结果可能不完整。",
-  "settings.relink_capped": "仅显示前 {limit} 行。"
+  "settings.relink_capped": "仅显示前 {limit} 行。",
+  "filelist.dedup_skipped": "已跳过：同一批删除刚刚执行过。"
 }

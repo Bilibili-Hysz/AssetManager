@@ -1,4 +1,5 @@
 """Actions mixin for FileListPanel — context menu, file ops, undo, tags."""
+import json
 import os
 import logging
 from contextlib import nullcontext
@@ -9,6 +10,7 @@ from PySide6.QtCore import Qt, QUrl, QMimeData, QFileInfo, QRunnable
 from PySide6.QtWidgets import (
     QApplication, QInputDialog, QMessageBox, QWidget,
 )
+from AssetsManager.application.command_executions import CommandExecutionStore
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.panels._ai_tag_common import ai_tag_error_text, ai_tagging_enabled
@@ -474,6 +476,24 @@ class ActionsMixin:
         backup_failure_holder: list = []
         self._show_operation_feedback(session, "permanent_delete", running=True)
 
+        # T8 minimal: dedup identical batch-delete submissions by plan
+        # fingerprint.  Best-effort (fail-open) — a broken store never
+        # blocks the deletion itself.
+        scoped = self._get_scoped_services()
+        store = getattr(scoped, "command_executions", None)
+        plan_hash = None
+        if store is not None:
+            plan_hash = CommandExecutionStore.plan_hash(
+                "file.delete_permanent", path_list)
+            if not store.begin(
+                plan_hash, "file.delete_permanent", json.dumps(path_list)
+            ):
+                self._show_operation_feedback(
+                    session, "permanent_delete",
+                    errors=(tr("filelist.dedup_skipped"),),
+                )
+                return
+
         def _do_perm_delete():
             with self._session_operation(session):
                 backup_failures: list[tuple[str, str]] = []
@@ -499,6 +519,8 @@ class ActionsMixin:
                 except Exception:
                     for entry in entries:
                         undo_service.discard_delete(entry)
+                    if store is not None and plan_hash is not None:
+                        store.clear(plan_hash)
                     raise
                 changed_paths = {Path(path).resolve() for path in result.changed_paths}
                 committed_entries = []
@@ -513,6 +535,9 @@ class ActionsMixin:
                 # Ctrl+Z restores the whole batch.  Entries whose backup
                 # failed are simply absent (not undoable), as before.
                 undo_service.commit_batch(committed_entries)
+                if store is not None and plan_hash is not None:
+                    store.mark_succeeded(
+                        plan_hash, result_summary=f"{len(changed_paths)} files")
             result_holder.append(result)
             for error in result.errors:
                 _log.error("Permanent delete failed: %s", error)
