@@ -6,7 +6,7 @@
 
 AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用,内置 aiohttp 局域网分享服务器。用户可以通过桌面端管理文件资产库(元数据、标签、缩略图),也可以通过局域网内的浏览器远程浏览和下载资产。仓库名 `AssetsManager_old-bak` 仅为目录命名,项目包名为 `AssetsManager`。
 
-<!-- stats: app_services=48 controllers=4 core=34 dialogs=23 domain_events=15 e2e_specs=6 hooks=16 i18n_en=936 i18n_ja=936 i18n_zh=936 icons=56 pages=10 python_test_files=290 repos=12 routes=71 routes_modules=22 schema_version=41 stores=2 themes=24 ts=99 webui_test_files=85 widgets=14 -->
+<!-- stats: app_services=49 controllers=4 core=34 dialogs=23 domain_events=15 e2e_specs=6 hooks=16 i18n_en=949 i18n_ja=949 i18n_zh=949 icons=56 pages=10 python_test_files=291 repos=12 routes=71 routes_modules=22 schema_version=41 stores=2 themes=24 ts=99 webui_test_files=85 widgets=14 -->
 > **验证边界（2026-08-21）**：README 的结构统计由 `scripts/check_doc_stats.py` 从当前工作树测量；测试、构建、浏览器、真实 LAN、依赖和发布结果只在带 commit、精确命令、平台、工具版本与 artifact digest 的日期化证据中成立。历史全量数字（包括 2026-08-17 的 3778/7 和此前 WebUI/E2E 数字）保留在 dated 文档中，不作为当前 release 或 `verified-fixed` 声明。当前 C6-C10 收敛与剩余限制见 [`docs/full-review/c6-c10-convergence-2026-08-21.md`](docs/full-review/c6-c10-convergence-2026-08-21.md)。
 > **工作区实况索引**：结构/机制/数据流/弱点/文档导航的全量地图见 [`docs/overview-2026-08-27.md`](docs/overview-2026-08-27.md)（LIVING）；已移入归档的文档溯源见 [`docs/archive/INDEX.md`](docs/archive/INDEX.md)。
 
@@ -59,8 +59,8 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用,内置 aio
 ```
 ┌─ Presentation ──────────────── 桌面 UI（panels/dialogs/widgets）+ LAN routes + React SPA
 │  Controllers（4 个，零 Qt import）
-├─ Application Layer（48 模块）— bootstrap 装配 → 每库 LibraryRuntime/LibrarySession
-│  （应用服务层（48 模块）顶层，另有 gallery/ 子包 5 文件）
+├─ Application Layer（49 模块）— bootstrap 装配 → 每库 LibraryRuntime/LibrarySession
+│  （应用服务层（49 模块）顶层，另有 gallery/ 子包 5 文件）
 ├─ Repositories — 17 个 SQL 仓库（for_session + savepoint 事务 + CAS）
 ├─ Domain — 值对象 + 15 个领域事件 + 错误层级（零基础设施依赖）
 └─ Infrastructure core/ — database/迁移/契约/锁/路径/主题/图标/缓存/插件
@@ -77,7 +77,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用,内置 aio
 AssetsManager_old-bak/
 ├── AssetsManager/              # 主包（270 py / 9.2 万行，2026-08-27 实测）
 │   ├── app.py  window.py  window_lifecycle_coordinator.py  dock_factory.py
-│   ├── application/            # 应用服务层（48 模块，27.7k 行）
+│   ├── application/            # 应用服务层（49 模块，27.7k 行）
 │   ├── controllers/            # 4 个无 Qt 控制器（file_list/info/tag_tree/sidebar）
 │   ├── core/                   # 基础设施层（34 模块 + plugins/6）
 │   ├── domain/                 # 领域层：15 个领域事件 + event_bus + errors + 值对象
@@ -229,7 +229,7 @@ python build.py --clean --build --optimize --report   # → dist/AssetManager/As
 
 | 语言 | 状态 |
 |---|---|
-| English / 中文 / 日本語 | ✅ 完整（en 936 / zh 936 / ja 936 keys，桌面 + Web） |
+| English / 中文 / 日本語 | ✅ 完整（en 949 / zh 949 / ja 949 keys，桌面 + Web） |
 
 添加语言：复制 `AssetsManager/i18n/en.json` → 翻译 → 在 `i18n/__init__.py` 注册。
 

@@ -46,3 +46,17 @@ AUDIO_EXTS: frozenset[str] = frozenset({
 # single place so the desktop sharing settings, the tag style picker, and the
 # LAN route fallback all agree without repeating the literal hex.
 DEFAULT_LAN_THEME_COLOR = "#5b7ff5"
+
+# ── Scale observation thresholds (H2) ────────────────────────────
+# Derived from the 100k-asset extrapolation table (H2 scale plan): ~100k assets
+# ≈ 4 GB of thumbnail artifacts, and the real bottleneck is undeclared
+# constants, not SQLite. These two thresholds drive the maintenance tab's
+# library-health card warning coloring — they are *observation* thresholds
+# (surface a warning before the size ceiling becomes an incident), not
+# enforcement caps; enforcement uses the user-configured thumbnail cache cap.
+#: Thumbnail cache size at/above which the health card warns (2 GB ≈ half the
+#: extrapolated 100k-asset footprint — an early, still-actionable signal).
+THUMBNAIL_CACHE_WARNING_BYTES = 2 * 1024 * 1024 * 1024
+#: WAL file size at/above which the health card warns. Sustained WAL growth at
+#: this scale means automatic checkpointing is not keeping up with writes.
+WAL_FILE_WARNING_BYTES = 256 * 1024 * 1024

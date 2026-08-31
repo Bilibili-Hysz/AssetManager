@@ -21,6 +21,10 @@ from AssetsManager.application.library_export_service import (
     LibraryRestoreResult,
     RestoreQuarantineEntry,
 )
+from AssetsManager.application.library_governance import (
+    LibraryHealthSnapshot,
+    collect_library_health,
+)
 
 
 class LibrarySettingsBlockedError(RuntimeError):
@@ -68,6 +72,34 @@ class LibrarySettingsAdapter:
     @property
     def library_root(self) -> Path:
         return self._session.root
+
+    @property
+    def library_data_dir(self) -> Path:
+        """Return the library's RuntimeData slot ("open data directory" target).
+
+        Test doubles may not model ``data_dir`` on the session; fall back to
+        the library root instead of raising from a presentation refresh path.
+        """
+        data_dir = getattr(self._session, "data_dir", None)
+        return Path(data_dir) if data_dir is not None else Path(self._session.root)
+
+    def collect_health_snapshot(self) -> LibraryHealthSnapshot:
+        """Collect the H2-a1 health card metrics for the bound library.
+
+        Heavy IO (recursive directory walks + read-only counts) — the caller
+        must run this off the GUI thread (the settings dialog uses the shared
+        ``run_task`` worker, same primitive as the maintenance runner).
+        """
+        self._ensure_live("library_health")
+        session = self._session
+        data_dir = Path(getattr(session, "data_dir", session.root))
+        thumb_dir = getattr(session, "thumb_dir", None)
+        return collect_library_health(
+            session.connection_for(session.root),
+            db_path=data_dir / "assetmanager.db",
+            thumb_dir=Path(thumb_dir) if thumb_dir is not None else data_dir / ".thumbnails",
+            derivatives_dir=data_dir / "derivatives",
+        )
 
     @property
     def session_token(self) -> str:

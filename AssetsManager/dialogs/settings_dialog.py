@@ -2,6 +2,7 @@
 
 Inherits TabbedDialog for consistent dark theme and widget factories.
 """
+from pathlib import Path
 from typing import Protocol, cast, runtime_checkable
 
 from shiboken6 import Shiboken
@@ -716,6 +717,35 @@ class SettingsDialog(TabbedDialog):
         gl.addWidget(self._maintenance_status)
 
         layout.addWidget(self._maintenance_group)
+
+        # ── H2-a1: library health card ─────────────────────
+        # Scale observation surface: sizes/counts collected on a worker
+        # thread (run_task, the same primitive the maintenance runner uses)
+        # so a large library never blocks the GUI during a refresh.
+        self._health_group = self.make_groupbox(tr("settings.health_title"))
+        hl = QVBoxLayout(self._health_group)
+        self._health_group_layout = hl
+        hl.setSpacing(scaled_px(6))
+        hl.setContentsMargins(
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "sm"))))
+
+        self._health_refresh_btn = self.make_secondary_btn(
+            tr("settings.health_refresh"), self._on_refresh_health)
+        hl.addWidget(self._health_refresh_btn)
+
+        self._health_status = self.make_muted(tr("settings.health_idle"))
+        self._health_status.setWordWrap(True)
+        hl.addWidget(self._health_status)
+
+        self._health_open_dir_btn = self.make_secondary_btn(
+            tr("settings.health_open_data_dir"), self._on_open_data_dir)
+        hl.addWidget(self._health_open_dir_btn)
+
+        layout.addWidget(self._health_group)
+
         layout.addStretch()
         self._add_tab(tab, tr("settings.maintenance_title"), scrollable=True,
                       label_key="settings.maintenance_title")
@@ -953,6 +983,94 @@ class SettingsDialog(TabbedDialog):
             QMessageBox.warning(self, tr("dialog.error"), str(exc))
         self._refresh_maintenance_status()
 
+    # ── H2-a1: library health card ────────────────────────────
+
+    def _on_refresh_health(self):
+        adapter = self.library_settings_adapter
+        if adapter is None:
+            QMessageBox.warning(self, tr("dialog.error"), tr("settings.error_no_library"))
+            return
+        self._health_refresh_btn.setEnabled(False)
+        self._health_status.setText(tr("settings.health_collecting"))
+        # Directory walks + read-only counts: collect off the GUI thread and
+        # let the queued completion (run_task) deliver the snapshot back.
+        from AssetsManager.panels.file_list._background import run_task
+
+        run_task(adapter.collect_health_snapshot, on_done=self._on_health_collected)
+
+    def _on_health_collected(self, result, exc):
+        adapter = self.library_settings_adapter
+        runner = getattr(self, "_maintenance_runner", None)
+        busy = runner is not None and runner.is_busy
+        if adapter is not None and not busy:
+            self._health_refresh_btn.setEnabled(True)
+        if exc is not None:
+            self._health_status.setText(tr("settings.health_failed", error=exc))
+            return
+        self._render_health(result)
+
+    def _render_health(self, snapshot):
+        """Render one health snapshot as colored per-metric rows."""
+        warning_color = themes.color("warning")
+        warnings = tuple(getattr(snapshot, "warnings", ()) or ())
+
+        def row(text: str, warn: bool) -> str:
+            if warn:
+                return f'<span style="color:{warning_color};">{text}</span>'
+            return text
+
+        db_size = (
+            self._format_bytes(snapshot.db_bytes)
+            if snapshot.db_bytes is not None else "—"
+        )
+        wal_size = (
+            self._format_bytes(snapshot.wal_bytes)
+            if snapshot.wal_bytes is not None else "—"
+        )
+        lines = [
+            row(tr("settings.health_db", size=db_size, wal=wal_size),
+                "wal" in warnings),
+            row(tr("settings.health_thumbs",
+                   size=self._format_bytes(snapshot.thumbnail_bytes),
+                   files=snapshot.thumbnail_files),
+                "thumbnail_cache" in warnings),
+            row(tr("settings.health_derivatives",
+                   size=self._format_bytes(snapshot.derivatives_bytes),
+                   files=snapshot.derivatives_files),
+                False),
+        ]
+        if snapshot.activity_rows is None:
+            lines.append(tr("settings.health_activity_empty"))
+        else:
+            age = (
+                "—"
+                if snapshot.activity_oldest_age_days is None
+                else f"{snapshot.activity_oldest_age_days:.1f}"
+            )
+            lines.append(tr(
+                "settings.health_activity",
+                rows=snapshot.activity_rows, age=age))
+        if snapshot.favorites_count is not None:
+            lines.append(tr("settings.health_favorites", count=snapshot.favorites_count))
+        if snapshot.asset_rows is not None:
+            lines.append(tr("settings.health_assets", rows=snapshot.asset_rows))
+        self._health_status.setText("<br>".join(lines))
+
+    def _on_open_data_dir(self):
+        adapter = self.library_settings_adapter
+        if adapter is None:
+            return
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+
+        data_dir = Path(adapter.library_data_dir)
+        # The button is enabled only while the directory exists (refreshed
+        # with the maintenance status), but re-check before launching: the
+        # slot directory can disappear under a restore/switch.
+        if not data_dir.is_dir():
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(data_dir)))
+
     def _refresh_maintenance_status(self):
         """Pull the adapter view model and render the maintenance state."""
         status = self._maintenance_status
@@ -963,6 +1081,8 @@ class SettingsDialog(TabbedDialog):
             self._read_size_btn.setEnabled(False)
             self._integrity_btn.setEnabled(False)
             self._integrity_status.setText(tr("settings.error_no_library"))
+            self._health_refresh_btn.setEnabled(False)
+            self._health_open_dir_btn.setEnabled(False)
             return
         vm = adapter.view_model()
         self._run_checkpoint_btn.setEnabled(not vm.maintenance_running)
@@ -991,6 +1111,14 @@ class SettingsDialog(TabbedDialog):
             status.setText(self._format_result_text(vm.maintenance_result))
         else:
             status.setText(tr("settings.maintenance_idle"))
+        # Health card affordances: refresh needs a live adapter and the
+        # data-dir button additionally requires the directory to still exist.
+        self._health_refresh_btn.setEnabled(True)
+        try:
+            data_dir_ok = Path(adapter.library_data_dir).is_dir()
+        except OSError:
+            data_dir_ok = False
+        self._health_open_dir_btn.setEnabled(data_dir_ok)
 
     @staticmethod
     def _format_result_text(result) -> str:
@@ -1087,6 +1215,9 @@ class SettingsDialog(TabbedDialog):
         self._maintenance_group.setTitle(tr("settings.maintenance_title"))
         self._run_checkpoint_btn.setText(tr("settings.maintenance_run_checkpoint"))
         self._read_size_btn.setText(tr("settings.maintenance_read_size"))
+        self._health_group.setTitle(tr("settings.health_title"))
+        self._health_refresh_btn.setText(tr("settings.health_refresh"))
+        self._health_open_dir_btn.setText(tr("settings.health_open_data_dir"))
         mode_label = {
             "dark": tr("settings.dark_mode"), "light": tr("settings.light_mode"),
             "custom": tr("settings.custom_themes"),
@@ -1138,6 +1269,12 @@ class SettingsDialog(TabbedDialog):
             scaled_px(int(themes.prop("spacing", "sm"))))
         self._maintenance_group_layout.setSpacing(scaled_px(6))
         self._maintenance_group_layout.setContentsMargins(
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "sm"))))
+        self._health_group_layout.setSpacing(scaled_px(6))
+        self._health_group_layout.setContentsMargins(
             scaled_px(int(themes.prop("spacing", "md"))),
             scaled_px(int(themes.prop("spacing", "md"))),
             scaled_px(int(themes.prop("spacing", "md"))),
