@@ -799,6 +799,49 @@ class AssetIndexRepository:
             return cur.rowcount
 
     @_repository_operation
+    def repoint_file(self, old_path: str, new_path: str, *, commit: bool = True) -> int:
+        """Repoint one indexed asset row after a verified external move (H2-b).
+
+        Rewrites ``file_path``/``parent_path`` plus the derived name and
+        extension, and re-stats the new location so ``size``/``mtime`` stay
+        truthful without a rescan. Bound-root containment and the revision
+        advance follow :meth:`delete_entry`; a root-less raw repoint is
+        rejected. When the new path is already indexed the UNIQUE
+        ``file_path`` constraint fails and the caller's transaction rolls
+        back. Returns the number of rows repointed (0 when the old path was
+        never indexed — relinking metadata alone is still worthwhile).
+        """
+        old = self._path_key(old_path)
+        new = self._path_key(new_path)
+        if old == new:
+            return 0
+        if self._root_identity is None:
+            raise ValueError(
+                "asset index repoint_file requires a bound library_root; "
+                "raw root-less repoints are not allowed"
+            )
+        root_key = self._root_key(self._root_identity)
+        new_path_obj = Path(new)
+        name = new_path_obj.name
+        extension = new_path_obj.suffix.lower()
+        parent_path = str(new_path_obj.parent)
+        try:
+            stat = new_path_obj.stat()
+            size, mtime = int(stat.st_size), float(stat.st_mtime)
+        except OSError:
+            size, mtime = 0, 0.0
+        with self.transaction_scope(commit=commit):
+            self._advance_revision(root_key)
+            cur = self._conn.execute(
+                "UPDATE assets SET file_path=?, name=?, extension=?, parent_path=?, "
+                "size=?, mtime=?, updated_at=? "
+                "WHERE file_path=? AND library_root=?",
+                (new, name, extension, parent_path, size, mtime, time.time(),
+                 old, root_key),
+            )
+            return cur.rowcount
+
+    @_repository_operation
     def delete_path(self, path: str, *, commit: bool = True) -> int:
         path = self._path_key(path)
         if self._root_identity is None:

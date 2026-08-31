@@ -25,6 +25,11 @@ from AssetsManager.application.library_governance import (
     LibraryHealthSnapshot,
     collect_library_health,
 )
+from AssetsManager.application.relink_service import (
+    RelinkReport,
+    relink as relink_paths,
+    scan as scan_relink_report,
+)
 
 
 class LibrarySettingsBlockedError(RuntimeError):
@@ -99,6 +104,41 @@ class LibrarySettingsAdapter:
             db_path=data_dir / "assetmanager.db",
             thumb_dir=Path(thumb_dir) if thumb_dir is not None else data_dir / ".thumbnails",
             derivatives_dir=data_dir / "derivatives",
+        )
+
+    def scan_relink(self) -> RelinkReport:
+        """Scan the bound library for broken links (H2-b maintenance entry).
+
+        One full read-only directory walk + read-only SQL — the caller must
+        run this off the GUI thread (the settings dialog uses the shared
+        ``run_task`` worker, same primitive as the health card). Only rows
+        carrying user metadata (tags / notes / urls / rating) are reported
+        as orphans; the report never writes.
+        """
+        self._ensure_live("relink_scan")
+        session = self._session
+        return scan_relink_report(
+            session.connection_for(session.root),
+            library_root=session.root,
+        )
+
+    def relink_file(self, old_path: str | Path, new_path: str | Path) -> bool:
+        """Apply one user-confirmed broken-link pairing (H2-b).
+
+        Migrates file_meta/file_tags/library_favorites/derivatives/collection
+        members through ``migrate_path_metadata`` and repoints the asset-index
+        row inside one transaction — AssetsManager's own projections only, no
+        user file is moved or copied. Returns ``False`` for identical paths.
+        """
+        self._ensure_live("relink_apply")
+        session = self._session
+        thumb_dir = getattr(session, "thumb_dir", None)
+        return relink_paths(
+            session.connection_for(session.root),
+            library_root=session.root,
+            thumb_dir=Path(thumb_dir) if thumb_dir is not None else Path(session.root),
+            old_path=old_path,
+            new_path=new_path,
         )
 
     @property
