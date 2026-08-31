@@ -72,3 +72,21 @@ THUMBNAIL_CACHE_DEFAULT_MAX_BYTES = 2 * 1024 * 1024 * 1024
 #: table grow unbounded. Enforced once per library open by the startup
 #: governance pass.
 ACTIVITY_RETENTION_DAYS = 90
+
+# ── AI tagging (H2-c "AI 打标栈 v1", Ollama local-first) ─────────
+#: Default OpenAI-compatible endpoint of a local Ollama daemon. Disabled by
+#: default (``ai_tagging_enabled=False``); the whole feature stays hidden
+#: until the user explicitly turns it on.
+AI_TAGGING_DEFAULT_ENDPOINT = "http://localhost:11434/v1"
+#: Default local vision model (small, runs on modest hardware).
+AI_TAGGING_DEFAULT_MODEL = "qwen2.5vl:3b"
+#: Default cap on tags accepted from one image (settings allow 1-20).
+AI_TAGGING_DEFAULT_MAX_TAGS = 8
+AI_TAGGING_MIN_TAGS = 1
+AI_TAGGING_MAX_TAGS_LIMIT = 20
+#: Images are downscaled to at most this many pixels on the long edge before
+#: base64 encoding — vision models need nowhere near full resolution and the
+#: request body stays bounded.
+AI_TAGGING_IMAGE_MAX_DIM = 2048
+#: Per-request timeout for one ``analyze_image`` vision call (seconds).
+AI_TAGGING_TIMEOUT_SECONDS = 120
