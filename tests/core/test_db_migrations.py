@@ -1843,3 +1843,48 @@ def test_v40_boundary_contract_for_asset_derivatives(memory_db, monkeypatch):
         validate_schema_object(
             conn, "asset_derivatives", _db_migrations._versioned_schema_contract("asset_derivatives", 41)
         )
+
+
+def test_v42_creates_command_executions_and_is_idempotent(memory_db):
+    from AssetsManager.core import database
+    from AssetsManager.core.db_migrations import CURRENT_SCHEMA_VERSION, migrate
+    from AssetsManager.core.schema_defs import SCHEMA_OBJECT_CONTRACT
+    from AssetsManager.core.schema_defs import validate_schema_object
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+
+    assert migrate(conn) == CURRENT_SCHEMA_VERSION
+    assert conn.execute(
+        "SELECT name FROM schema_migrations WHERE version=42"
+    ).fetchone() == ("command_executions",)
+    validate_schema_object(
+        conn, "command_executions", SCHEMA_OBJECT_CONTRACT["command_executions"]
+    )
+    columns = {row[1] for row in conn.execute("PRAGMA table_info('command_executions')")}
+    assert columns == {
+        "plan_hash", "command_id", "targets_json",
+        "status", "executed_at", "result_summary",
+    }
+    # Re-running the migration is a no-op (idempotent CREATE IF NOT EXISTS).
+    assert migrate(conn) == CURRENT_SCHEMA_VERSION
+
+
+def test_v41_database_upgrades_to_v42_keeps_history_and_is_idempotent(memory_db, monkeypatch):
+    from AssetsManager.core import database, db_migrations
+    from AssetsManager.core.schema_defs import SCHEMA_OBJECT_CONTRACT
+    from AssetsManager.core.schema_defs import validate_schema_object
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    original_version = db_migrations.CURRENT_SCHEMA_VERSION
+    try:
+        monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 41)
+        assert db_migrations.migrate(conn) == 41
+    finally:
+        monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", original_version)
+    assert db_migrations.migrate(conn) == original_version
+    validate_schema_object(
+        conn, "command_executions", SCHEMA_OBJECT_CONTRACT["command_executions"]
+    )
+    assert db_migrations.migrate(conn) == original_version  # idempotent

@@ -6,7 +6,7 @@
 
 AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用,内置 aiohttp 局域网分享服务器。用户可以通过桌面端管理文件资产库(元数据、标签、缩略图),也可以通过局域网内的浏览器远程浏览和下载资产。仓库名 `AssetsManager_old-bak` 仅为目录命名,项目包名为 `AssetsManager`。
 
-<!-- stats: app_services=50 controllers=4 core=34 dialogs=23 domain_events=15 e2e_specs=6 hooks=16 i18n_en=999 i18n_ja=999 i18n_zh=999 icons=56 pages=10 python_test_files=306 repos=12 routes=71 routes_modules=22 schema_version=41 stores=2 themes=24 ts=99 webui_test_files=85 widgets=14 -->
+<!-- stats: app_services=52 controllers=4 core=34 dialogs=23 domain_events=15 e2e_specs=6 hooks=16 i18n_en=1000 i18n_ja=1000 i18n_zh=1000 icons=56 pages=10 python_test_files=309 repos=12 routes=71 routes_modules=22 schema_version=42 stores=2 themes=24 ts=99 webui_test_files=85 widgets=14 -->
 > **验证边界（2026-08-21）**：README 的结构统计由 `scripts/check_doc_stats.py` 从当前工作树测量；测试、构建、浏览器、真实 LAN、依赖和发布结果只在带 commit、精确命令、平台、工具版本与 artifact digest 的日期化证据中成立。历史全量数字（包括 2026-08-17 的 3778/7 和此前 WebUI/E2E 数字）保留在 dated 文档中，不作为当前 release 或 `verified-fixed` 声明。当前 C6-C10 收敛与剩余限制见 [`docs/full-review/c6-c10-convergence-2026-08-21.md`](docs/full-review/c6-c10-convergence-2026-08-21.md)。
 > **工作区实况索引**：结构/机制/数据流/弱点/文档导航的全量地图见 [`docs/overview-2026-08-27.md`](docs/overview-2026-08-27.md)（LIVING）；已移入归档的文档溯源见 [`docs/archive/INDEX.md`](docs/archive/INDEX.md)。
 
@@ -44,10 +44,10 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用,内置 aio
 
 | 层 | 技术 |
 |---|---|
-| 核心 | Python 3.12/3.13/3.14（CI 矩阵；本机 3.14）；PySide6 >=6.6,<7；aiohttp >=3.9（可选）；SQLite3（WAL，迁移 v1-v41）；Pillow；segno；send2trash/requests |
+| 核心 | Python 3.12/3.13/3.14（CI 矩阵；本机 3.14）；PySide6 >=6.6,<7；aiohttp >=3.9（可选）；SQLite3（WAL，迁移 v1-v42）；Pillow；segno；send2trash/requests |
 | 桌面 | QDockWidget（dock_factory 统一构建）、QAbstractListModel、QThreadPool、signal_bus（7 信号）/event_bus（15 个领域事件）、icons.py（56 图标，DPR 感知） |
 | LAN | aiohttp（22 个路由模块，71 条路由 + WebSocket）；middleware 顺序 security→metrics→auth；PathGuard 路径守卫；HMAC 令牌（ts.nonce.sig）；WebSocketManager（50 连接/心跳 30s/1MB 帧截断）；Cloudflare Tunnel；React SPA（webui/dist 托管） |
-| 数据层 | DatabaseManager（连接级读写门 + 身份标记）；**12 个 SQL 仓库**（统一 for_session 绑定 + SAVEPOINT + CAS）；db_migrations（迁移 v1-v41，契约回溯校验）；schema_defs 契约；LibraryLock；json_store 原子持久化 |
+| 数据层 | DatabaseManager（连接级读写门 + 身份标记）；**12 个 SQL 仓库**（统一 for_session 绑定 + SAVEPOINT + CAS）；db_migrations（迁移 v1-v42，契约回溯校验）；schema_defs 契约；LibraryLock；json_store 原子持久化 |
 | 开发工具 | ruff / pyright / pytest / Cython（4 个热点模块）/ PyInstaller |
 
 > 细节（版本号、常量、令牌 TTL、限流档位）见 `docs/overview-2026-08-27.md` §1-§15 与 `docs/lan-security.md`。
@@ -59,8 +59,8 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用,内置 aio
 ```
 ┌─ Presentation ──────────────── 桌面 UI（panels/dialogs/widgets）+ LAN routes + React SPA
 │  Controllers（4 个，零 Qt import）
-├─ Application Layer（50 模块）— bootstrap 装配 → 每库 LibraryRuntime/LibrarySession
-│  （应用服务层（50 模块）顶层，另有 gallery/ 子包 5 文件）
+├─ Application Layer（52 模块）— bootstrap 装配 → 每库 LibraryRuntime/LibrarySession
+│  （应用服务层（52 模块）顶层，另有 gallery/ 子包 5 文件）
 ├─ Repositories — 17 个 SQL 仓库（for_session + savepoint 事务 + CAS）
 ├─ Domain — 值对象 + 15 个领域事件 + 错误层级（零基础设施依赖）
 └─ Infrastructure core/ — database/迁移/契约/锁/路径/主题/图标/缓存/插件
@@ -77,7 +77,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用,内置 aio
 AssetsManager_old-bak/
 ├── AssetsManager/              # 主包（270 py / 9.2 万行，2026-08-27 实测）
 │   ├── app.py  window.py  window_lifecycle_coordinator.py  dock_factory.py
-│   ├── application/            # 应用服务层（50 模块，27.7k 行）
+│   ├── application/            # 应用服务层（52 模块，27.7k 行）
 │   ├── controllers/            # 4 个无 Qt 控制器（file_list/info/tag_tree/sidebar）
 │   ├── core/                   # 基础设施层（34 模块 + plugins/6）
 │   ├── domain/                 # 领域层：15 个领域事件 + event_bus + errors + 值对象
@@ -229,7 +229,7 @@ python build.py --clean --build --optimize --report   # → dist/AssetManager/As
 
 | 语言 | 状态 |
 |---|---|
-| English / 中文 / 日本語 | ✅ 完整（en 999 / zh 999 / ja 999 keys，桌面 + Web） |
+| English / 中文 / 日本語 | ✅ 完整（en 1000 / zh 1000 / ja 1000 keys，桌面 + Web） |
 
 添加语言：复制 `AssetsManager/i18n/en.json` → 翻译 → 在 `i18n/__init__.py` 注册。
 

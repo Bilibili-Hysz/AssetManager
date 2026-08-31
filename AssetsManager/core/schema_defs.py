@@ -1420,6 +1420,32 @@ SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {
             "status IN ('ready', 'failed')",
         ),
     },
+    # v42: batch-command plan dedup + execution journal (T8). One row per
+    # executed plan fingerprint; only successful executions are remembered
+    # (failed runs clear their row to allow retry) and the store FIFO-caps
+    # the table, so it cannot grow without bound.
+    "command_executions": {
+        "columns": (
+            "plan_hash", "command_id", "targets_json", "status",
+            "executed_at", "result_summary",
+        ),
+        "primary_key": ("plan_hash",),
+        "unique_constraints": (),
+        "indexes": {
+            "idx_command_executions_executed": ("executed_at",),
+        },
+        "column_contracts": {
+            "plan_hash": {"type": "TEXT", "not_null": True},
+            "command_id": {"type": "TEXT", "not_null": True},
+            "targets_json": {"type": "TEXT", "not_null": True},
+            "status": {"type": "TEXT", "not_null": True},
+            "executed_at": {"type": "REAL", "not_null": True},
+            "result_summary": {"type": "TEXT", "not_null": True},
+        },
+        "checks": (
+            "status IN ('executing', 'succeeded', 'failed')",
+        ),
+    },
     # v37: file sequences (frame stacks). The anchor is the "directory +
     # common prefix" pair rather than a representative frame, so re-scans and
     # first-frame renames keep hitting the same sequence row.

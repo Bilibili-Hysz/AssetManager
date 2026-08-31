@@ -24,6 +24,11 @@ from AssetsManager.application.app_settings_provider import install_app_settings
 from AssetsManager.application.auth_service import AuthService
 from AssetsManager.application.asset_service import AssetService
 from AssetsManager.application.collection_service import CollectionService
+from AssetsManager.application.command_executions import CommandExecutionStore
+from AssetsManager.application.command_registry import (
+    CommandRegistry,
+    build_command_registry,
+)
 from AssetsManager.application.context import ConnectionProvider, LibrarySession
 from AssetsManager.application.database_integrity_service import DatabaseIntegrityService
 from AssetsManager.application.database_maintenance_service import DatabaseMaintenanceService
@@ -249,6 +254,8 @@ class LibraryScopedServices:
     import_manifest_recovery: ImportManifestRecoveryService | None = None
     media_derivatives_recorder: MediaDerivativesRecorder | None = None
     collection_service: CollectionService | None = None
+    command_executions: CommandExecutionStore | None = None
+    command_registry: "CommandRegistry" | None = None
 
     @property
     def lan_services(self) -> LanRuntimeServices:
@@ -682,6 +689,20 @@ class ApplicationBootstrap:
                 activity_recorder=activity_recorder,
                 search_index_service=search_index_service,
             )
+            undo_service = UndoService(
+                library_root=session.root_str,
+                session=session,
+                performance_recorder=self._performance_recorder,
+            )
+            command_executions = CommandExecutionStore(
+                lambda: session.connection_for(session.root)
+            )
+            command_registry = build_command_registry(
+                file_operations=file_operation_service,
+                tag_service=tag_service,
+                undo_service=undo_service,
+                library_root=session.root_str,
+            )
 
             return LibraryScopedServices(
                 session=session,
@@ -703,11 +724,9 @@ class ApplicationBootstrap:
                     connection_provider=provider, session=session
                 ),
                 file_operation_service=file_operation_service,
-                undo_service=UndoService(
-                    library_root=session.root_str,
-                    session=session,
-                    performance_recorder=self._performance_recorder,
-                ),
+                undo_service=undo_service,
+                command_executions=command_executions,
+                command_registry=command_registry,
                 plugin_service=self.container.resolve(PluginService),
                 asset_index_service=asset_index_service,
                 _lan_holder=_LanServicesHolder(

@@ -47,7 +47,7 @@ from AssetsManager.core.schema_defs import (
 )
 
 
-CURRENT_SCHEMA_VERSION = 41
+CURRENT_SCHEMA_VERSION = 42
 _BASELINE_SCHEMA_CONTRACT = {
     "file_tags": {
         "columns": ("file_path", "tag"),
@@ -1336,6 +1336,32 @@ def _add_asset_derivative_lifecycle_schema_v41(conn: sqlite3.Connection) -> None
     validate_schema_object(conn, table, SCHEMA_OBJECT_CONTRACT[table])
 
 
+def _add_command_executions_schema_v42(conn: sqlite3.Connection) -> None:
+    """Create the plan-hash dedup + execution journal for batch commands (T8).
+
+    One row per executed batch plan.  ``plan_hash`` is the content
+    fingerprint (canonical command id + sorted targets + params); a row in
+    status ``succeeded`` makes a repeated submit of the same plan a no-op,
+    ``failed``/``executing`` rows allow retry.  Only successes are
+    remembered (a failed run clears its row) and the table is FIFO-capped
+    at 4096 rows by the store, so it cannot grow without bound.
+    """
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS command_executions ("
+        "plan_hash TEXT NOT NULL PRIMARY KEY, "
+        "command_id TEXT NOT NULL, "
+        "targets_json TEXT NOT NULL, "
+        "status TEXT NOT NULL CHECK (status IN ('executing', 'succeeded', 'failed')), "
+        "executed_at REAL NOT NULL, "
+        "result_summary TEXT NOT NULL DEFAULT '')"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_command_executions_executed "
+        "ON command_executions(executed_at DESC)"
+    )
+    validate_schema_object(conn, "command_executions", SCHEMA_OBJECT_CONTRACT["command_executions"])
+
+
 def _add_thumbnail_cache_lifecycle_schema_v32(conn: sqlite3.Connection) -> None:
     """Persist precise source timing and artifact kind for cache lifecycle work."""
     table = "thumbnail_cache"
@@ -1420,6 +1446,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(39, "asset_search_fts", _add_asset_search_fts_v39),
     Migration(40, "asset_search_trigram", _rebuild_asset_search_fts_trigram_v40),
     Migration(41, "asset_derivative_lifecycle", _add_asset_derivative_lifecycle_schema_v41),
+    Migration(42, "command_executions", _add_command_executions_schema_v42),
 )
 
 
