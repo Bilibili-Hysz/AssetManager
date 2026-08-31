@@ -11,10 +11,12 @@ from PySide6.QtWidgets import (
     QMessageBox, QProgressBar, QVBoxLayout, QHBoxLayout, QWidget,
     QRadioButton, QFrame, QPushButton, QFileDialog, QSlider,
     QInputDialog, QLabel, QComboBox, QListWidget, QListWidgetItem,
+    QCheckBox, QSpinBox, QLineEdit,
 )
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
 from AssetsManager.core.constants import (
     ACTIVITY_RETENTION_DAYS,
+    AI_TAGGING_MAX_TAGS_LIMIT,
     THUMBNAIL_CACHE_DEFAULT_MAX_BYTES,
 )
 from AssetsManager.panels._event_bridge import DomainEventSubscription
@@ -639,8 +641,152 @@ class SettingsDialog(TabbedDialog):
         self._ui_scale_label = self.make_muted(f"{get_ui_scale() * 100:.0f}%")
         layout.addWidget(self._ui_scale_label)
 
+        self._build_ai_tagging_group(layout)
+
         layout.addStretch()
         self._add_tab(tab, tr("settings.general"), scrollable=True, label_key="settings.general")
+
+    # ── H2-c: AI tagging group (Ollama local-first) ──────
+
+    def _build_ai_tagging_group(self, layout):
+        """Build the "AI Tagging" settings group on the General tab.
+
+        The whole feature stays invisible until ``ai_tagging_enabled`` is
+        explicitly switched on; every control persists on change and the
+        "Test Connection" button probes the Ollama daemon on a worker
+        thread (run_task, the H2-a1 health-card pattern).
+        """
+        from AssetsManager.core.ui_scale import scaled_px as _px
+        settings = AppSettings.instance()
+
+        self._ai_group = self.make_groupbox(tr("settings.ai_group"))
+        al = QVBoxLayout(self._ai_group)
+        al.setSpacing(_px(6))
+        al.setContentsMargins(
+            _px(int(themes.prop("spacing", "md"))),
+            _px(int(themes.prop("spacing", "md"))),
+            _px(int(themes.prop("spacing", "md"))),
+            _px(int(themes.prop("spacing", "sm"))))
+
+        self._ai_enable_check = QCheckBox(tr("settings.ai_enable"))
+        self._ai_enable_check.setChecked(settings.get_ai_tagging_enabled())
+        self._ai_enable_check.toggled.connect(self._on_ai_enabled_toggled)
+        al.addWidget(self._ai_enable_check)
+
+        endpoint_row = QHBoxLayout()
+        endpoint_row.setSpacing(_px(6))
+        self._ai_endpoint_label = QLabel(tr("settings.ai_endpoint"))
+        endpoint_row.addWidget(self._ai_endpoint_label)
+        self._ai_endpoint_edit = QLineEdit(settings.get_ai_tagging_endpoint())
+        self._ai_endpoint_edit.setAccessibleName(tr("settings.ai_endpoint"))
+        self._ai_endpoint_edit.editingFinished.connect(self._on_ai_endpoint_edited)
+        endpoint_row.addWidget(self._ai_endpoint_edit, 1)
+        al.addLayout(endpoint_row)
+
+        model_row = QHBoxLayout()
+        model_row.setSpacing(_px(6))
+        self._ai_model_label = QLabel(tr("settings.ai_model"))
+        model_row.addWidget(self._ai_model_label)
+        self._ai_model_edit = QLineEdit(settings.get_ai_tagging_model())
+        self._ai_model_edit.setAccessibleName(tr("settings.ai_model"))
+        self._ai_model_edit.editingFinished.connect(self._on_ai_model_edited)
+        model_row.addWidget(self._ai_model_edit, 1)
+        al.addLayout(model_row)
+
+        tags_row = QHBoxLayout()
+        tags_row.setSpacing(_px(6))
+        self._ai_max_tags_label = QLabel(tr("settings.ai_max_tags"))
+        tags_row.addWidget(self._ai_max_tags_label)
+        self._ai_max_tags_spin = QSpinBox()
+        self._ai_max_tags_spin.setRange(1, AI_TAGGING_MAX_TAGS_LIMIT)
+        self._ai_max_tags_spin.setValue(settings.get_ai_tagging_max_tags())
+        self._ai_max_tags_spin.setAccessibleName(tr("settings.ai_max_tags"))
+        self._ai_max_tags_spin.valueChanged.connect(self._on_ai_max_tags_changed)
+        tags_row.addWidget(self._ai_max_tags_spin)
+        tags_row.addStretch()
+        al.addLayout(tags_row)
+
+        self._ai_force_check = QCheckBox(tr("settings.ai_force_existing"))
+        self._ai_force_check.setChecked(settings.get_ai_tagging_force_existing())
+        self._ai_force_check.setToolTip(tr("settings.ai_force_existing_tooltip"))
+        self._ai_force_check.toggled.connect(self._on_ai_force_toggled)
+        al.addWidget(self._ai_force_check)
+
+        action_row = QHBoxLayout()
+        action_row.setSpacing(_px(6))
+        self._ai_test_btn = self.make_secondary_btn(
+            tr("settings.ai_test"), self._on_ai_test_connection)
+        action_row.addWidget(self._ai_test_btn)
+        action_row.addStretch()
+        al.addLayout(action_row)
+
+        self._ai_status = self.make_muted(tr("settings.ai_status_idle"))
+        self._ai_status.setWordWrap(True)
+        al.addWidget(self._ai_status)
+
+        self._update_ai_rows_enabled()
+        layout.addWidget(self._ai_group)
+
+    def _update_ai_rows_enabled(self):
+        """Dim the AI controls while the feature is switched off."""
+        enabled = self._ai_enable_check.isChecked()
+        for widget in (
+            self._ai_endpoint_edit, self._ai_model_edit,
+            self._ai_max_tags_spin, self._ai_force_check,
+            self._ai_test_btn,
+        ):
+            widget.setEnabled(enabled)
+
+    def _on_ai_enabled_toggled(self, checked: bool) -> None:
+        AppSettings.instance().set_ai_tagging_enabled(bool(checked))
+        self._update_ai_rows_enabled()
+
+    def _on_ai_endpoint_edited(self) -> None:
+        text = self._ai_endpoint_edit.text().strip()
+        try:
+            AppSettings.instance().set_ai_tagging_endpoint(text)
+            self._ai_status.setText(tr("settings.ai_status_saved"))
+        except ValueError:
+            # Invalid URL: keep the last persisted value in the field and
+            # say so — the endpoint must stay an absolute http(s) URL.
+            self._ai_endpoint_edit.setText(
+                AppSettings.instance().get_ai_tagging_endpoint())
+            self._ai_status.setText(tr("settings.ai_endpoint_invalid"))
+
+    def _on_ai_model_edited(self) -> None:
+        model = self._ai_model_edit.text().strip() or \
+            AppSettings.instance().get_ai_tagging_model()
+        AppSettings.instance().set_ai_tagging_model(model)
+        self._ai_model_edit.setText(model)
+        self._ai_status.setText(tr("settings.ai_status_saved"))
+
+    def _on_ai_max_tags_changed(self, value: int) -> None:
+        AppSettings.instance().set_ai_tagging_max_tags(int(value))
+
+    def _on_ai_force_toggled(self, checked: bool) -> None:
+        AppSettings.instance().set_ai_tagging_force_existing(bool(checked))
+
+    def _on_ai_test_connection(self) -> None:
+        """Probe the Ollama daemon and report the result in the status label."""
+        from AssetsManager.panels.file_list._background import run_task
+        from AssetsManager.application.ai_tagging.ollama_client import probe
+        endpoint = self._ai_endpoint_edit.text().strip() or \
+            AppSettings.instance().get_ai_tagging_endpoint()
+        self._ai_test_btn.setEnabled(False)
+        self._ai_status.setText(tr("settings.ai_status_testing"))
+
+        def _work():
+            return probe(endpoint)
+
+        def _done(result, exc):
+            self._ai_test_btn.setEnabled(True)
+            if exc is not None:
+                self._ai_status.setText(tr("settings.ai_test_fail"))
+                return
+            self._ai_status.setText(
+                tr("settings.ai_test_ok") if result else tr("settings.ai_test_fail"))
+
+        run_task(_work, on_done=_done)
 
     # ── Tab 3: Thumbnails ────────────────────────────────
 
