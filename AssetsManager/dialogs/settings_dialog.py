@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QInputDialog, QLabel, QComboBox,
 )
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
+from AssetsManager.core.constants import THUMBNAIL_CACHE_DEFAULT_MAX_BYTES
 from AssetsManager.panels._event_bridge import DomainEventSubscription
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.core.signal_bus import get as bus
@@ -746,6 +747,47 @@ class SettingsDialog(TabbedDialog):
 
         layout.addWidget(self._health_group)
 
+        # ── H2-a2: thumbnail cache capacity cap ────────────
+        self._thumb_cap_group = self.make_groupbox(tr("settings.thumb_cap_group"))
+        cl = QVBoxLayout(self._thumb_cap_group)
+        self._thumb_cap_group_layout = cl
+        cl.setSpacing(scaled_px(6))
+        cl.setContentsMargins(
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "sm"))))
+
+        cap_row = QHBoxLayout()
+        cap_row.setSpacing(scaled_px(6))
+        self._thumb_cap_label = QLabel(tr("settings.thumb_cap_label"))
+        cap_row.addWidget(self._thumb_cap_label)
+        self._thumb_cap_combo = QComboBox()
+        for gb in (1, 2, 5, 10):
+            self._thumb_cap_combo.addItem(
+                tr("settings.thumb_cap_gb", gb=gb), userData=gb * 1024 ** 3)
+        self._thumb_cap_combo.addItem(tr("settings.thumb_cap_unlimited"), userData=0)
+        current_cap = AppSettings.instance().get_thumbnail_cache_max_bytes()
+        cap_index = self._thumb_cap_combo.findData(current_cap)
+        if cap_index < 0:
+            cap_index = self._thumb_cap_combo.findData(
+                THUMBNAIL_CACHE_DEFAULT_MAX_BYTES)
+        with QSignalBlocker(self._thumb_cap_combo):
+            self._thumb_cap_combo.setCurrentIndex(max(cap_index, 0))
+        self._thumb_cap_combo.currentIndexChanged.connect(self._on_thumb_cap_changed)
+        cap_row.addWidget(self._thumb_cap_combo, 1)
+        cl.addLayout(cap_row)
+
+        self._thumb_evict_btn = self.make_secondary_btn(
+            tr("settings.thumb_cap_evict"), self._on_evict_to_cap)
+        cl.addWidget(self._thumb_evict_btn)
+
+        self._thumb_cap_status = self.make_muted(tr("settings.thumb_cap_idle"))
+        self._thumb_cap_status.setWordWrap(True)
+        cl.addWidget(self._thumb_cap_status)
+
+        layout.addWidget(self._thumb_cap_group)
+
         layout.addStretch()
         self._add_tab(tab, tr("settings.maintenance_title"), scrollable=True,
                       label_key="settings.maintenance_title")
@@ -1071,6 +1113,53 @@ class SettingsDialog(TabbedDialog):
             return
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(data_dir)))
 
+    # ── H2-a2: thumbnail cache capacity cap ───────────────────
+
+    def _current_thumb_cap_bytes(self) -> int:
+        data = self._thumb_cap_combo.currentData()
+        return int(data) if isinstance(data, int) else THUMBNAIL_CACHE_DEFAULT_MAX_BYTES
+
+    def _on_thumb_cap_changed(self, _index: int):
+        AppSettings.instance().set_thumbnail_cache_max_bytes(
+            self._current_thumb_cap_bytes())
+        AppSettings.instance().save()
+        self._update_thumb_cap_buttons()
+
+    def _update_thumb_cap_buttons(self):
+        """The evict button needs an adapter and a configured (non-zero) cap."""
+        adapter = self.library_settings_adapter
+        self._thumb_evict_btn.setEnabled(
+            adapter is not None and self._current_thumb_cap_bytes() > 0)
+
+    def _on_evict_to_cap(self):
+        adapter = self.library_settings_adapter
+        if adapter is None:
+            QMessageBox.warning(self, tr("dialog.error"), tr("settings.error_no_library"))
+            return
+        max_bytes = self._current_thumb_cap_bytes()
+        if max_bytes <= 0:
+            return
+        # Candidate scan + per-artifact unlink is GB-scale IO: reuse the
+        # E-C maintenance task async mode (worker thread + busy dialog +
+        # re-entry guard).
+        self._ensure_maintenance_runner().run(
+            lambda: adapter.enforce_thumbnail_capacity(max_bytes),
+            title=tr("settings.thumb_cap_group"),
+            busy_text=tr("settings.thumb_cap_running"),
+            reentry_text=tr("maintenance.task_running"),
+            disable=(self._thumb_evict_btn, self._health_refresh_btn),
+            on_success=self._on_evict_to_cap_success,
+            on_error=lambda exc: QMessageBox.warning(
+                self, tr("dialog.error"),
+                tr("settings.thumb_cap_error", error=exc)),
+        )
+
+    def _on_evict_to_cap_success(self, result):
+        evicted, reclaimed = result
+        self._thumb_cap_status.setText(tr(
+            "settings.thumb_cap_done",
+            count=evicted, size=self._format_bytes(reclaimed)))
+
     def _refresh_maintenance_status(self):
         """Pull the adapter view model and render the maintenance state."""
         status = self._maintenance_status
@@ -1083,6 +1172,7 @@ class SettingsDialog(TabbedDialog):
             self._integrity_status.setText(tr("settings.error_no_library"))
             self._health_refresh_btn.setEnabled(False)
             self._health_open_dir_btn.setEnabled(False)
+            self._thumb_evict_btn.setEnabled(False)
             return
         vm = adapter.view_model()
         self._run_checkpoint_btn.setEnabled(not vm.maintenance_running)
@@ -1119,6 +1209,9 @@ class SettingsDialog(TabbedDialog):
         except OSError:
             data_dir_ok = False
         self._health_open_dir_btn.setEnabled(data_dir_ok)
+        # Thumbnail-cap button only makes sense with a configured (non-zero)
+        # cap; "unlimited" has nothing to enforce down to.
+        self._thumb_evict_btn.setEnabled(self._current_thumb_cap_bytes() > 0)
 
     @staticmethod
     def _format_result_text(result) -> str:
@@ -1218,6 +1311,16 @@ class SettingsDialog(TabbedDialog):
         self._health_group.setTitle(tr("settings.health_title"))
         self._health_refresh_btn.setText(tr("settings.health_refresh"))
         self._health_open_dir_btn.setText(tr("settings.health_open_data_dir"))
+        self._thumb_cap_group.setTitle(tr("settings.thumb_cap_group"))
+        self._thumb_cap_label.setText(tr("settings.thumb_cap_label"))
+        self._thumb_evict_btn.setText(tr("settings.thumb_cap_evict"))
+        for _i in range(self._thumb_cap_combo.count()):
+            data = self._thumb_cap_combo.itemData(_i)
+            if isinstance(data, int) and data > 0:
+                self._thumb_cap_combo.setItemText(
+                    _i, tr("settings.thumb_cap_gb", gb=data // (1024 ** 3)))
+            else:
+                self._thumb_cap_combo.setItemText(_i, tr("settings.thumb_cap_unlimited"))
         mode_label = {
             "dark": tr("settings.dark_mode"), "light": tr("settings.light_mode"),
             "custom": tr("settings.custom_themes"),
@@ -1275,6 +1378,12 @@ class SettingsDialog(TabbedDialog):
             scaled_px(int(themes.prop("spacing", "sm"))))
         self._health_group_layout.setSpacing(scaled_px(6))
         self._health_group_layout.setContentsMargins(
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "md"))),
+            scaled_px(int(themes.prop("spacing", "sm"))))
+        self._thumb_cap_group_layout.setSpacing(scaled_px(6))
+        self._thumb_cap_group_layout.setContentsMargins(
             scaled_px(int(themes.prop("spacing", "md"))),
             scaled_px(int(themes.prop("spacing", "md"))),
             scaled_px(int(themes.prop("spacing", "md"))),

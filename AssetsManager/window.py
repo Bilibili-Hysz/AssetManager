@@ -257,6 +257,13 @@ class MainWindow(LanSharingMixin, QMainWindow):
                     getattr(session, "root", session),
                     getattr(integrity_service, "last_schedule_error", "unknown"),
                 )
+        # H2-a2: one silent per-session thumbnail-cache capacity pass on a
+        # daemon thread — a library open must never block on cache
+        # governance (same lifecycle point as the integrity schedule).
+        from AssetsManager.application.library_governance import (
+            schedule_startup_governance,
+        )
+        schedule_startup_governance(scoped)
         # Every scoped panel satisfies ScopedServicesConsumer (locked by the
         # TYPE_CHECKING contract at the bottom of this module), so one
         # uniform call binds the bundle everywhere; projection-capable

@@ -132,6 +132,24 @@ class LibrarySettingsAdapter:
         self._ensure_live("database_size")
         return self._services.maintenance_service.database_size()
 
+    def enforce_thumbnail_capacity(self, max_bytes: int) -> tuple[int, int]:
+        """Evict thumbnail artifacts down to *max_bytes* (H2-a2 maintenance entry).
+
+        Heavy disk work (candidate scan + artifact unlink) — the dialog runs
+        it through the shared MaintenanceTaskRunner. Returns
+        ``(evicted_count, reclaimed_bytes)``.
+        """
+        self._ensure_live("thumbnail_capacity")
+        thumbnail_service = getattr(self._services, "thumbnail_service", None)
+        if thumbnail_service is None:
+            return (0, 0)
+        thumb_dir = getattr(self._session, "thumb_dir", None)
+        if thumb_dir is None:
+            return (0, 0)
+        return thumbnail_service.enforce_cache_capacity(
+            self._session.root, thumb_dir, max_bytes=max_bytes,
+        )
+
     def start_wal_checkpoint(self, mode: str = "PASSIVE") -> bool:
         self._ensure_live("wal_checkpoint")
         return self._services.maintenance_service.schedule("checkpoint", mode=mode)

@@ -60,3 +60,9 @@ THUMBNAIL_CACHE_WARNING_BYTES = 2 * 1024 * 1024 * 1024
 #: WAL file size at/above which the health card warns. Sustained WAL growth at
 #: this scale means automatic checkpointing is not keeping up with writes.
 WAL_FILE_WARNING_BYTES = 256 * 1024 * 1024
+#: Default thumbnail disk-cache capacity cap (H2-a2, ~2 GB for a default
+#: install; the 100k-asset extrapolation puts the unbounded cache near 4 GB).
+#: ``0`` means unlimited. The default matches THUMBNAIL_CACHE_WARNING_BYTES so
+#: a stock install starts evicting the least-recently-viewed long tail before
+#: the extrapolated footprint doubles.
+THUMBNAIL_CACHE_DEFAULT_MAX_BYTES = 2 * 1024 * 1024 * 1024

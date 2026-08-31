@@ -8,6 +8,7 @@ import threading
 from typing import Callable, cast
 
 from AssetsManager.core.config_migrator import FutureConfigVersionError
+from AssetsManager.core.constants import THUMBNAIL_CACHE_DEFAULT_MAX_BYTES
 from AssetsManager.core.path_resolver import SHARED_DIR
 from AssetsManager.core.singleton import ThreadSafeSingleton
 
@@ -20,6 +21,7 @@ TRUSTED_NETWORK_CONFIRMED_KEY = "lan_trusted_network_confirmed"
 SHARE_LAST_SUCCESSFUL_BIND_KEY = "lan_share_last_successful_bind"
 SHARE_LAST_SUCCESSFUL_AUTH_KEY = "lan_share_last_successful_auth"
 LIBRARY_WATCHER_INTERVAL_KEY = "library_watcher_interval_seconds"
+THUMBNAIL_CACHE_MAX_BYTES_KEY = "thumbnail_cache_max_bytes"
 DEFAULT_LIBRARY_WATCHER_INTERVAL = 120.0
 DEFAULT_SHARE_SAFETY_ACK_VERSION = 0
 DEFAULT_TRUSTED_NETWORK_CONFIRMED = False
@@ -32,6 +34,10 @@ _VALIDATORS: dict[str, Callable] = {
     "bg_effect": lambda v: v in ("none", "blur", "mosaic", "kuwahara", "shader"),
     "bg_shader_preset": lambda v: isinstance(v, str) and bool(v),
     "search_history": lambda v: isinstance(v, list),
+    # Thumbnail disk-cache cap in bytes; 0 = unlimited (H2-a2).
+    THUMBNAIL_CACHE_MAX_BYTES_KEY: (
+        lambda v: isinstance(v, int) and not isinstance(v, bool) and v >= 0
+    ),
     SHARE_SAFETY_ACK_VERSION_KEY: lambda v: isinstance(v, int) and not isinstance(v, bool) and v >= 0,
     TRUSTED_NETWORK_CONFIRMED_KEY: lambda v: isinstance(v, bool),
     SHARE_LAST_SUCCESSFUL_BIND_KEY: lambda v: isinstance(v, str) and bool(v),
@@ -264,6 +270,23 @@ class AppSettings:
         """
         value = self.get(SHARE_SAFETY_ACK_VERSION_KEY, DEFAULT_SHARE_SAFETY_ACK_VERSION)
         return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+    def get_thumbnail_cache_max_bytes(self) -> int:
+        """Return the thumbnail disk-cache cap in bytes; ``0`` = unlimited.
+
+        Missing or malformed legacy values fall back to the H2 default
+        (2 GB) without mutating settings — the same fail-closed read shape
+        as :meth:`get_share_safety_ack_version`.
+        """
+        value = self.get(
+            THUMBNAIL_CACHE_MAX_BYTES_KEY, THUMBNAIL_CACHE_DEFAULT_MAX_BYTES
+        )
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            return value
+        return THUMBNAIL_CACHE_DEFAULT_MAX_BYTES
+
+    def set_thumbnail_cache_max_bytes(self, max_bytes: int) -> None:
+        self.set(THUMBNAIL_CACHE_MAX_BYTES_KEY, int(max_bytes))
 
     def set_share_safety_ack_version(self, version: int) -> None:
         self.set(SHARE_SAFETY_ACK_VERSION_KEY, version)

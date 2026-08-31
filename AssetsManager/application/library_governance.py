@@ -18,14 +18,17 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from AssetsManager.core.constants import (
+    THUMBNAIL_CACHE_DEFAULT_MAX_BYTES,
     THUMBNAIL_CACHE_WARNING_BYTES,
     WAL_FILE_WARNING_BYTES,
 )
+from AssetsManager.core.settings import AppSettings
 
 _log = logging.getLogger(__name__)
 
@@ -149,3 +152,84 @@ def _count_rows(conn, sql: str) -> int | None:
         return int(row[0]) if row is not None else None
     except Exception:
         return None
+
+
+# ── Startup retention governance (H2-a2) ─────────────────────────
+
+_governed_tokens: set[str] = set()
+_governed_tokens_lock = threading.Lock()
+
+
+def run_startup_governance(
+    *,
+    thumbnail_service=None,
+    library_root,
+    thumb_dir,
+    max_bytes: int,
+) -> None:
+    """Run one silent thumbnail-cache capacity pass against an open library.
+
+    Low-priority chore that keeps a large library bounded without user
+    attention: evict thumbnail artifacts down to the configured capacity
+    cap, preserving the most recently accessed (H2-a2). Every failure is
+    logged and swallowed — governance must never turn a library open into
+    an error surface. ``max_bytes <= 0`` means the user disabled the cap
+    ("unlimited") and the pass becomes a no-op.
+    """
+    if thumbnail_service is None or max_bytes <= 0:
+        return
+    try:
+        evicted, reclaimed = thumbnail_service.enforce_cache_capacity(
+            library_root, thumb_dir, max_bytes=max_bytes,
+        )
+        if evicted:
+            _log.info(
+                "Startup thumbnail cache eviction removed %d artifacts "
+                "(%d bytes reclaimed)",
+                evicted, reclaimed,
+            )
+    except Exception:
+        _log.exception("Thumbnail cache capacity enforcement failed")
+
+
+def schedule_startup_governance(scoped) -> bool:
+    """Schedule the silent retention pass once per library session.
+
+    Called from the window's scoped-services binding (the same point that
+    schedules the automatic integrity check). Spawns one daemon thread so a
+    library open never blocks on governance, and runs at most once per
+    session. Returns ``False`` when the session was already governed or
+    exposes no governable service (e.g. UI-level fakes).
+    """
+    session = getattr(scoped, "session", None)
+    if session is None or getattr(session, "is_closed", True):
+        return False
+    token = str(getattr(session, "event_token", "") or id(session))
+    with _governed_tokens_lock:
+        if token in _governed_tokens:
+            return False
+        _governed_tokens.add(token)
+    thumbnail_service = getattr(scoped, "thumbnail_service", None)
+    library_root = getattr(session, "root", None)
+    thumb_dir = getattr(session, "thumb_dir", None)
+    if thumbnail_service is None or library_root is None or thumb_dir is None:
+        return False
+
+    def _run() -> None:
+        try:
+            max_bytes = AppSettings.instance().get_thumbnail_cache_max_bytes()
+        except Exception:
+            _log.exception("Thumbnail cache cap lookup failed; using default")
+            max_bytes = THUMBNAIL_CACHE_DEFAULT_MAX_BYTES
+        run_startup_governance(
+            thumbnail_service=thumbnail_service,
+            library_root=library_root,
+            thumb_dir=thumb_dir,
+            max_bytes=max_bytes,
+        )
+
+    worker = threading.Thread(
+        target=_run, name="AssetsManager-StartupGovernance", daemon=True,
+    )
+    worker.start()
+    return True

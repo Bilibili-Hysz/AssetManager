@@ -438,6 +438,41 @@ class ThumbnailService:
         return selected_count
 
     @session_operation
+    def enforce_cache_capacity(
+        self,
+        library_root: str | Path,
+        thumbnail_dir: str | Path,
+        *,
+        max_bytes: int,
+    ) -> tuple[int, int]:
+        """Evict least-recently-accessed artifacts until within *max_bytes*.
+
+        H2-a2 disk-cache governance. Candidates come from
+        :meth:`ThumbnailRepository.list_eviction_candidates`, which orders by
+        ``last_access ASC, created_at ASC, cache_key ASC`` — the most
+        recently viewed artifacts are kept and the long tail goes first.
+        Byte accounting uses the tracked ``thumbnail_cache`` ``cache_size``
+        sums before and after the pass; orphaned files without metadata rows
+        are the integrity service's job, not this cap's. Returns
+        ``(evicted_count, reclaimed_bytes)``. ``max_bytes`` must be
+        non-negative; callers treat ``0`` as "unlimited" and must not invoke
+        this method with it (an unlimited cache has no cap to enforce).
+        """
+        if max_bytes < 0:
+            raise ValueError("max_bytes must be non-negative")
+        repo = self._repo(library_root)
+        total_before = sum(
+            max(0, item.cache_size) for item in repo.list_eviction_candidates()
+        )
+        if total_before <= max_bytes:
+            return (0, 0)
+        evicted = self.evict_cache(library_root, thumbnail_dir, max_bytes=max_bytes)
+        total_after = sum(
+            max(0, item.cache_size) for item in repo.list_eviction_candidates()
+        )
+        return (evicted, max(0, total_before - total_after))
+
+    @session_operation
     def resolve(
         self,
         target: Path,
