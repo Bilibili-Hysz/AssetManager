@@ -27,6 +27,7 @@ from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager import i18n
 
 from AssetsManager.application.asset_filters import category_labels
+from AssetsManager.panels._ai_tag_common import ai_tagging_enabled
 from AssetsManager.panels.file_list._common import ZOOM_PRESETS
 from AssetsManager.panels.file_list._grid_layout import GridLayout
 from AssetsManager.panels.file_list._grid_widget import FileListGridWidget
@@ -708,6 +709,11 @@ class LayoutMixin:
             tag_menu = menu.addMenu(tr("filelist.menu.tags"))
             tag_menu.addAction(tr("filelist.menu.apply_tag"), lambda: self._apply_tag_dialog(paths))
             tag_menu.addAction(tr("filelist.menu.remove_tag"), lambda: self._remove_tag_dialog(paths))
+            # H2-c: batch AI tagging — the item exists only while the user
+            # has explicitly enabled AI tagging in settings (zero menu churn
+            # and zero behavior change when the feature is off).
+            if ai_tagging_enabled():
+                tag_menu.addAction(tr("filelist.menu.ai_tag"), lambda: self._ai_tag_batch(paths))
             tag_menu.addSeparator()
             tag_menu.addAction(tr("filelist.menu.manage_tags"), lambda: self._manage_tags_dialog(paths))
             tag_menu.setEnabled(context.can_mutate)

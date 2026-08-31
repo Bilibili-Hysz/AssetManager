@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QImage, QPixmap
 
 from AssetsManager.panels.base import PanelContent
+from AssetsManager.panels._ai_tag_common import ai_tag_error_text, ai_tagging_enabled
 from AssetsManager.application.desktop_ports import TagsViewPort
 from AssetsManager.application.thumbnail_service import MAX_THUMBNAIL_SOURCE_BYTES
 from AssetsManager.core.cache import LRUCache
@@ -256,6 +257,25 @@ class InfoPanel(PanelContent):
             f"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.28)}; }}")
         self._browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_row.addWidget(self._browse_btn)
+        # H2-c: AI tagging button — invisible until the user explicitly
+        # enables AI tagging in settings (zero behavior change when off).
+        self._ai_tag_btn = QPushButton(tr("info.ai_tag"))
+        self._ai_tag_btn.setIcon(icons.icon("tag", color="icon_muted", size=scaled_px(14)))
+        self._ai_tag_btn.setIconSize(QSize(scaled_px(14), scaled_px(14)))
+        self._ai_tag_btn.setAccessibleName(tr("info.ai_tag"))
+        self._ai_tag_btn.setToolTip(tr("info.ai_tag_tooltip"))
+        self._ai_tag_btn.clicked.connect(self._ai_tag)
+        self._ai_tag_btn.setStyleSheet(
+            f"QPushButton {{ background: transparent; color: {sk.token('muted')}; "
+            f"border: {scaled_px(1)}px solid {sk.token('border')}; "
+            f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
+            f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; "
+            f"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}"
+            f"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; }}"
+            f"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.28)}; }}")
+        self._ai_tag_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._ai_tag_btn.setVisible(ai_tagging_enabled())
+        add_row.addWidget(self._ai_tag_btn)
         add_row.addStretch()
         tags_outer.addLayout(add_row)
         details_layout.addWidget(tags_grp)
@@ -409,6 +429,7 @@ class InfoPanel(PanelContent):
             (self._add_tag_btn, "icon_muted", "tag", True),
             (self._manage_btn, "icon_muted", "settings", False),
             (self._browse_btn, "icon_muted", "tag", False),
+            (self._ai_tag_btn, "icon_muted", "tag", False),
         ]:
             btn.setIcon(icons.icon(icon_name, color=color, size=scaled_px(14)))
             btn.setIconSize(QSize(scaled_px(14), scaled_px(14)))
@@ -485,6 +506,9 @@ class InfoPanel(PanelContent):
         self._browse_btn.setText(tr("info.browse_tags"))
         self._browse_btn.setAccessibleName(tr("info.browse_tags"))
         self._browse_btn.setToolTip(tr("info.browse_tags_tooltip"))
+        self._ai_tag_btn.setText(tr("info.ai_tag"))
+        self._ai_tag_btn.setAccessibleName(tr("info.ai_tag"))
+        self._ai_tag_btn.setToolTip(tr("info.ai_tag_tooltip"))
         self._notes.setPlaceholderText(tr("info.notes_placeholder"))
         self._preview.setToolTip(tr("info.preview_dbl_click"))
         if hasattr(self, "_rating_row"):
@@ -1345,6 +1369,72 @@ class InfoPanel(PanelContent):
         dlg.directory_selected.connect(self.navigate_requested.emit)
         dlg.exec()
 
+    # ── AI tagging (H2-c v1: manual trigger, single image) ──────
+
+    def _update_ai_tag_visibility(self):
+        """Show the AI button only when the user enabled AI tagging."""
+        self._ai_tag_btn.setVisible(ai_tagging_enabled())
+
+    def _ai_tag(self):
+        """Run one manual AI-tagging pass over the focused asset.
+
+        The vision call runs on a worker thread; the write stays inside
+        ``TagService.add_tag_to_files`` (canonicalization, events and the
+        batch ``tag_add`` activity row are inherited), so this panel adds
+        no persistence code of its own.
+        """
+        if (
+            not self._current_path
+            or not os.path.exists(self._current_path)
+            or self._scoped_services is None
+        ):
+            return
+        # Belt-and-braces: the button is hidden when the feature is off.
+        if not ai_tagging_enabled():
+            return
+        settings = AppSettings.instance()
+        services = self._scoped_services
+        tag_service = services.tag_service
+        lib_root = self._library_root
+        path = self._current_path
+        endpoint = settings.get_ai_tagging_endpoint()
+        model = settings.get_ai_tagging_model()
+        max_tags = settings.get_ai_tagging_max_tags()
+        force_existing = settings.get_ai_tagging_force_existing()
+        self._ai_tag_btn.setEnabled(False)
+
+        def _work():
+            from AssetsManager.application.ai_tagging.service import tag_paths
+            return tag_paths(
+                tag_service, lib_root, [path],
+                endpoint=endpoint, model=model, max_tags=max_tags,
+                force_existing=force_existing,
+            )
+
+        def _done(result, exc):
+            self._ai_tag_btn.setEnabled(True)
+            if not self._same_path(path, self._current_path):
+                return  # user moved on; domain events refresh the chips
+            if exc is not None:
+                _log.exception("AI tagging failed for %s", path)
+                return
+            outcome = result[0]
+            if outcome.error_kind is not None:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    cast(QWidget, self), tr("info.ai_tag"),
+                    ai_tag_error_text(outcome.error_kind))
+                return
+            if self._controller is not None:
+                self._render_tags(self._controller.get_tags(path))
+            if not outcome.added:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.information(
+                    cast(QWidget, self), tr("info.ai_tag"), tr("info.ai_no_tags"))
+
+        from AssetsManager.panels.file_list._background import run_task
+        run_task(_work, on_done=_done)
+
     def _remove_tag(self, tag: str):
         if not self._current_path or not self._controller:
             return
@@ -1563,6 +1653,7 @@ class InfoPanel(PanelContent):
             return
 
         self._current_path = fi.absoluteFilePath()
+        self._update_ai_tag_visibility()
         request = self._new_async_request(self._current_path)
         is_dir = fi.isDir()
 

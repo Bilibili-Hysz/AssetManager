@@ -10,6 +10,8 @@ from PySide6.QtWidgets import (
     QApplication, QInputDialog, QMessageBox, QWidget,
 )
 from AssetsManager.core.signal_bus import get as bus
+from AssetsManager.core.settings import AppSettings
+from AssetsManager.panels._ai_tag_common import ai_tag_error_text, ai_tagging_enabled
 from AssetsManager import i18n
 
 if TYPE_CHECKING:
@@ -900,6 +902,65 @@ class ActionsMixin:
             svc = self._get_tag_service()
             svc.remove_tag_from_files(self._lib_root, list(paths), tag.strip())
             self._post_refresh()
+
+    def _ai_tag_batch(self, paths):
+        """AI-tag the selected files (H2-c v1, manual batch trigger).
+
+        Mirrors the H1 batch-tagging pipeline: the vision calls run on a
+        worker thread with session-bound progress feedback, and the write
+        goes through ``TagService.add_tag_to_files`` so canonicalization,
+        per-file events and the batch ``tag_add`` ``activity_log`` row are
+        inherited from the existing pipeline. Partial failures are
+        summarized in the operation feedback label, one line per failed
+        image keyed by its AiTaggingError kind.
+        """
+        if not self._lib_root or not paths:
+            return
+        # Belt-and-braces: the menu item is only added when enabled.
+        if not ai_tagging_enabled():
+            return
+        scoped = self._get_scoped_services()
+        if scoped is None:
+            return
+        session = scoped.session
+        svc = self._get_tag_service()
+        lib_root = self._lib_root
+        settings = AppSettings.instance()
+        endpoint = settings.get_ai_tagging_endpoint()
+        model = settings.get_ai_tagging_model()
+        max_tags = settings.get_ai_tagging_max_tags()
+        force_existing = settings.get_ai_tagging_force_existing()
+        target_paths = [str(p) for p in paths]
+        self._show_operation_feedback(session, "ai_tag", running=True)
+        outcomes_holder: list = []
+
+        def _do_ai_tag():
+            from AssetsManager.application.ai_tagging.service import tag_paths
+            outcomes_holder.append(tag_paths(
+                svc, lib_root, target_paths,
+                endpoint=endpoint, model=model, max_tags=max_tags,
+                force_existing=force_existing,
+            ))
+
+        def _on_ai_tag_done():
+            if not self._is_current_operation_session(session):
+                return
+            outcomes = outcomes_holder[0] if outcomes_holder else []
+            changed = sum(len(outcome.added) for outcome in outcomes)
+            errors = tuple(
+                f"{Path(outcome.path).name}: {ai_tag_error_text(outcome.error_kind)}"
+                for outcome in outcomes
+                if outcome.error_kind is not None
+            )
+            self._show_operation_feedback(
+                session,
+                "ai_tag",
+                changed_count=changed,
+                errors=errors,
+            )
+            self._post_refresh()
+
+        self._run_in_background(_do_ai_tag, on_done=_on_ai_tag_done)
 
     def _manage_tags_dialog(self, paths):
         if not self._lib_root:

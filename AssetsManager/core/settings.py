@@ -8,7 +8,14 @@ import threading
 from typing import Callable, cast
 
 from AssetsManager.core.config_migrator import FutureConfigVersionError
-from AssetsManager.core.constants import THUMBNAIL_CACHE_DEFAULT_MAX_BYTES
+from AssetsManager.core.constants import (
+    AI_TAGGING_DEFAULT_ENDPOINT,
+    AI_TAGGING_DEFAULT_MAX_TAGS,
+    AI_TAGGING_DEFAULT_MODEL,
+    AI_TAGGING_MAX_TAGS_LIMIT,
+    AI_TAGGING_MIN_TAGS,
+    THUMBNAIL_CACHE_DEFAULT_MAX_BYTES,
+)
 from AssetsManager.core.path_resolver import SHARED_DIR
 from AssetsManager.core.singleton import ThreadSafeSingleton
 
@@ -22,11 +29,28 @@ SHARE_LAST_SUCCESSFUL_BIND_KEY = "lan_share_last_successful_bind"
 SHARE_LAST_SUCCESSFUL_AUTH_KEY = "lan_share_last_successful_auth"
 LIBRARY_WATCHER_INTERVAL_KEY = "library_watcher_interval_seconds"
 THUMBNAIL_CACHE_MAX_BYTES_KEY = "thumbnail_cache_max_bytes"
+AI_TAGGING_ENABLED_KEY = "ai_tagging_enabled"
+AI_TAGGING_ENDPOINT_KEY = "ai_tagging_endpoint"
+AI_TAGGING_MODEL_KEY = "ai_tagging_model"
+AI_TAGGING_MAX_TAGS_KEY = "ai_tagging_max_tags"
+AI_TAGGING_FORCE_EXISTING_KEY = "ai_tagging_force_existing"
 DEFAULT_LIBRARY_WATCHER_INTERVAL = 120.0
 DEFAULT_SHARE_SAFETY_ACK_VERSION = 0
 DEFAULT_TRUSTED_NETWORK_CONFIRMED = False
 DEFAULT_SHARE_LAST_SUCCESSFUL_BIND = None
 DEFAULT_SHARE_LAST_SUCCESSFUL_AUTH = None
+
+
+def _valid_http_url(value) -> bool:
+    """True for an absolute http(s) URL with a host."""
+    if not isinstance(value, str) or not value.strip():
+        return False
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(value.strip())
+    except ValueError:
+        return False
+    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
 
 _VALIDATORS: dict[str, Callable] = {
     "thumb_quality": lambda v: v in ("fast", "default", "high", "original"),
@@ -38,6 +62,18 @@ _VALIDATORS: dict[str, Callable] = {
     THUMBNAIL_CACHE_MAX_BYTES_KEY: (
         lambda v: isinstance(v, int) and not isinstance(v, bool) and v >= 0
     ),
+    # AI tagging (H2-c). The feature is off until explicitly enabled; the
+    # endpoint must be an absolute http(s) URL; max_tags stays in 1-20 so a
+    # corrupted value can never flood an asset with machine tags.
+    AI_TAGGING_ENABLED_KEY: lambda v: isinstance(v, bool),
+    AI_TAGGING_ENDPOINT_KEY: _valid_http_url,
+    AI_TAGGING_MODEL_KEY: lambda v: isinstance(v, str) and bool(v.strip()),
+    AI_TAGGING_MAX_TAGS_KEY: (
+        lambda v: isinstance(v, int)
+        and not isinstance(v, bool)
+        and AI_TAGGING_MIN_TAGS <= v <= AI_TAGGING_MAX_TAGS_LIMIT
+    ),
+    AI_TAGGING_FORCE_EXISTING_KEY: lambda v: isinstance(v, bool),
     SHARE_SAFETY_ACK_VERSION_KEY: lambda v: isinstance(v, int) and not isinstance(v, bool) and v >= 0,
     TRUSTED_NETWORK_CONFIRMED_KEY: lambda v: isinstance(v, bool),
     SHARE_LAST_SUCCESSFUL_BIND_KEY: lambda v: isinstance(v, str) and bool(v),
@@ -287,6 +323,64 @@ class AppSettings:
 
     def set_thumbnail_cache_max_bytes(self, max_bytes: int) -> None:
         self.set(THUMBNAIL_CACHE_MAX_BYTES_KEY, int(max_bytes))
+
+    # ── AI tagging (H2-c) — fail-closed reads like the cap above ──
+
+    def get_ai_tagging_enabled(self) -> bool:
+        """Return whether AI tagging is on; missing/malformed means off."""
+        value = self.get(AI_TAGGING_ENABLED_KEY, False)
+        return value if isinstance(value, bool) else False
+
+    def set_ai_tagging_enabled(self, enabled: bool) -> None:
+        # No bool() coercion: the validator must see the raw value so a
+        # truthy non-bool cannot silently enable the feature.
+        self.set(AI_TAGGING_ENABLED_KEY, enabled)
+
+    def get_ai_tagging_endpoint(self) -> str:
+        """Return the OpenAI-compatible endpoint; malformed falls to default."""
+        value = self.get(AI_TAGGING_ENDPOINT_KEY, AI_TAGGING_DEFAULT_ENDPOINT)
+        if _valid_http_url(value):
+            return str(value).strip()
+        return AI_TAGGING_DEFAULT_ENDPOINT
+
+    def set_ai_tagging_endpoint(self, endpoint: str) -> None:
+        self.set(AI_TAGGING_ENDPOINT_KEY, str(endpoint).strip())
+
+    def get_ai_tagging_model(self) -> str:
+        """Return the vision model name; missing/malformed falls to default."""
+        value = self.get(AI_TAGGING_MODEL_KEY, AI_TAGGING_DEFAULT_MODEL)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return AI_TAGGING_DEFAULT_MODEL
+
+    def set_ai_tagging_model(self, model: str) -> None:
+        self.set(AI_TAGGING_MODEL_KEY, str(model).strip())
+
+    def get_ai_tagging_max_tags(self) -> int:
+        """Return the per-image tag cap, clamped to 1-20."""
+        value = self.get(AI_TAGGING_MAX_TAGS_KEY, AI_TAGGING_DEFAULT_MAX_TAGS)
+        if isinstance(value, int) and not isinstance(value, bool) \
+                and AI_TAGGING_MIN_TAGS <= value <= AI_TAGGING_MAX_TAGS_LIMIT:
+            return value
+        return AI_TAGGING_DEFAULT_MAX_TAGS
+
+    def set_ai_tagging_max_tags(self, max_tags: int) -> None:
+        # No int() coercion: True would otherwise become 1 and slip past
+        # the validator's bool exclusion.
+        self.set(AI_TAGGING_MAX_TAGS_KEY, max_tags)
+
+    def get_ai_tagging_force_existing(self) -> bool:
+        """Return whether model output must converge to existing tags.
+
+        Missing or malformed values default to ``True`` (whitelist-only)
+        so a legacy/corrupt profile can never loosen the write boundary.
+        """
+        value = self.get(AI_TAGGING_FORCE_EXISTING_KEY, True)
+        return value if isinstance(value, bool) else True
+
+    def set_ai_tagging_force_existing(self, force_existing: bool) -> None:
+        # No bool() coercion — same raw-value rule as the enabled setter.
+        self.set(AI_TAGGING_FORCE_EXISTING_KEY, force_existing)
 
     def set_share_safety_ack_version(self, version: int) -> None:
         self.set(SHARE_SAFETY_ACK_VERSION_KEY, version)
