@@ -71,7 +71,7 @@ CANDIDATE_WEBUI_PATTERNS = {
     "coverage",
 }
 
-# Cython 生成的扩展源码(可经由 setup_cython.py 重建)
+# Cython 生成的扩展源码(历史构建产物;生成脚本 setup_cython.py 已于 2026-09-02 移除)
 CANDIDATE_CYTHON_SOURCES = {
     "AssetsManager/application/asset_filters.c",
     "AssetsManager/core/cache.c",

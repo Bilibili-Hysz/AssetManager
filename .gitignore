@@ -143,3 +143,6 @@ scripts/_tmp_*.py
 
 # Session-memory sidecar (external assistant tooling)
 .workbuddy/
+
+# App runtime export dir (documents live canonically under docs/)
+/outputs/

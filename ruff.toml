@@ -46,6 +46,5 @@ ignore = [
 # Developer scripts, the packaging helpers and the console entry points print
 # as their output channel; a logger would be the wrong tool there.
 "scripts/**" = ["T201"]
-"setup_cython.py" = ["T201"]
 "build.py" = ["T201"]
 "run.py" = ["T201"]
