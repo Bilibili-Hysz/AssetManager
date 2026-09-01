@@ -2,7 +2,7 @@
 
 > 状态:**LIVING(导航)** · updated: 2026-09-02 · 本目录两层定位:① 08-10~08-15 的行号级审查底稿(module-* 系列 + 08-15 评审系列,full-review 之前的最后证据);② 08-29 起各会话产出报告的归流地。报告正文内容零改写。全库功能分类导航见 [`docs/README.md`](../README.md),证据账本见 [`docs/compose/README.md`](../compose/README.md)。
 
-## 文件清单(39 顶层 + 1 子目录)
+## 文件清单(40 顶层 + 1 子目录)
 
 ### module-* 系列(11 份,2026-08-11 分模块审查,P1 第一轮)
 
@@ -41,6 +41,10 @@
 ### 09-01 审计与修复系列(4 份)
 
 `architecture-function-and-reliability-review-2026-09-01.md`(当前架构权威复核,overview 头部指向本文)、`re-audit-2026-09-01.md`、`cleanup-and-git-repair-2026-09-01.md`(五轮工程垃圾清理与 git 对象库修复记录)、`task-package-validity-check-2026-09-01.md`。
+
+### 09-02 完整盘点与多专家交叉验证(1 份)
+
+`inventory-cross-verification-2026-09-02.md`(主代理 + 4 专家子代理独立盘点与共享验证题交叉比对:仓库健康、0 密钥泄露、0 误提交垃圾、文档分类与失效链接、构建闭环缺口、`outputs/` 入库偏差)。
 
 ### 子目录
 
