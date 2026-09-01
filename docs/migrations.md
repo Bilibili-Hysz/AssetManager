@@ -1,8 +1,8 @@
 # Database Migrations
 
-> 状态:**LIVING** · updated: 2026-08-30(v36 新增;逐版本已与 `db_migrations.py` MIGRATIONS 一致)。
+> 状态:**LIVING** · updated: 2026-09-01(v46;逐版本已与 `db_migrations.py` MIGRATIONS 一致)。
 
-AssetManager Next uses versioned SQLite migrations for per-library databases. **当前版本：`CURRENT_SCHEMA_VERSION = 36`**，以 [`AssetsManager/core/db_migrations.py`](../AssetsManager/core/db_migrations.py) 为执行事实源。历史运行结果和批次证据见 [`docs/full-review/`](full-review/)。
+AssetManager Next uses versioned SQLite migrations for per-library databases. **当前版本：`CURRENT_SCHEMA_VERSION = 46`**，以 [`AssetsManager/core/db_migrations.py`](../AssetsManager/core/db_migrations.py) 为执行事实源。历史运行结果和批次证据见 [`docs/full-review/`](full-review/)。
 
 ## Current State
 
@@ -198,7 +198,7 @@ Adds the durable reconciliation payload/state needed to repair filesystem projec
 
 ### Version 31 — Import Manifests
 
-Adds the library-scoped `import_manifests` table and recovery index used to persist import intent before filesystem mutation and enqueue restart-time root rescans. The payload and generation fields are validated by `ImportManifestStore`; see [`C6-C10 convergence evidence`](full-review/c6-c10-convergence-2026-08-21.md).
+Adds the library-scoped `import_manifests` table and recovery index used to persist import intent before filesystem mutation and enqueue restart-time root rescans. The payload and generation fields are validated by `ImportManifestStore`; see [`C6-C10 convergence evidence`](full-review/archive/c6-c10-convergence-2026-08-21.md).
 
 ### Version 32 — Thumbnail Cache Lifecycle
 
@@ -220,12 +220,52 @@ Adds nullable `recovery_claim_token` and `recovery_lease_expires_at` columns plu
 
 新建 `ai_asset_tags` 与 `plugin_derived_fields` 两张空表，形状镜像 `file_tags`（`(file_path, tag)` 复合主键 + 各自的 `tag` 索引 `idx_ai_asset_tags_tag` / `idx_plugin_derived_fields_tag`），为将来 AI/插件标签提供物理隔离。现有 `file_tags` 语义收敛为"人工标签"目录；本迁移零数据搬移、零行为变化（`TagRepository`/`TagService` 新增 `source` 参数，默认 `"human"` 走 `file_tags`）。`CREATE TABLE IF NOT EXISTS` 幂等；v35 及更早库中的既有标签行原样保留。
 
+### Version 37 — Media Derivatives and Sequences
+
+新增 `asset_derivatives`、`asset_sequences`、`asset_sequence_frames`，并给 `file_meta` 增加可空的 `rating`（0-5 由应用层校验）。派生物与可驱逐的 `thumbnail_cache` 分离；序列数据按 `(dir_path, prefix)` 锚定，保证重新扫描能命中同一序列记录。
+
+### Version 38 — Asset Collections
+
+新增 `asset_collections` 与 `asset_collection_members`。collection 支持 `manual` 引用集和 `smart` 查询视图，成员只引用 `file_path`，不会移动资产文件。
+
+### Version 39 — Asset Search FTS
+
+新增并初次填充 `asset_search` FTS5 索引，文档聚合资产名称、标签和备注。索引由 application 层增量维护，避免 rescan 的 DELETE/INSERT 触发器放大。
+
+### Version 40 — Asset Search Trigram
+
+重建 `asset_search` 为 trigram tokenizer，以支持 CJK 子串检索；短于三个 code point 的查询仍由应用层进行补充验证。
+
+### Version 41 — Asset Derivative Lifecycle
+
+给 `asset_derivatives` 增加 `status`、`error_code`、`invalidated_at`。现阶段状态为 `ready`/`failed`；失效派生物以软退役记录保留诊断，而不是把“行存在”误作永远可用。
+
+### Version 42 — Command Executions
+
+新增 `command_executions`，保存批处理命令的 `plan_hash`、状态和结果摘要，用于成功命令的幂等去重。存储端以 FIFO 上限约束记录数量。
+
+### Version 43 — Import Manifest Items
+
+新增行式 `import_manifest_items`。大批量导入不再把所有 item 塞入父 manifest JSON；父表保留有界 header，item 通过分批行写入和 generation CAS 更新，旧 payload 格式继续兼容。
+
+### Version 44 — Reconciliation Transition Outbox
+
+新增 `reconciliation_transition_outbox` 与 pending 索引。queue task mutation 会在同一事务追加 immutable transition snapshot，以 delivery lease、token CAS 和 `delivered_at` 支持跨进程 at-least-once 回放。当前全局确认语义明确绑定唯一的 canonical durable consumer `import_manifest_recovery`：只有它显式返回 `APPLIED` 或 `STALE` 才能确认事件；通用 transition listener 是 ACK 后的非阻塞 observer，失败不会改写 durable retry 或严格队首顺序。SQLite store 的 delivery lease 已支持 token-CAS heartbeat：回调运行时每约三分之一租约续期，默认 `callback_max_age=300` 秒后停止续期；超时回调即使随后返回也不会 ACK，事件可在最后一个 lease window 后由其他 owner 重放。普通失败在 v45 表可用时已按默认 8 次 delivery attempts 进入审计 dead-letter；应用层另提供人工 replay、retention/prune 与 age/attempt/dead-letter metrics。只有产品出现第二个独立 durable projection 时，才引入 `(event_id, consumer_id)` receipt/inbox 及其 registry、历史和 retention 语义，不能把建表本身视为完整可靠性闭环。
+
+### Version 45 — Reconciliation Transition Outbox Dead Letters
+
+新增 `reconciliation_transition_outbox_dead_letters` 与按 library/time 查询的索引。它最初用于 immutable transition payload 无法安全解码时的审计终态：保留原始 event id、snapshots、operation scope、delivery attempts、隔离时间和诊断错误。应用层会在同一 SQLite transaction 内将无法安全解码的 live head 原子复制并删除；v46 也复用该原子路径隔离无法判断为 live/expired 的损坏 delivery lease 或 retry deadline。现在同一原子路径也用于正常 durable delivery 达到默认 8 次失败上限：以 `_TransitionOutboxDeliveryAttemptsExhausted` 记录最后一次错误，再复制并删除 live head，后续 event 可继续推进。表缺失或 copy/delete 失败时事务回滚；v44 连接不会为达到上限而无证删除 source row，而是保持旧的 retry 行为。应用层的 replay 使用 event-id/可选时间戳 CAS 保留本表审计，并拒绝越过已有 delivery progress 的后续 event；bounded prune 只删除明确过期的 ACK/dead-letter 行。
+
+### Version 46 — Reconciliation Transition Outbox Delivery Backoff
+
+给 `reconciliation_transition_outbox` 增加非空 `next_delivery_at`（默认 `0`）与 head 查询索引。canonical durable consumer 的暂态失败会用该字段持久化 not-before deadline；指数延迟附加稳定 hash jitter 后仍以最终 300 秒封顶。ACK 后 observer 的异常被本地隔离，绝不影响 durable retry。claim 仍按最早未投递 event id 检查，deadline 未到时不会跳过后续行；无法安全解析的 retry deadline 或 active delivery lease 会原子隔离而非永久卡住队首。旧 v45 行升级后 deadline 为 `0`，可立即重试；最大尝试的 application-layer 策略复用 v45 dead-letter 表，故不需要为该策略新增 schema version。应用层 replay/retention/metrics 不改变迁移历史，仍通过 v44-v46 表结构兼容实现。
+
 ## Migration Runner Boundaries
 
 - Before applying pending versions, the runner validates the required v1 core baseline (`file_tags`, `file_meta`, `thumbnail_cache`, and `library_stats`), including required columns, primary keys, and indexes. A missing or incompatible baseline raises `IncompleteSchemaError`; the runner does not reconstruct an incomplete legacy database.
 - `migrate()` runs under a named SQLite savepoint (`SAVEPOINT migration_runner`). If the caller already has an outer transaction, the savepoint is released without committing that outer transaction; the caller retains commit/rollback ownership. On a standalone connection, successful migration preserves the historical behavior and commits. Any failure rolls back to and releases the savepoint.
 - **历史校验**：`_validate_history` 校验非整数/重复/不连续/名称不匹配 → `MigrationHistoryError`；未来版本 → `UnsupportedSchemaVersion`（先于名称校验）。
-- **版本化契约回溯**：每版应用后按版本累积 `required_objects`，用 `_versioned_schema_contract` 回溯该版本边界的合法形状（如 v<17 的 reconciliation_tasks 无 lease_token、v<18 的 shop_orders 无 buyer_owner、v16 的 shop_carts 无 checkout_generation、v16 的 checkouts 无 checkout_generation/fingerprint、v<35 的 file_meta 无 cached_file_count_mtime），逐对象 `_validate_schema_object_at_version` 校验。
+- **版本化契约回溯**：每版应用后按版本累积 `required_objects`，用 `_versioned_schema_contract` 回溯该版本边界的合法形状（如 v<17 的 reconciliation_tasks 无 lease_token、v<18 的 shop_orders 无 buyer_owner、v16 的 shop_carts 无 checkout_generation、v16 的 checkouts 无 checkout_generation/fingerprint、v<35 的 file_meta 无 cached_file_count_mtime、v<44 无 transition outbox、v<45 无 transition outbox dead-letter、v<46 无 outbox delivery deadline/index），逐对象 `_validate_schema_object_at_version` 校验。
 - **延迟索引**：`_should_defer_index_statement` 跳过引用未来列的索引语句（如 v8 的 idx_shop_orders_buyer_owner_created 延迟到 v18）。
 - `AuthRepository.init_tables()` and `ShareRepository.init_table()` remain compatibility ensures for raw/legacy repository connections and tests. They are idempotent guards at that boundary, not an alternate migration history; the canonical bootstrap path is governed by migration v6, and incompatible pre-existing tables are rejected by its shape validation.
 

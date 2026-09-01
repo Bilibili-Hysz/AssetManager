@@ -44,4 +44,4 @@
 
 ## 归档原件(仅追溯)
 
-原 `specs/`(25 份)、`plans/`(55 份)、`handoffs/`(19 份)原件位于 `docs/archive/2026-08/compose-raw/{specs,plans,handoffs}/`,每份的"原始路径 → 新路径 → 并入摘要"登记于 [`docs/archive/INDEX.md`](../../archive/INDEX.md)。frozen 文档(如 ADR 0003)中指向 compose/plans 的历史链接以气味形式保留,解析请走 INDEX。
+原 `specs/`(25 份)、`plans/`(55 份)、`handoffs/`(19 份)原件位于 `docs/archive/2026-08/compose-raw/{specs,plans,handoffs}/`,每份的"原始路径 → 新路径 → 并入摘要"登记于 [`docs/archive/INDEX.md`](../archive/INDEX.md)。frozen 文档(如 ADR 0003)中指向 compose/plans 的历史链接以气味形式保留,解析请走 INDEX。

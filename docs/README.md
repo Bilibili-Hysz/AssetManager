@@ -16,7 +16,7 @@
 | [`testing.md`](testing.md) | 测试策略与门禁 |
 | [`lan-security.md`](lan-security.md) | LAN 服务安全模型 |
 | [`perf-baseline-2026-08-29.md`](perf-baseline-2026-08-29.md) | 性能基线（dated 实测） |
-| [`adr/`](adr/) | 架构决策记录（0001~0003） |
+| [`adr/`](adr/) | 架构决策记录（0001~0005） |
 | [`overview-2026-08-27.md`](overview-2026-08-27.md) | 全库结构地图（DATED SNAPSHOT，08-27 实测，语料考古入口） |
 
 ### 2. 08-01 基线审计与规划（FROZEN）
