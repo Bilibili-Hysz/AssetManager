@@ -36,7 +36,7 @@
 - **状态头覆盖不全**:`docs/plans/` 14 份中仅 6 份有文首显式状态头(architecture-reliability-roadmap、bg-gpu-shader、documentation-maintenance-plan、p0-security、task-package-2026-09-01、workspace-cleanup-plan);其余 8 份仅靠 `docs/README.md` 散文描述,其中 `task-package-2026-08-30.md` 已被标"已被取代"但自身无头。
 - **真实失效链接(建议下轮修复)**:
   - `docs/compose/README.md:47` → `../../archive/INDEX.md`(应为 `../archive/INDEX.md`,已实测确认失效)
-  - `docs/compose/reports/desktop-lan-webui-architecture-migration.md:43,44,47,48,121,123,200` → 7 处 `../plans|specs/2026-07-21-*.md`(实际在 `archive/compose-raw`)
+  - `docs/archive/2026-09/compose-reports/desktop-lan-webui-architecture-migration.md:43,44,47,48,121,123,200` → 7 处 `../plans|specs/2026-07-21-*.md`(实际在 `archive/compose-raw`)
   - `docs/deep-weakness-audit-2026-08-22/10-full-review-reconciliation.md:22–26` → 5 处 `../full-review/*.md` 证据文件不存在
   - `docs/migrations.md:201` → `full-review/c6-c10-convergence-2026-08-21.md` 不存在
   - (`deepseek-archive-2026-08-25/`、`archive/2026-08/compose-raw/` 内大量失效链接属"选择性迁移/历史原件"设计性残留,非缺陷)

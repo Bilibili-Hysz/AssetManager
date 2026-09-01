@@ -1,6 +1,6 @@
 # 2026-07-15 批:投递安全/文件操作一致/LAN-WebUI 可靠性/作用域服务(决策摘要)
 
-> 摘要起草: 2026-08-27 · 源文件: `docs/compose/specs/2026-07-15-{batch-a-delivery-safety,batch-b-file-operation-consistency,batch-d-scoped-library-services,lan-webui-reliability}-design.md` + `docs/compose/plans/2026-07-15-{anchor-worktree,batch-a-delivery-safety,batch-b-file-operation-consistency,batch-c-lan-webui-reliability,batch-d-scoped-library-services,lan-webui-reliability}.md` · 原件归档: `docs/archive/2026-08/compose-raw/` · 落地报告: `docs/compose/reports/{batch-a-delivery-safety,batch-b-file-operation-consistency,batch-c-lan-webui-reliability,batch-d-scoped-library-services}.md`
+> 摘要起草: 2026-08-27 · 源文件: `docs/compose/specs/2026-07-15-{batch-a-delivery-safety,batch-b-file-operation-consistency,batch-d-scoped-library-services,lan-webui-reliability}-design.md` + `docs/compose/plans/2026-07-15-{anchor-worktree,batch-a-delivery-safety,batch-b-file-operation-consistency,batch-c-lan-webui-reliability,batch-d-scoped-library-services,lan-webui-reliability}.md` · 原件归档: `docs/archive/2026-08/compose-raw/` · 落地报告: `docs/archive/2026-09/compose-reports/{batch-a-delivery-safety,batch-b-file-operation-consistency,batch-c-lan-webui-reliability,batch-d-scoped-library-services}.md`
 
 ## 背景
 

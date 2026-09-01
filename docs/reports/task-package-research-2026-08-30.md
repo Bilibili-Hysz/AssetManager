@@ -1,6 +1,6 @@
 # 任务包实施调研纪要（2026-08-30，主会话实测）
 
-> 配套 `docs/plans/task-package-2026-08-30.md`。基线：master @ 5fcc174（15 commit 已推送，远程特性分支已删）。
+> 配套 `docs/archive/2026-09/plans-done/task-package-2026-08-30.md`。基线：master @ 5fcc174（15 commit 已推送，远程特性分支已删）。
 
 ## 环境修正（相对任务包 §2）
 - pytest/vitest/git 在本环境全程正常，§2.1/§2.2/§2.3 的沙箱 workaround 不需要（那是另一工具的沙箱问题）。

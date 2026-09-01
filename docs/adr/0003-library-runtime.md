@@ -8,10 +8,10 @@ Accepted target decision; the Windows implementation, cross-surface acceptance
 and Linux directory-symlink platform gate are evidenced. The current-state
 report and recalibration report are authoritative:
 
-- [`desktop-lan-webui-architecture-migration.md`](../compose/reports/desktop-lan-webui-architecture-migration.md)
-- [`desktop-lan-webui-architecture-recalibration.md`](../compose/reports/desktop-lan-webui-architecture-recalibration.md)
-- [`a3-service-assembly-2026-08-02.md`](../compose/reports/a3-service-assembly-2026-08-02.md)
-- [`b1-runtime-sharing-2026-08-03.md`](../compose/reports/b1-runtime-sharing-2026-08-03.md)
+- [`desktop-lan-webui-architecture-migration.md`](../archive/2026-09/compose-reports/desktop-lan-webui-architecture-migration.md)
+- [`desktop-lan-webui-architecture-recalibration.md`](../archive/2026-09/compose-reports/desktop-lan-webui-architecture-recalibration.md)
+- [`a3-service-assembly-2026-08-02.md`](../archive/2026-09/compose-reports/a3-service-assembly-2026-08-02.md)
+- [`b1-runtime-sharing-2026-08-03.md`](../archive/2026-09/compose-reports/b1-runtime-sharing-2026-08-03.md)
 - [`2026-07-21-desktop-lan-webui-architecture-recalibration.md`](../compose/distilled/2026-07-21-architecture-recalibration.md)(原 compose/plans 副本已归档,见 archive INDEX)
 
 ## Decision

@@ -11,7 +11,7 @@
 
 ## 0. 与历史清单的对账（避免重复立项）
 
-历史 40 条清单（`docs/reports/ui-optimization-priority-2026-08-15.md` P0-1..P2-10 + `docs/reports/panel-uiux-composition-audit-2026-08-15.md` S-F1..12 / F-01..15 / I-01..13）中，与本方案 9 个问题直接衔接的条目：
+历史 40 条清单（`docs/archive/2026-09/reports-superseded/ui-optimization-priority-2026-08-15.md` P0-1..P2-10 + `docs/archive/2026-09/reports-superseded/panel-uiux-composition-audit-2026-08-15.md` S-F1..12 / F-01..15 / I-01..13）中，与本方案 9 个问题直接衔接的条目：
 
 | 本方案问题 | 衔接的历史条目 | 状态 |
 |---|---|---|
