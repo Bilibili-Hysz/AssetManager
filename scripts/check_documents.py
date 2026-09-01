@@ -29,7 +29,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 LIVING = [
     "README.md",
     "docs/README.md",
-    "docs/overview-2026-08-27.md",
+    "docs/perf-baseline-2026-08-29.md",
     "docs/architecture.md",
     "docs/architecture-diagram.md",
     "docs/lan-security.md",

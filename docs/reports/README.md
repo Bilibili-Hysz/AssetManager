@@ -1,8 +1,8 @@
 # docs/reports 导航(README)
 
-> 状态:**LIVING(导航)** · updated: 2026-08-27 · 本目录是 08-10~08-15 的审查报告集合(module-* 分模块系列 + 08-15 评审系列),属 **full-review 之前的最后行号级证据**;内容零改写。全库文档导航见 `docs/overview-2026-08-27.md` §21,证据账本见 [`docs/compose/README.md`](../compose/README.md)。
+> 状态:**LIVING(导航)** · updated: 2026-09-02 · 本目录两层定位:① 08-10~08-15 的行号级审查底稿(module-* 系列 + 08-15 评审系列,full-review 之前的最后证据);② 08-29 起各会话产出报告的归流地。报告正文内容零改写。全库功能分类导航见 [`docs/README.md`](../README.md),证据账本见 [`docs/compose/README.md`](../compose/README.md)。
 
-## 文件清单(23 顶层 + 1 子目录)
+## 文件清单(39 顶层 + 1 子目录)
 
 ### module-* 系列(11 份,2026-08-11 分模块审查,P1 第一轮)
 
@@ -26,12 +26,29 @@
 
 `desktop-fine-scan-2026-08-11`、`frontend-fine-scan-2026-08-11`(前端 75 项扫描,已全部修复)、`menubar-review-2026-08-10`、`p2-round-2026-08-11`、`ui-rendering-audit-2026-08-10`(**本目录为权威复本**;compose/reports 下的同名文件仅作证据保留)
 
+### 08-29 双端 UI/UX 评审系列(2 份)
+
+`desktop-uiux-review-2026-08-29.md`(桌面端 M1–M7/L 项评审)、`webui-review-2026-08-29.md`(WebUI 评审)——对应方案见 `docs/plans/desktop-uiux-optimization-plan-2026-08-29.md`、`docs/plans/next-phase-design-2026-08-29.md`。
+
+### 08-30 Serpent 对比与任务包研究系列(4 份)
+
+`serpent-reference-study-2026-08-30.md`(参考项目研究)、`serpent-vs-assetmanager-2026-08-30.md`(能力对比)、`task-package-research-2026-08-30.md`(任务包调研)、`t0-stabilization-summary-2026-08-30.md`(T0 稳定化总结,自 artifacts 归流)。
+
+### 08-31 综合分析与专家评审系列(5 份)
+
+`expert-panel-deep-analysis-2026-08-31.md`(五专家团深度评审)、`functional-analysis-and-serpent-comparison-2026-08-31.md`、`global-synthesis-analysis-2026-08-31.md`、`pm-capability-analysis-2026-08-31.md`、`project-analysis-2026-08-31.md`。
+
+### 09-01 审计与修复系列(4 份)
+
+`architecture-function-and-reliability-review-2026-09-01.md`(当前架构权威复核,overview 头部指向本文)、`re-audit-2026-09-01.md`、`cleanup-and-git-repair-2026-09-01.md`(五轮工程垃圾清理与 git 对象库修复记录)、`task-package-validity-check-2026-09-01.md`。
+
 ### 子目录
 
-- `deepseek-archive-2026-08-25/`(8 份)— DeepSeek Docs 选择性迁移的逐字副本,自带 INDEX 登记,勿改写链接。
+- `deepseek-archive-2026-08-25/`(8 份)— DeepSeek Docs 选择性迁移的逐字副本,自带 INDEX 登记,勿改写链接。原目录已于 2026-09-02 整体迁至 `docs/baseline-2026-08-01/`。
 
 ## 与相邻证据的关系
 
 - **查询状态请走**:`docs/full-review/**`(dated 快照 + manifest,进行中任务,勿动)。
 - **查询会话证据请走**:`docs/compose/reports/`(98 份)。
-- 本目录定位:full-review 之前(08-10~08-15)的行号级审查底稿;多数发现已由后续批次关闭或登记。
+- **08-01 基线审计走**:`docs/baseline-2026-08-01/`(原 DeepSeek Docs)。
+- 本目录定位:08-10~08-15 行号级审查底稿 + 08-29 起会话报告归流地;底稿多数发现已由后续批次关闭或登记。
