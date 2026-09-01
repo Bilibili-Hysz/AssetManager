@@ -1,4 +1,6 @@
 # AssetManager 下一阶段设计提案（2026-08-29）
+> 状态：**现行** · 状态登记：2026-09-02（文档整理轮补登）
+
 
 > 性质：产品+体验设计提案，供决策与后续批次拆解。整合来源：`docs/reports/desktop-uiux-review-2026-08-29.md`、`docs/plans/desktop-uiux-optimization-plan-2026-08-29.md`、`docs/reports/webui-review-2026-08-29.md`、WebUI 功能补全分析（会话记录）。所有现状描述的 file:line 证据在来源文档中，本文不重复。
 

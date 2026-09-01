@@ -1,4 +1,6 @@
 # AssetManager 桌面端 UI/UX 设计优化方案（2026-08-29）
+> 状态：**现行** · 状态登记：2026-09-02（文档整理轮补登）
+
 
 > 前置输入：`docs/reports/desktop-uiux-review-2026-08-29.md`（同日评审，M1–M7/L 项与本方案 9 个问题一一对应）
 > 方法：只读复核当前工作树（分支 `feat/quality-audit-2026-08-17`，HEAD=521372e），全部 file:line 为 2026-08-29 实测。

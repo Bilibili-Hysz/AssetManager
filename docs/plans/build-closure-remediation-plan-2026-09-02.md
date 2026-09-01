@@ -1,6 +1,6 @@
 # 构建闭环整改方案（2026-09-02）
 
-> 状态：**提案（待执行）** · 来源：第九轮 P1 整改项（`docs/reports/inventory-cross-verification-2026-09-02.md` 标记）。
+> 状态：**A 已执行（2026-09-02，build.py 接入 webui_build + --skip-webui）；B 待并行会话收尾后执行（README.md 占用中）** · 来源：第九轮 P1 整改项（`docs/reports/inventory-cross-verification-2026-09-02.md` 标记）。
 > 工作模式：本文为**自包含交付物**，含 `file:line` 证据与可直接落地的代码片段，供其他 agent 执行。按既定协作约定，**本轮不修改 `build.py` / `AssetManager.spec` / `setup_cython.py` / `README.md` 本体**，仅产出方案。
 
 ## 0. 结论速览
