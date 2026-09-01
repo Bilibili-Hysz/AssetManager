@@ -1,6 +1,7 @@
 # 完整盘点与多专家交叉验证报告(2026-09-02)
 
 > 状态:**LIVING(审计盘点)** · 方法:主代理采集地面真相基线 + 并行派出 4 个专家子代理(文档架构 / 代码工程 / Git安全配置 / 交付依赖构建)各自独立盘点并回答同一组共享验证题,结果交叉比对。所有盘点均为**只读**,未修改被审系统。
+> **整改追踪(2026-09-02 更新)**:P0 断链已修(compose/README:47、migrations.md:201、adr 计数,commit affb8f6)+ 迁移遗留断链 28 处已修(deepseek-archive 21 处→baseline、compose migration 7 处→compose-raw 归档);P1-A 已执行(build.py 接入 webui 自动构建,commit ff1e0de);P1-B(setup_cython)与 outputs/ 去重因并行会话 WIP 暂缓;**P2 经复核为已消化**——requirements-ci.txt 精确 overlay + requirements.txt 语义化上界系既定策略(见其文件头注释),overlay 钉版均落在基础区间内,无需改动。
 
 ## 一、结论速览
 
