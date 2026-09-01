@@ -6,7 +6,7 @@
 
 - 原 Web 前端是 `AssetsManager/lan/static/` 下的原生 JS 多页应用(MPA)。
 - 本批两条主线:**(1)** 将 Web UI 重写为 `webui/` 下的 React SPA(设计规格 + 18 Task 实施计划);**(2)** 修复 LAN 授权、分享管理、ZIP 限额与安全设置,并把文件列表视图模式与翻译文本解耦(两份实施计划)。
-- 本批属"07-21 recalibration 前"批次;LAN 修复另有最终报告 `docs/compose/reports/lan-security-fixes.md`。
+- 本批属"07-21 recalibration 前"批次;LAN 修复另有最终报告 `docs/archive/2026-09/compose-reports/lan-security-fixes.md`。
 
 ## 决策要点(决策 | 出处)
 
