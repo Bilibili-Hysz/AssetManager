@@ -42,9 +42,9 @@
 
 ## 4. 相关主线文档
 
-- [DeepSeek Docs/施行路线图.md](../../../../DeepSeek%20Docs/%E6%96%BD%E8%A1%8C%E8%B7%AF%E7%BA%BF%E5%9B%BE.md)
-- [DeepSeek Docs/未来方向/05-桌面端UI视觉改进规划.md](../../../../DeepSeek%20Docs/%E6%9C%AA%E6%9D%A5%E6%96%B9%E5%90%91/05-%E6%A1%8C%E9%9D%A2%E7%AB%AFUI%E8%A7%86%E8%A7%89%E6%94%B9%E8%BF%9B%E8%A7%84%E5%88%92.md)
-- [DeepSeek Docs/未来方向/07-桌面端性能优化计划.md](../../../../DeepSeek%20Docs/%E6%9C%AA%E6%9D%A5%E6%96%B9%E5%90%91/07-%E6%A1%8C%E9%9D%A2%E7%AB%AF%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%E8%AE%A1%E5%88%92.md)
+- [DeepSeek Docs/施行路线图.md](../../../../../../baseline-2026-08-01/%E6%96%BD%E8%A1%8C%E8%B7%AF%E7%BA%BF%E5%9B%BE.md)
+- [DeepSeek Docs/未来方向/05-桌面端UI视觉改进规划.md](../../../../../../baseline-2026-08-01/%E6%9C%AA%E6%9D%A5%E6%96%B9%E5%90%91/05-%E6%A1%8C%E9%9D%A2%E7%AB%AFUI%E8%A7%86%E8%A7%89%E6%94%B9%E8%BF%9B%E8%A7%84%E5%88%92.md)
+- [DeepSeek Docs/未来方向/07-桌面端性能优化计划.md](../../../../../../baseline-2026-08-01/%E6%9C%AA%E6%9D%A5%E6%96%B9%E5%90%91/07-%E6%A1%8C%E9%9D%A2%E7%AB%AF%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%E8%AE%A1%E5%88%92.md)
 - [G6-5 report](../../reports/g6-5-database-integrity-2026-08-03.md)
 - [G6-1 restore report](../../reports/g6-1-restore-2026-08-04.md)
 - [WebUI Session 02 handoff](../webui-session-02-2026-08-03/README.md)

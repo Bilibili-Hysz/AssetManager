@@ -10,7 +10,7 @@
 | 角色 | 含义 | 处理原则 |
 |---|---|---|
 | **LIVING 活性** | 读者日常查阅的当前事实 | 更新到 2026-08-27 实测;头部带 `updated:`;≤8 份,每份都有独立职责 |
-| **FROZEN 冻结证据** | dated 快照、证据(compose/reports、docs/reports、DeepSeek Docs、deep-weakness-audit、adr) | **内容零改写**;只允许:加状态头、加导航条目、被"信息入口"引用 |
+| **FROZEN 冻结证据** | dated 快照、证据(compose/reports、docs/reports、DeepSeek Docs(2026-09-02 迁至 docs/baseline-2026-08-01)、deep-weakness-audit、adr) | **内容零改写**;只允许:加状态头、加导航条目、被"信息入口"引用 |
 | **ARCHIVED 归档** | 已执行完毕/被取代,无日常查阅价值但需追溯 | 移入 `docs/archive/<yyyy>/`,原始路径→新路径登记入 `docs/archive/INDEX.md` |
 
 **提炼的核心机制:不为每份旧文档改写内容,而是用"信息入口"承接其剩余信息量,再归档原件。** 四个信息入口:

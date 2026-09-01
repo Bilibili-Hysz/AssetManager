@@ -9,7 +9,7 @@ Enforces the LIVING / FROZEN / ARCHIVED classification introduced by the
     2. Every file under ``docs/archive/`` (except the INDEX itself) has a
        registration row inside ``docs/archive/INDEX.md``.
     3. FROZEN clusters carry a ``FROZEN`` marker in their entry README/head
-       (DeepSeek Docs, deep-weakness-audit, Plugins/Docs manuals).
+       (docs/baseline-2026-08-01 (ex-DeepSeek Docs), deep-weakness-audit, Plugins/Docs manuals).
     4. Pre-2026-07-21 ``docs/compose/`` specs/plans (and the two undated plans)
        carry the ``ARCHIVED`` header line added by that batch.
     5. The navigation entries shared by README/overview point at existing files.
@@ -28,6 +28,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 LIVING = [
     "README.md",
+    "docs/README.md",
     "docs/overview-2026-08-27.md",
     "docs/architecture.md",
     "docs/architecture-diagram.md",
@@ -44,7 +45,7 @@ LIVING = [
 UPDATED_RE = re.compile(r"updated:\s*(\d{4}-\d{2}-\d{2})")
 
 FROZEN_MARKERS = [
-    "DeepSeek Docs/README.md",
+    "docs/baseline-2026-08-01/README.md",
     "docs/deep-weakness-audit-2026-08-22/README.md",
     "Plugins/Docs/API.md",
     "Plugins/Docs/MODULE_INTERFACES.md",
@@ -55,6 +56,7 @@ ARCHIVE_INDEX = ROOT / "docs" / "archive" / "INDEX.md"
 COMPOSE_SPECS = ROOT / "docs" / "compose" / "specs"
 COMPOSE_PLANS = ROOT / "docs" / "compose" / "plans"
 NAVIGATION_TARGETS = [
+    "docs/README.md",
     "docs/overview-2026-08-27.md",
     "docs/archive/INDEX.md",
     "docs/compose/README.md",

@@ -1,10 +1,10 @@
 # AssetManager 代码审计文档
 
 > 状态:**FROZEN(2026-08-01 基线)** · 冻结登记:2026-08-27 · 本目录内容不改写(含序号章节与子集);其中数字断言均为历史快照,不得当作当前结果。
-> 当前事实以代码与 `docs/overview-2026-08-27.md` 为准;选择性迁移登记见 `docs/reports/deepseek-archive-2026-08-25/INDEX.md`。
+> 迁移登记:2026-09-02 由仓库根 `DeepSeek Docs/` 整体迁入 `docs/baseline-2026-08-01/`(仅位置变更,内容零改写);当前事实以代码与 `docs/overview-2026-08-27.md` 为准;选择性迁移登记见 `docs/reports/deepseek-archive-2026-08-25/INDEX.md`。
 
 > 审计日期：2026-08-01
-> 审计基线：`master` @ `945fd1e`，随后将本轮已存在的代码、测试与文档改动纳入仓库基线；完整状态见 [`docs/compose/reports/repository-baseline-2026-08-01.md`](../docs/compose/reports/repository-baseline-2026-08-01.md)。
+> 审计基线：`master` @ `945fd1e`，随后将本轮已存在的代码、测试与文档改动纳入仓库基线；完整状态见 [`docs/compose/reports/repository-baseline-2026-08-01.md`](../compose/reports/repository-baseline-2026-08-01.md)。
 > 测试基线快照（2026-08-01）：Python **1590 passed, 1 skipped**（隔离临时目录运行）；WebUI **37 files / 289 tests passed**。2026-08-02 当前 WebUI 全量为 **37 files / 292 tests passed**，Python 增量门禁见后续复核报告。2026-08-05 主线非 E2E 复核（M1 补丁后）为 **2034 passed, 2 skipped, 1 warning**；该结果不包含受保护的 WebUI/E2E 发布门禁。
 
 ## 文档索引
@@ -54,7 +54,7 @@
 
 ## 当前结论
 
-工程化程度高的个人资产管理器：四层架构 + DI + 领域事件 + 双端（Qt 桌面 / React Web）共享应用服务的 Desktop–LAN–WebUI recalibration 已交付（Tasks A–E、T151、T530、T533 有可复核证据）。当前工作重点已从架构收尾转为数据安全、性能验收、桌面/服务边界清理、插件 API v2 与 P1 功能；未完成项以 [`repository-baseline-2026-08-01.md`](../docs/compose/reports/repository-baseline-2026-08-01.md) 为准。
+工程化程度高的个人资产管理器：四层架构 + DI + 领域事件 + 双端（Qt 桌面 / React Web）共享应用服务的 Desktop–LAN–WebUI recalibration 已交付（Tasks A–E、T151、T530、T533 有可复核证据）。当前工作重点已从架构收尾转为数据安全、性能验收、桌面/服务边界清理、插件 API v2 与 P1 功能；未完成项以 [`repository-baseline-2026-08-01.md`](../compose/reports/repository-baseline-2026-08-01.md) 为准。
 
 ## 引用约定
 

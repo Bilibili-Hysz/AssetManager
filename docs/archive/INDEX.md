@@ -172,3 +172,35 @@
 
 ---
 *登记日期:2026-08-27 · 共 132 项 · 全部为移动操作,内容零修改。*
+
+## 2026-08/recovered-grid-zoom-interpolation(git 对象库修复取回的历史快照,25 份)
+
+> 来源:2026-09-01 git 修复批次(bundle + 远端对象恢复)取回的历史版本文件;原目录内容与当前代码同名文件的对应版本并存,仅作历史追溯。
+
+| 原路径(仓库历史) | 新路径 | 归档原因 | 取代者 |
+|---|---|---|---|
+| 2026-08/recovered-grid-zoom-interpolation/AssetsManager/lan/server.py | 2026-08/recovered-grid-zoom-interpolation/AssetsManager/lan/server.py | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/MANIFEST.md | 2026-08/recovered-grid-zoom-interpolation/MANIFEST.md | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/docs/compose/plans/2026-07-24-cookie-only-spa-auth.md | 2026-08/recovered-grid-zoom-interpolation/docs/compose/plans/2026-07-24-cookie-only-spa-auth.md | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/docs/compose/reports/2026-07-22-grid-zoom-investigation.md | 2026-08/recovered-grid-zoom-interpolation/docs/compose/reports/2026-07-22-grid-zoom-investigation.md | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/docs/compose/reports/2026-07-23-python-session-desktop-closure.md | 2026-08/recovered-grid-zoom-interpolation/docs/compose/reports/2026-07-23-python-session-desktop-closure.md | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/docs/compose/reports/2026-07-24-cookie-only-spa-auth-remediation.md | 2026-08/recovered-grid-zoom-interpolation/docs/compose/reports/2026-07-24-cookie-only-spa-auth-remediation.md | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/docs/compose/reports/2026-07-24-webui-lan-contract-closure.md | 2026-08/recovered-grid-zoom-interpolation/docs/compose/reports/2026-07-24-webui-lan-contract-closure.md | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/docs/compose/reports/2026-07-26-real-lan-acceptance.md | 2026-08/recovered-grid-zoom-interpolation/docs/compose/reports/2026-07-26-real-lan-acceptance.md | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/docs/compose/reports/2026-07-27-weekly-stability-closeout.md | 2026-08/recovered-grid-zoom-interpolation/docs/compose/reports/2026-07-27-weekly-stability-closeout.md | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/docs/compose/reports/2026-07-28-real-lan-acceptance-day5.md | 2026-08/recovered-grid-zoom-interpolation/docs/compose/reports/2026-07-28-real-lan-acceptance-day5.md | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/docs/compose/reports/2026-07-28-real-lan-acceptance-day6.md | 2026-08/recovered-grid-zoom-interpolation/docs/compose/reports/2026-07-28-real-lan-acceptance-day6.md | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/docs/compose/specs/2026-07-24-cookie-only-spa-auth-design.md | 2026-08/recovered-grid-zoom-interpolation/docs/compose/specs/2026-07-24-cookie-only-spa-auth-design.md | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/tests/desktop/test_plugin_manager_dialog.py | 2026-08/recovered-grid-zoom-interpolation/tests/desktop/test_plugin_manager_dialog.py | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/tests/desktop/test_settings_dialog.py | 2026-08/recovered-grid-zoom-interpolation/tests/desktop/test_settings_dialog.py | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/tests/desktop/test_tag_editor_dialog.py | 2026-08/recovered-grid-zoom-interpolation/tests/desktop/test_tag_editor_dialog.py | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/tests/integration/test_scoped_projection_ordering.py | 2026-08/recovered-grid-zoom-interpolation/tests/integration/test_scoped_projection_ordering.py | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/tests/lan/test_lan_api.py | 2026-08/recovered-grid-zoom-interpolation/tests/lan/test_lan_api.py | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/webui/package.json | 2026-08/recovered-grid-zoom-interpolation/webui/package.json | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/webui/src/App.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/App.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/webui/src/components/layout/Sidebar.test.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/components/layout/Sidebar.test.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/webui/src/pages/BrowsePage.test.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/pages/BrowsePage.test.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/webui/src/pages/LoginPage.test.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/pages/LoginPage.test.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/webui/src/pages/LoginPage.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/pages/LoginPage.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.test.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.test.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
+| 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
