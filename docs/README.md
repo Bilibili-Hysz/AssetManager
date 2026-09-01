@@ -45,7 +45,7 @@
 
 ### 4. 方案与计划（plans）
 
-[`plans/`](plans/) —— 改造方案与任务包。**现行**：`architecture-reliability-roadmap-2026-08-31.md`（H1 实施中）、`task-package-2026-09-01.md`（交托手册 v2）、`p0-security-remediation-2026-08-31.md`（提案，未实施）、`port-architecture-2026-08-30.md`（分期实施）、`evolution-strategy-2026-08-31.md`、`development-roadmap-2026-08-30.md`、`ux-improvement-plan-2026-08-30.md`（未实施）、`desktop-uiux-optimization-plan-2026-08-29.md`、`next-phase-design-2026-08-29.md`、`bg-gpu-shader-architecture-2026-08-27.md`（M1 已落地）、`bg-simplify-image-only-2026-08-28.md`、`workspace-cleanup-plan-2026-08-31.md`（阶段 0 完毕）。**部分执行**：`build-closure-remediation-plan-2026-09-02.md`（P1 构建闭环；A 已接入 build.py，B 删 setup_cython 待并行会话收尾）。**已执行完毕**：`documentation-maintenance-plan-2026-08-27.md`（机制已由 `scripts/check_documents.py` 门禁化）。**已被取代**：`task-package-2026-08-30.md`（v1，由 09-01 v2 取代）。
+[`plans/`](plans/) —— 改造方案与任务包。**现行**：`architecture-reliability-roadmap-2026-08-31.md`（H1 实施中）、`task-package-2026-09-01.md`（交托手册 v2）、`p0-security-remediation-2026-08-31.md`（提案，未实施）、`port-architecture-2026-08-30.md`（分期实施）、`evolution-strategy-2026-08-31.md`、`development-roadmap-2026-08-30.md`、`ux-improvement-plan-2026-08-30.md`（未实施）、`desktop-uiux-optimization-plan-2026-08-29.md`、`next-phase-design-2026-08-29.md`、`bg-gpu-shader-architecture-2026-08-27.md`（M1 已落地）、`bg-simplify-image-only-2026-08-28.md`、`workspace-cleanup-plan-2026-08-31.md`（阶段 0 完毕）。**已执行完毕**：`build-closure-remediation-plan-2026-09-02.md`（P1 构建闭环：A 接入 build.py、B 删 setup_cython + 清宣传，2026-09-02 收尾）。**已执行完毕**：`documentation-maintenance-plan-2026-08-27.md`（机制已由 `scripts/check_documents.py` 门禁化）。**已被取代**：`task-package-2026-08-30.md`（v1，由 09-01 v2 取代）。
 
 ### 5. 证据账本（compose）
 
