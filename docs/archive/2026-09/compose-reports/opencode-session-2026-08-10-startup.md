@@ -1,7 +1,7 @@
 # 会话启动文档 — PySide6 桌面端 UI/SVG 修复工作交接
 
 > **使用方式 A（推荐）**：把本文件**全部内容**作为新会话的第一条消息。
-> **使用方式 B**：新会话第一句话写：「先阅读 `docs/compose/reports/opencode-session-2026-08-10-startup.md` 和 `docs/compose/reports/opencode-session-2026-08-10-summary.md`，然后按启动文档的『下一步』执行。」
+> **使用方式 B**：新会话第一句话写：「先阅读 `docs/archive/2026-09/compose-reports/opencode-session-2026-08-10-startup.md` 和 `docs/archive/2026-09/compose-reports/opencode-session-2026-08-10-summary.md`，然后按启动文档的『下一步』执行。」
 >
 > 本文件是"快速启动包"，细节请查 `opencode-session-2026-08-10-summary.md`（17 章完整汇总）。
 
@@ -20,7 +20,7 @@ D:\~Vibe-Coding\Projects\AssetsManager_old-bak。分层：Presentation（window.
 UI/SVG 绘制 Bug 审计与修复（13 项）、图标 SVG 化迁移（含 fill(0)=不透明黑的根因修复）、
 图标语义色体系（6 个 icon_* token，63 调用点迁移）、主题色响应修复、菜单栏审查（6 项）、
 逐模块排 Bug（8 份清单约 177 项：高 15/中 41/低 121）、P0 高危修复轮（15+4 项全修）。
-完整过程见 docs/compose/reports/opencode-session-2026-08-10-summary.md。
+完整过程见 docs/archive/2026-09/compose-reports/opencode-session-2026-08-10-summary.md。
 所有代码改动均在工作区【未提交】状态，与约 191 个预存修改文件混在一起。
 
 【当前状态】中危修复轮（D1 LAN 认证路由 / D2 LAN 工具链 / E 文件操作撤销 / F 导出维护 /
@@ -75,12 +75,12 @@ G1 core 存储 / G2 runtime 身份，六组约 49 项）已全部落盘完成、
 
 | 文件 | 内容 |
 |------|------|
-| `docs/reports/ui-rendering-audit-2026-08-10.md` | 13 项 UI Bug 审计 + 双子代理结论 + 修复记录 |
+| `docs/archive/2026-09/reports-superseded/ui-rendering-audit-2026-08-10.md` | 13 项 UI Bug 审计 + 双子代理结论 + 修复记录 |
 | `docs/plans/icon-svg-migration-2026-08-10.md` | SVG 化规划、黑底根因、主题色修复、语义色体系 |
-| `docs/reports/menubar-review-2026-08-10.md` | 菜单栏 6 项修复 + 审计附录 |
+| `docs/archive/2026-09/reports-superseded/menubar-review-2026-08-10.md` | 菜单栏 6 项修复 + 审计附录 |
 | `docs/plans/bug-hunting-2026-08-10.md` | 逐模块排 Bug 计划 + P0 轮结果 + 高危修复记录 |
 | `docs/reports/module-{lan-core,lan-routes,lan-tools,file-ops,maintenance,core-db,core-store,runtime}.md` | 8 份模块缺陷清单（含行号与修复建议）—— P1/P2 轮的直接工作输入 |
-| `docs/compose/reports/opencode-session-2026-08-10-summary.md` | 17 章完整汇总（本文件的细节版） |
+| `docs/archive/2026-09/compose-reports/opencode-session-2026-08-10-summary.md` | 17 章完整汇总（本文件的细节版） |
 
 ---
 

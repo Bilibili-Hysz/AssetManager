@@ -7,7 +7,7 @@
 
 ## 1. 完成内容
 
-**排 Bug**：5 个并行探索代理（M1-M7 + 8 份低危清单核对），清单落盘 `docs/reports/p2-round-2026-08-11.md`（约 98 项缺陷 + 80+ 项低危未修清单）。
+**排 Bug**：5 个并行探索代理（M1-M7 + 8 份低危清单核对），清单落盘 `docs/archive/2026-09/reports-superseded/p2-round-2026-08-11.md`（约 98 项缺陷 + 80+ 项低危未修清单）。
 
 **修复 9 组**（7 组子代理 + 2 组主代理亲自实施）：
 
@@ -41,7 +41,7 @@
 
 ## 4. 下一步
 
-1. **P2 低危清单**（约 80 项未修，`docs/reports/p2-round-2026-08-11.md` 末尾 + 8 份 module-*.md）：LAN 认证面（Bug 14-21）、LAN 路径面（NUL/ADS/二次 unquote/CSV 注入）、LAN 工具面（scanner/tunnel/ws/dto）、存储维护面（core-store 3-27、core-db 5-16、maintenance 5-17）、runtime 面（runtime 3-25）——可多会话滚动
+1. **P2 低危清单**（约 80 项未修，`docs/archive/2026-09/reports-superseded/p2-round-2026-08-11.md` 末尾 + 8 份 module-*.md）：LAN 认证面（Bug 14-21）、LAN 路径面（NUL/ADS/二次 unquote/CSV 注入）、LAN 工具面（scanner/tunnel/ws/dto）、存储维护面（core-store 3-27、core-db 5-16、maintenance 5-17）、runtime 面（runtime 3-25）——可多会话滚动
 2. **P2 剩余**：组 3 的 S-8/S-9、组 4 的 L16/L17/L21-L25、组 6 的 E1/E2/F1/D1、组 7 的 M6 已修其余 L 项（见 p2-round 清单未覆盖项）
 3. **性能轮**：M6a-8 get_home 全表扫描、thumbnail 索引
 4. **DB 迁移 v24**：assets 目录 mtime 快照（M6a-18）

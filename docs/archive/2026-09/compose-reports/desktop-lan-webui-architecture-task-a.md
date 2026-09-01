@@ -110,7 +110,7 @@ latest chain state.
 |---|---|
 | `docs/compose/specs/2026-07-21-desktop-lan-webui-architecture-recalibration-design.md` | Recalibrated architecture scope and contracts |
 | `docs/compose/plans/2026-07-21-desktop-lan-webui-architecture-recalibration.md` | Authoritative A–E task chain; Task A is complete |
-| `docs/compose/reports/desktop-lan-webui-architecture-migration.md` | Parent migration status and remaining release decision |
+| `docs/archive/2026-09/compose-reports/desktop-lan-webui-architecture-migration.md` | Parent migration status and remaining release decision |
 | `AssetsManager/application/library_service.py` | Session close barrier and ownership retention |
 | `AssetsManager/application/runtime.py` | Runtime adapter stop state and retry behavior |
 | `AssetsManager/lan/server.py` | LAN generation registration and shutdown ownership |

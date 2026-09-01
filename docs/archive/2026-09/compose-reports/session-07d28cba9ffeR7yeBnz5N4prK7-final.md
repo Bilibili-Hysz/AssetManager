@@ -121,9 +121,9 @@ No remote was added or modified. The commit remains local on `master`.
 
 | File | Role |
 |---|---|
-| `docs/compose/reports/desktop-lan-webui-architecture-recalibration.md` | Current Task E release report |
-| `docs/compose/reports/desktop-lan-webui-architecture-migration.md` | Parent architecture migration report |
-| `docs/compose/reports/desktop-lan-webui-architecture-task-d.md` | Task D handoff and later Task E result |
+| `docs/archive/2026-09/compose-reports/desktop-lan-webui-architecture-recalibration.md` | Current Task E release report |
+| `docs/archive/2026-09/compose-reports/desktop-lan-webui-architecture-migration.md` | Parent architecture migration report |
+| `docs/archive/2026-09/compose-reports/desktop-lan-webui-architecture-task-d.md` | Task D handoff and later Task E result |
 | `docs/compose/plans/2026-07-21-desktop-lan-webui-architecture-recalibration.md` | Authoritative A–E plan and decision rules |
 | `docs/adr/0003-library-runtime.md` | Runtime ownership and release architecture decision |
 | `tests/lan/test_t2_t4_contracts.py` | SPA and WebSocket contract evidence |

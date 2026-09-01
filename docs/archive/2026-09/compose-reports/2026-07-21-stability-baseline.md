@@ -75,7 +75,7 @@ Historical test counts, if any, are context only. No source, test, or documentat
 
 ## Changes and Verification
 
-- Final snapshot contains the untracked path `docs/compose/reports/2026-07-21-stability-baseline.md`, which is absent from the initial snapshot.
+- Final snapshot contains the untracked path `docs/archive/2026-09/compose-reports/2026-07-21-stability-baseline.md`, which is absent from the initial snapshot.
 - The initial and final tracked-modification lists are identical; no pre-existing tracked file changed between those snapshots.
 - Final working-tree audit was captured after writing this report. Its raw outputs follow so the preservation claim is independently inspectable.
 
@@ -93,7 +93,7 @@ Historical test counts, if any, are context only. No source, test, or documentat
 ?? .mimocode/
 ?? docs/Suggestions/session-optimization-summary-2026-07-15.md
 ?? docs/compose/plans/2026-07-21-weekly-stability-closure.md
-?? docs/compose/reports/2026-07-21-stability-baseline.md
+?? docs/archive/2026-09/compose-reports/2026-07-21-stability-baseline.md
 ?? docs/compose/specs/2026-07-21-weekly-stability-closure-design.md
 ?? docs/session-optimization-handoff-2026-07-15.md
 ?? tests/desktop/test_plugin_manager_dialog.py
@@ -119,14 +119,14 @@ tests/desktop/test_tag_editor_dialog.py
 .mimocode/plans/1784045171846-playful-orchid.md
 docs/Suggestions/session-optimization-summary-2026-07-15.md
 docs/compose/plans/2026-07-21-weekly-stability-closure.md
-docs/compose/reports/2026-07-21-stability-baseline.md
+docs/archive/2026-09/compose-reports/2026-07-21-stability-baseline.md
 docs/compose/specs/2026-07-21-weekly-stability-closure-design.md
 docs/session-optimization-handoff-2026-07-15.md
 tests/desktop/test_plugin_manager_dialog.py
 tests/desktop/test_settings_dialog.py
 ```
 
-`git status --short -- "Project"` produced no output. Compared with the initial snapshot, the tracked modified paths are unchanged. The final snapshot contains `docs/compose/reports/2026-07-21-stability-baseline.md`; the initial snapshot already contained the listed plan/spec documents and other untracked paths.
+`git status --short -- "Project"` produced no output. Compared with the initial snapshot, the tracked modified paths are unchanged. The final snapshot contains `docs/archive/2026-09/compose-reports/2026-07-21-stability-baseline.md`; the initial snapshot already contained the listed plan/spec documents and other untracked paths.
 
 ## Follow-Up Boundaries
 

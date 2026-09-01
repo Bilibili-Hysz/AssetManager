@@ -1,6 +1,6 @@
 # 桌面端 UI 绘制/图标/SVG 审查记录 — 2026-08-10（第一次审查）
 
-> **去重指针(2026-08-27)**:本文件与 [`docs/reports/ui-rendering-audit-2026-08-10.md`](../../reports/ui-rendering-audit-2026-08-10.md) 为同一审查的复本;查阅以 `docs/reports/` 版为准,本复本仅保留证据。
+> **去重指针(2026-08-27)**:本文件与 [`docs/archive/2026-09/reports-superseded/ui-rendering-audit-2026-08-10.md`](../reports-superseded/ui-rendering-audit-2026-08-10.md) 为同一审查的复本;查阅以 `docs/reports/` 版为准,本复本仅保留证据。
 > 状态：**待双代理独立审计**（audit-1 / audit-2 输出待回填）
 > 范围：仅桌面端（PySide6）UI 层的绘制（painting）、图标（icons）、SVG 渲染
 > 方法：架构文档（`DeepSeek Docs/01、07`）→ 逐文件逐行阅读绘制代码 → 交叉比对

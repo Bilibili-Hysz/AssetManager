@@ -148,7 +148,7 @@ Desktop 在 LAN 未运行时仍可从当前 session 的 `ShareService` 创建并
 
 ### 已运行的既有证据（不是本次最终 B1 重跑）
 
-截至 A3 收口报告，父基线曾运行过 A3/Runtime/LAN 相关聚焦矩阵 `347 passed`、Task D Runtime/Desktop 矩阵 `431 passed`、当前 Desktop/LAN/Chromium 矩阵 `190 passed`，以及 Python 全量 `1695 passed, 1 skipped`；另有 Ruff、compileall 与 `git diff --check` 通过记录（`docs/compose/reports/a3-service-assembly-2026-08-02.md:88-99`）。这些数字证明父基线质量，但发生在 B1 当前工作树改动之前，不能冒充 B1 最终验收结果。
+截至 A3 收口报告，父基线曾运行过 A3/Runtime/LAN 相关聚焦矩阵 `347 passed`、Task D Runtime/Desktop 矩阵 `431 passed`、当前 Desktop/LAN/Chromium 矩阵 `190 passed`，以及 Python 全量 `1695 passed, 1 skipped`；另有 Ruff、compileall 与 `git diff --check` 通过记录（`docs/archive/2026-09/compose-reports/a3-service-assembly-2026-08-02.md:88-99`）。这些数字证明父基线质量，但发生在 B1 当前工作树改动之前，不能冒充 B1 最终验收结果。
 
 本报告还核对了当前 B1 新增/修改测试的测试意图与断言，包括 Runtime sharing bundle、table initialization、session-close invalidation、multi-library isolation、LAN injection reuse、offline HTTP visibility、HTTPS status、fallback rejection、close race 和 Desktop direct-call 等；随后在当前工作树使用仓库外可写 pytest basetemp 重新执行了 B1 聚焦矩阵，结果为 `478 passed`；该结果不包含完整 Python 和 Chromium 最终发布门禁。
 

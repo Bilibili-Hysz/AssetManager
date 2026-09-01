@@ -7,7 +7,7 @@
 
 ## 1. 桌面端深度扫描（100 项：3 高 / 35 中 / 62 低）
 
-**6 组并行探索**（file_list 辅助 / panels / dialogs / widgets / window / controllers+core），主代理交叉复核组1；清单落盘 `docs/reports/desktop-fine-scan-2026-08-11.md`（含每项文件:行号与修复建议）。
+**6 组并行探索**（file_list 辅助 / panels / dialogs / widgets / window / controllers+core），主代理交叉复核组1；清单落盘 `docs/archive/2026-09/reports-superseded/desktop-fine-scan-2026-08-11.md`（含每项文件:行号与修复建议）。
 
 **高危 3 项**（全部修复）：
 - **H1** `_event_bridge.py` DomainEventSubscription 改 QueuedConnection（域事件从 worker 发布时槽不再在发布线程执行 GUI）

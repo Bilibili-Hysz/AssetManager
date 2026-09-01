@@ -40,12 +40,12 @@ This report is the current source of truth for the original migration. The
 checkboxes in the original plan and the previous closure plan are historical
 traceability material. Use the recalibrated plan for executable next work:
 
-- [`2026-07-21-desktop-lan-webui-architecture-closure.md`](../../archive/2026-08/compose-raw/plans/2026-07-21-desktop-lan-webui-architecture-closure.md) (historical)
-- [`2026-07-21-desktop-lan-webui-architecture-closure-design.md`](../../archive/2026-08/compose-raw/specs/2026-07-21-desktop-lan-webui-architecture-closure-design.md) (historical)
+- [`2026-07-21-desktop-lan-webui-architecture-closure.md`](../../2026-08/compose-raw/plans/2026-07-21-desktop-lan-webui-architecture-closure.md) (historical)
+- [`2026-07-21-desktop-lan-webui-architecture-closure-design.md`](../../2026-08/compose-raw/specs/2026-07-21-desktop-lan-webui-architecture-closure-design.md) (historical)
 - [`desktop-lan-webui-architecture-task-a.md`](desktop-lan-webui-architecture-task-a.md)
 - [`desktop-lan-webui-architecture-task-b.md`](desktop-lan-webui-architecture-task-b.md)
-- [`2026-07-21-desktop-lan-webui-architecture-recalibration.md`](../../archive/2026-08/compose-raw/plans/2026-07-21-desktop-lan-webui-architecture-recalibration.md)
-- [`2026-07-21-desktop-lan-webui-architecture-recalibration-design.md`](../../archive/2026-08/compose-raw/specs/2026-07-21-desktop-lan-webui-architecture-recalibration-design.md)
+- [`2026-07-21-desktop-lan-webui-architecture-recalibration.md`](../../2026-08/compose-raw/plans/2026-07-21-desktop-lan-webui-architecture-recalibration.md)
+- [`2026-07-21-desktop-lan-webui-architecture-recalibration-design.md`](../../2026-08/compose-raw/specs/2026-07-21-desktop-lan-webui-architecture-recalibration-design.md)
 - [`desktop-lan-webui-architecture-recalibration.md`](desktop-lan-webui-architecture-recalibration.md)
 
 ## What Was Built
@@ -118,9 +118,9 @@ acceptance still need explicit closure.
 ## Usage
 
 For current implementation work, start with the status ledger in
-[`2026-07-21-desktop-lan-webui-architecture-migration.md`](../../archive/2026-08/compose-raw/plans/2026-07-21-desktop-lan-webui-architecture-migration.md), then execute the ordered
+[`2026-07-21-desktop-lan-webui-architecture-migration.md`](../../2026-08/compose-raw/plans/2026-07-21-desktop-lan-webui-architecture-migration.md), then execute the ordered
 tasks in the recalibrated plan
-[`2026-07-21-desktop-lan-webui-architecture-recalibration.md`](../../archive/2026-08/compose-raw/plans/2026-07-21-desktop-lan-webui-architecture-recalibration.md). The current verification baseline is:
+[`2026-07-21-desktop-lan-webui-architecture-recalibration.md`](../../2026-08/compose-raw/plans/2026-07-21-desktop-lan-webui-architecture-recalibration.md). The current verification baseline is:
 
 ```powershell
 python -m pytest -q
@@ -197,7 +197,7 @@ delivered, and the Linux platform gate now passes, so this migration is
 ## Future task chain
 
 The previous closure chain is historical. Execute the recalibrated plan
-[`2026-07-21-desktop-lan-webui-architecture-recalibration.md`](../../archive/2026-08/compose-raw/plans/2026-07-21-desktop-lan-webui-architecture-recalibration.md)
+[`2026-07-21-desktop-lan-webui-architecture-recalibration.md`](../../2026-08/compose-raw/plans/2026-07-21-desktop-lan-webui-architecture-recalibration.md)
 strictly in this order:
 
 | Task | Outcome | Depends on |
@@ -235,10 +235,10 @@ The Windows symlink skip is complemented by the passing Ubuntu WSL Linux gate.
 | `docs/compose/specs/2026-07-21-desktop-lan-webui-architecture-recalibration-design.md` | Current baseline mapping and scope decision |
 | `docs/compose/plans/2026-07-21-desktop-lan-webui-architecture-recalibration.md` | Current authoritative A–E implementation chain |
 | `docs/compose/plans/2026-07-21-desktop-lan-webui-architecture-task-d.md` | Task D compatibility cleanup plan |
-| `docs/compose/reports/desktop-lan-webui-architecture-task-a.md` | Task A implementation and verification report |
-| `docs/compose/reports/desktop-lan-webui-architecture-task-b.md` | Task B implementation and verification report |
-| `docs/compose/reports/desktop-lan-webui-architecture-task-c.md` | Task C implementation and verification report |
-| `docs/compose/reports/desktop-lan-webui-architecture-task-d.md` | Task D implementation and verification report |
-| `docs/compose/reports/realtime-dataflow-hardening.md` | Delivered realtime hardening subcontracts |
-| `docs/compose/reports/runtime-adapter-failure-ownership.md` | Delivered adapter construction/failure ownership subcontracts |
+| `docs/archive/2026-09/compose-reports/desktop-lan-webui-architecture-task-a.md` | Task A implementation and verification report |
+| `docs/archive/2026-09/compose-reports/desktop-lan-webui-architecture-task-b.md` | Task B implementation and verification report |
+| `docs/archive/2026-09/compose-reports/desktop-lan-webui-architecture-task-c.md` | Task C implementation and verification report |
+| `docs/archive/2026-09/compose-reports/desktop-lan-webui-architecture-task-d.md` | Task D implementation and verification report |
+| `docs/archive/2026-09/compose-reports/realtime-dataflow-hardening.md` | Delivered realtime hardening subcontracts |
+| `docs/archive/2026-09/compose-reports/runtime-adapter-failure-ownership.md` | Delivered adapter construction/failure ownership subcontracts |
 | `docs/adr/0003-library-runtime.md` | Runtime/LAN ownership decision and remaining divergence |

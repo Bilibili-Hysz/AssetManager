@@ -7,7 +7,7 @@
 
 ## 1. 扫描（75 项：2 高 / 24 中 / 49 低）
 
-6 组并行探索覆盖 webui/src 全部 196 文件 / 19837 行；清单 `docs/reports/frontend-fine-scan-2026-08-11.md`。
+6 组并行探索覆盖 webui/src 全部 196 文件 / 19837 行；清单 `docs/archive/2026-09/reports-superseded/frontend-fine-scan-2026-08-11.md`。
 
 **高危 2**：main.tsx 无 ErrorBoundary（白屏无恢复）；SellerGalleryEditor 画廊路径行 key 含编辑值 → 输入失焦不可用。
 

@@ -41,13 +41,13 @@ remote: none configured
 
 证据文件：
 
-- docs/compose/reports/desktop-lan-webui-architecture-recalibration.md
-- docs/compose/reports/desktop-lan-webui-architecture-migration.md
-- docs/compose/reports/desktop-lan-webui-architecture-task-a.md
-- docs/compose/reports/desktop-lan-webui-architecture-task-b.md
-- docs/compose/reports/desktop-lan-webui-architecture-task-c.md
-- docs/compose/reports/desktop-lan-webui-architecture-task-d.md
-- docs/compose/reports/session-07d28cba9ffeR7yeBnz5N4prK7-final.md
+- docs/archive/2026-09/compose-reports/desktop-lan-webui-architecture-recalibration.md
+- docs/archive/2026-09/compose-reports/desktop-lan-webui-architecture-migration.md
+- docs/archive/2026-09/compose-reports/desktop-lan-webui-architecture-task-a.md
+- docs/archive/2026-09/compose-reports/desktop-lan-webui-architecture-task-b.md
+- docs/archive/2026-09/compose-reports/desktop-lan-webui-architecture-task-c.md
+- docs/archive/2026-09/compose-reports/desktop-lan-webui-architecture-task-d.md
+- docs/archive/2026-09/compose-reports/session-07d28cba9ffeR7yeBnz5N4prK7-final.md
 
 ### Desktop UI
 
@@ -102,8 +102,8 @@ Desktop UI-07 收口报告记录了 SVG 语义图标、按钮变体、字阶/缩
 - 当前任务入口：DeepSeek Docs/施行路线图.md。
 - 当前事实入口：本报告。
 - 基线之后的增量事实入口：[`repository-followup-review-2026-08-01.md`](repository-followup-review-2026-08-01.md)。
-- 架构交付证据：docs/compose/reports/desktop-lan-webui-architecture-recalibration.md。
-- UI 交付证据：docs/compose/reports/desktop-ui-visual-closure-2026-08-01.md。
+- 架构交付证据：docs/archive/2026-09/compose-reports/desktop-lan-webui-architecture-recalibration.md。
+- UI 交付证据：docs/archive/2026-09/compose-reports/desktop-ui-visual-closure-2026-08-01.md。
 - 性能计划：DeepSeek Docs/未来方向/07-桌面端性能优化计划.md。
 - 数据安全缺口：DeepSeek Docs/功能缺口分析/06-安全与可靠性.md。
 

@@ -159,4 +159,4 @@ directory-symlink execution, so no release gate remains open.
 | `tests/lan/test_runtime_realtime.py` | Cursor, authorization and connected-session cleanup |
 | `tests/lan/test_server_lifecycle.py` | Restart, failed-stop retry and thread/loop ownership |
 | `webui/src/components/layout/AppLayout.tsx` | Header stacking-boundary fix |
-| `docs/compose/reports/desktop-lan-webui-architecture-migration.md` | Parent migration status and release ledger |
+| `docs/archive/2026-09/compose-reports/desktop-lan-webui-architecture-migration.md` | Parent migration status and release ledger |

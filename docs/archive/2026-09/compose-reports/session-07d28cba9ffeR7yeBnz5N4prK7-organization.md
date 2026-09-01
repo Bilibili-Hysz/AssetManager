@@ -125,9 +125,9 @@ superseded_by: repository-baseline-2026-08-01.md
 - `docs/architecture.md`、`docs/architecture-diagram.md`：架构事实与数据流说明。
 - `docs/adr/0003-library-runtime.md`：runtime/library lifecycle ADR。
 - 本会话新增/确认的关键报告：
-  - `docs/compose/reports/desktop-lan-webui-architecture-migration.md`
-  - `docs/compose/reports/realtime-dataflow-hardening.md`
-  - `docs/compose/reports/session-07d28cba9ffeR7yeBnz5N4prK7-organization.md`
+  - `docs/archive/2026-09/compose-reports/desktop-lan-webui-architecture-migration.md`
+  - `docs/archive/2026-09/compose-reports/realtime-dataflow-hardening.md`
+  - `docs/archive/2026-09/compose-reports/session-07d28cba9ffeR7yeBnz5N4prK7-organization.md`
 
 ## 4. 工作树状态
 

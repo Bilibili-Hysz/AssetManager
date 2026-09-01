@@ -12,7 +12,7 @@
 
 用户在 2026-08-10 晚发起新会话，指令为：
 
-> 先阅读 `docs/compose/reports/opencode-session-2026-08-10-startup.md` 和 `...-summary.md`，然后按启动文档的『下一步』执行。
+> 先阅读 `docs/archive/2026-09/compose-reports/opencode-session-2026-08-10-startup.md` 和 `...-summary.md`，然后按启动文档的『下一步』执行。
 
 即：继续会话 1（Opencode `ses_017505339ffeas793xTPQ7FLKL`，11 轮 UI/SVG 修复 + P0 高危轮 + 中危轮落盘）的未完成部分——**中危轮最终回归验证（会话 1 在分片回归时中断）**。
 

@@ -105,7 +105,7 @@
 - 2 个只读审计子代理复审：**12/12 通过**，无回归（关键验证：icons DPR 缓存键含 dpr 且渲染尺寸正确；hsv 修复后保留 1px 色相环；bg_effects 边缘 alpha 29%→97% 且零位移；workspace_bar 动画打断无旧目标回写；emoji 4 条映射无静默 fallback）
 - 审计发现的**预存在问题**（非本次引入）：`tests/unit/test_tray.py` 缺 QApplication fixture 会挂起；grid 测试未覆盖新标签/省略号与 scale 重排路径
 - **重要**：工作区原有 191 个已修改文件（README 记录），本次修复为增量；`git diff` 中与 Bug 无关的 hunk（`_base.py` warnings 反馈、`window.py` integrity 调度等）为预先存在改动，已排除在修复范围外
-- 文档：`docs/reports/ui-rendering-audit-2026-08-10.md` 追加「四、修复记录」
+- 文档：`docs/archive/2026-09/reports-superseded/ui-rendering-audit-2026-08-10.md` 追加「四、修复记录」
 
 ---
 
@@ -218,7 +218,7 @@
 
 核查通过项：菜单几何 `_on_menu_row_resize`（20%/80% 边界、窄窗口隐藏 workspace）、最近库菜单 aboutToShow 重建与 lambda 捕获、菜单图标全 icon_primary + 主题切换重着色、`QMenuBar::item:selected` 透明 accent 背景。
 
-**验证**：ruff 全绿；pytest 28 passed；审计子代理 6/6 通过无回归。报告：`docs/reports/menubar-review-2026-08-10.md`。
+**验证**：ruff 全绿；pytest 28 passed；审计子代理 6/6 通过无回归。报告：`docs/archive/2026-09/reports-superseded/menubar-review-2026-08-10.md`。
 
 ---
 
@@ -288,9 +288,9 @@
 
 | 文件 | 内容 |
 |------|------|
-| `docs/reports/ui-rendering-audit-2026-08-10.md` | 阶段 1/2：13 项审计 + 双子代理审计结论 + 修复记录 |
+| `docs/archive/2026-09/reports-superseded/ui-rendering-audit-2026-08-10.md` | 阶段 1/2：13 项审计 + 双子代理审计结论 + 修复记录 |
 | `docs/plans/icon-svg-migration-2026-08-10.md` | 阶段 3/4/6/7：SVG 化规划、黑底根因、主题色响应修复、语义色体系 |
-| `docs/reports/menubar-review-2026-08-10.md` | 阶段 8：菜单栏审查 6 项修复 + 审计附录 |
+| `docs/archive/2026-09/reports-superseded/menubar-review-2026-08-10.md` | 阶段 8：菜单栏审查 6 项修复 + 审计附录 |
 | `docs/plans/bug-hunting-2026-08-10.md` | 阶段 9/10：逐模块排 Bug 计划、P0 轮 1 结果、高危修复轮记录 |
 | `docs/reports/module-{lan-core,lan-routes,lan-tools,file-ops,maintenance,core-db,core-store,runtime}.md` | 8 份模块排 Bug 清单（177 项，含行号与修复建议） |
 | `scripts/migrate_legacy_icons.py` | 一次性幂等迁移（emoji → SVG 名），dry-run 默认，`--apply` 写回 |

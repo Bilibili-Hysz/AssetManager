@@ -1,7 +1,7 @@
 # 会话启动文档 — 中危轮收尾验证 + P0/中危全量修改审计（2026-08-11 交接）
 
 > **使用方式 A（推荐）**：把本文件**全部内容**作为新会话的第一条消息。
-> **使用方式 B**：新会话第一句话写：「先阅读 `docs/compose/reports/opencode-session-2026-08-11-startup.md` 和 `docs/compose/reports/opencode-session-2026-08-11-summary.md`，然后按启动文档的『下一步』执行。」
+> **使用方式 B**：新会话第一句话写：「先阅读 `docs/archive/2026-09/compose-reports/opencode-session-2026-08-11-startup.md` 和 `docs/archive/2026-09/compose-reports/opencode-session-2026-08-11-summary.md`，然后按启动文档的『下一步』执行。」
 >
 > 本文件是"快速启动包"，细节请查 `opencode-session-2026-08-11-summary.md`（完整汇总）。
 
@@ -85,11 +85,11 @@ P0 高危轮 + 中危轮六组修改已通过 6 组只读子代理专项审计�
 
 | 文件 | 内容 |
 |------|------|
-| `docs/compose/reports/opencode-session-2026-08-11-summary.md` | 本次会话完整汇总（本文件的细节版） |
-| `docs/compose/reports/opencode-session-2026-08-10-startup.md` / `-summary.md` | 会话 1 交接包（11 阶段、中危轮落盘细节） |
-| `docs/reports/ui-rendering-audit-2026-08-10.md` | 13 项 UI Bug 审计 + 修复记录 |
+| `docs/archive/2026-09/compose-reports/opencode-session-2026-08-11-summary.md` | 本次会话完整汇总（本文件的细节版） |
+| `docs/archive/2026-09/compose-reports/opencode-session-2026-08-10-startup.md` / `-summary.md` | 会话 1 交接包（11 阶段、中危轮落盘细节） |
+| `docs/archive/2026-09/reports-superseded/ui-rendering-audit-2026-08-10.md` | 13 项 UI Bug 审计 + 修复记录 |
 | `docs/plans/icon-svg-migration-2026-08-10.md` | SVG 化规划、黑底根因、主题色修复、语义色体系 |
-| `docs/reports/menubar-review-2026-08-10.md` | 菜单栏 6 项修复 + 审计附录 |
+| `docs/archive/2026-09/reports-superseded/menubar-review-2026-08-10.md` | 菜单栏 6 项修复 + 审计附录 |
 | `docs/plans/bug-hunting-2026-08-10.md` | 逐模块排 Bug 计划 + P0 轮结果 + 高危修复记录 |
 | `docs/reports/module-{lan-core,lan-routes,lan-tools,file-ops,maintenance,core-db,core-store,runtime}.md` | 8 份模块缺陷清单（177 项）—— P1/P2 轮直接工作输入 |
 
