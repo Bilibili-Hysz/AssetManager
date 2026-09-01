@@ -1,22 +1,20 @@
 # docs/reports 导航(README)
 
-> 状态:**LIVING(导航)** · updated: 2026-09-02 · 本目录两层定位:① 08-11 的 module-* 分模块审查底稿(P1 第一轮证据);② 08-29 起各会话产出报告的归流地。原 08-10~08-15 细扫描系列 12 份已于 2026-09-02 移入 `archive/2026-09/reports-superseded/`(结论被 08-29~09-02 评审取代)。报告正文内容零改写(2026-09-02 梳理轮仅追加状态头元数据)。全库功能分类导航见 [`docs/README.md`](../README.md),证据账本见 [`docs/compose/README.md`](../compose/README.md)。
+> 状态:**LIVING(导航)** · updated: 2026-09-02 · 本目录两层定位:① 分模块审查底稿(2026-08-10~11 P0/P1 轮,已蒸馏为 [`module-audit-distilled-2026-09-02.md`](module-audit-distilled-2026-09-02.md),原件归档至 `archive/2026-09/module-audits-superseded/`);② 08-29 起各会话产出报告的归流地。原 08-10~08-15 细扫描系列 12 份已于 2026-09-02 移入 `archive/2026-09/reports-superseded/`(结论被 08-29~09-02 评审取代)。报告正文内容零改写(2026-09-02 梳理轮仅追加状态头元数据)。全库功能分类导航见 [`docs/README.md`](../README.md),证据账本见 [`docs/compose/README.md`](../compose/README.md)。
 
-## 文件清单(28 顶层 + 1 子目录)
+## 文件清单(18 顶层 + 1 子目录)
 
-### module-* 系列(11 份,2026-08-11 分模块审查,P1 第一轮)
+### module-* 系列(已蒸馏为 1 份,2026-09-02 收敛轮)
 
-| 文件 | 模块域 |
+> 2026-08-10~11 的 11 份 P0/P1 轮行号级模块排 Bug 审计底稿,全部发现项已于 2026-08-12 P2 轮修复或由后续评审关闭。**蒸馏产物**:[`module-audit-distilled-2026-09-02.md`](module-audit-distilled-2026-09-02.md)(模块汇总 + 主题索引 + 跨模块高频主题)。**原件**(11 份,零改写):`archive/2026-09/module-audits-superseded/`。
+
+| 模块域 | 蒸馏后入口 |
 |---|---|
-| `module-assets-p1.md` | 资产/项目服务(19 项缺陷,如 M6a-9 重扫永不收敛) |
-| `module-commerce-p1.md` | 商城/订单/配额 P1 |
-| `module-core-db.md` | database/db_migrations/schema_defs |
-| `module-core-store.md` | settings/json_store/tag_library/project_data |
-| `module-file-ops.md` | FileOperation/Undo/Import |
-| `module-lan-core.md` | LAN 服务器核心(含 NUL/ADS 低危待办,Bug8/9 已由 08-12 批次关闭) |
-| `module-lan-routes.md` / `module-lan-tools.md` | LAN 路由层 / 工具(扫描/隧道/WS) |
-| `module-maintenance.md` | 完整性/维护服务 |
-| `module-repositories-p1.md` / `module-runtime.md` | 仓库层 P1 / Runtime 生命周期 |
+| 资产/项目 / 商城订单配额 / 仓库层 P1 | module-audit-distilled §模块汇总 |
+| database/db_migrations/schema_defs · settings/json_store/tag_library/project_data | module-audit-distilled §模块汇总 |
+| FileOperation/Undo/Import | module-audit-distilled §主题索引(file-ops) |
+| LAN 核心/路由/工具(扫描·隧道·WS) | module-audit-distilled §模块汇总 + §主题索引(lan-tools) |
+| 完整性/维护服务 · Runtime 生命周期 | module-audit-distilled §模块汇总 |
 
 ### 08-15 评审系列 与 08-10/08-11 杂项(12 份,已归档)
 

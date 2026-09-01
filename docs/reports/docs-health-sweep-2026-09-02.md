@@ -25,8 +25,8 @@
 | 文件 | 状态判定 |
 |---|---|
 | `adr/0001-architecture-governance.md`、`adr/0002-library-session.md` | LIVING（决策仍有效，与其他 3 份 ADR 格式对齐） |
-| `reports/module-lan-core.md`、`module-lan-routes.md`（08-10 P0 轮） | 历史底稿（行号已失效，发现项由后续批次关闭） |
-| `reports/module-assets-p1.md`、`module-repositories-p1.md`（08-11 P1 轮） | 历史底稿（同上） |
+| `reports/module-lan-core.md`、`module-lan-routes.md`（08-10 P0 轮） | 历史底稿（行号已失效，发现项由后续批次关闭）→ 2026-09-02 收敛轮已蒸馏为 `module-audit-distilled-2026-09-02.md`，原件归档 `archive/2026-09/module-audits-superseded/` |
+| `reports/module-assets-p1.md`、`module-repositories-p1.md`（08-11 P1 轮） | 历史底稿（同上）→ 同上 |
 | `reports/desktop-uiux-review-2026-08-29.md`、`webui-review-2026-08-29.md` | 现行（评审基线） |
 | `reports/t0-stabilization-summary-2026-08-30.md` | 已完结 |
 | `reports/task-package-research-2026-08-30.md`、`task-package-validity-check-2026-09-01.md` | 已完结（任务包配套纪要/检验快照） |
