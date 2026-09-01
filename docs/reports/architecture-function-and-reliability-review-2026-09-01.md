@@ -117,6 +117,6 @@ queue 的状态变更与 outbox 写入位于同一 SQLite 事务；outbox 以严
 - [当前架构](../architecture.md)
 - [当前迁移说明](../migrations.md) 与 [`CURRENT_SCHEMA_VERSION = 44`](../../AssetsManager/core/db_migrations.py)
 - [专家团深度分析](expert-panel-deep-analysis-2026-08-31.md)
-- [全局综合分析](global-synthesis-analysis-2026-08-31.md)
+- [全局综合分析](../archive/2026-09/analysis-superseded/global-synthesis-analysis-2026-08-31.md)(已蒸馏:[serpent-expert-analysis-distilled](serpent-expert-analysis-distilled-2026-09-02.md))
 - [架构可靠性长期任务](../plans/architecture-reliability-roadmap-2026-08-31.md)
 - [transition outbox schema](../../AssetsManager/core/schema_defs.py) 与 [dispatch 实现](../../AssetsManager/application/reconciliation_queue.py)

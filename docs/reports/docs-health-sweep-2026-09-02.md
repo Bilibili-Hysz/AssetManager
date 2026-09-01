@@ -30,10 +30,10 @@
 | `reports/desktop-uiux-review-2026-08-29.md`、`webui-review-2026-08-29.md` | 现行（评审基线） |
 | `reports/t0-stabilization-summary-2026-08-30.md` | 已完结 |
 | `reports/task-package-research-2026-08-30.md`、`task-package-validity-check-2026-09-01.md` | 已完结（任务包配套纪要/检验快照） |
-| `reports/serpent-reference-study-2026-08-30.md` | 现行(参考)——两条结论已被 serpent-vs 修正 |
-| `reports/serpent-vs-assetmanager-2026-08-30.md` | 现行（Serpent 对照权威版本） |
-| `reports/functional-analysis-and-serpent-comparison-2026-08-31.md`、`pm-capability-analysis-2026-08-31.md`、`project-analysis-2026-08-31.md` | 现行(参考) |
-| `reports/global-synthesis-analysis-2026-08-31.md` | 现行（08-31 分析系列 meta-analysis 汇总入口） |
+| `reports/serpent-reference-study-2026-08-30.md` | ~~现行(参考)~~ 已于第二轮精简(2026-09-02)归档，取代者:serpent-expert-analysis-distilled |
+| `reports/serpent-vs-assetmanager-2026-08-30.md` | ~~现行~~ 已归档，取代者:serpent-expert-analysis-distilled |
+| `reports/functional-analysis-and-serpent-comparison-2026-08-31.md`、`pm-capability-analysis-2026-08-31.md`、`project-analysis-2026-08-31.md` | ~~现行(参考)~~ 已归档，取代者:serpent-expert-analysis-distilled |
+| `reports/global-synthesis-analysis-2026-08-31.md` | ~~现行~~ 已归档，取代者:serpent-expert-analysis-distilled |
 | `compose/distilled/` 9 份（2026-06-17 ~ 2026-08-04） | 历史蒸馏（已完结会话摘要，原件在 archive/2026-08/compose-raw/） |
 
 > 初扫因命令输出截断只识别出 16 份缺口；以修正后的全量复扫为准（26 份，另 2 份 WIP 避让）。

@@ -25,7 +25,7 @@
 | `docs/plans/p0-security-remediation-2026-08-31.md` | P0 五项代码级改法（before/after/波及面/验收）——批次 A 的施工图 |
 | `docs/reports/architecture-function-and-reliability-review-2026-09-01.md` | 9-01 复核：迁移 v44/outbox/H1 协议——批次 B 的依据 |
 | `docs/plans/architecture-reliability-roadmap-2026-08-31.md` | 长期执行账本（H1/H2/H3），本任务包与其衔接，不另立路线 |
-| `docs/reports/global-synthesis-analysis-2026-08-31.md` | 30 项唯一风险 U-1..U-30 + 五大根因 + P0 批判（pwd_version 补强源自此处） |
+| `docs/archive/2026-09/analysis-superseded/global-synthesis-analysis-2026-08-31.md`(已蒸馏:docs/reports/serpent-expert-analysis-distilled-2026-09-02.md) | 30 项唯一风险 U-1..U-30 + 五大根因 + P0 批判（pwd_version 补强源自此处） |
 | `docs/archive/2026-09/plans-done/task-package-2026-08-30.md` | v1 任务包：环境手册全文（§2 踩坑记录）与 T0-T10 任务（多数已执行或执行中） |
 | `docs/reports/expert-panel-deep-analysis-2026-08-31.md` | 五专家团深度报告（S1-S7 编号安全发现、P1-Pn 性能发现） |
 

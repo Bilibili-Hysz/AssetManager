@@ -1,7 +1,7 @@
 # AssetManager 安全 P0 改造方案（2026-08-31）
 
 > 状态：**提案**（未实施）。来源：第三轮五专家团深度评审（`docs/reports/expert-panel-deep-analysis-2026-08-31.md`）——P0 五项为公网暴露/发布红线，均属"改动小、收益立竿见影"类。
-> 配套文档：`docs/reports/project-analysis-2026-08-31.md`（第一轮总体评审）、`docs/plans/architecture-reliability-roadmap-2026-08-31.md`（H0-H3 可靠性长期路线，本方案中 S5 与其 H2"受保护分块流式响应"重叠，本方案建议将安全关键子集**提前**）。
+> 配套文档：`docs/archive/2026-09/analysis-superseded/project-analysis-2026-08-31.md`(已蒸馏:docs/reports/serpent-expert-analysis-distilled-2026-09-02.md)（第一轮总体评审）、`docs/plans/architecture-reliability-roadmap-2026-08-31.md`（H0-H3 可靠性长期路线，本方案中 S5 与其 H2"受保护分块流式响应"重叠，本方案建议将安全关键子集**提前**）。
 > 约定：本文只描述改法与验收判据，**不直接改源码**；所有行号以当前工作树为准。
 
 ---

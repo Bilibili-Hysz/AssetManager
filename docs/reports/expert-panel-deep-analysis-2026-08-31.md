@@ -2,7 +2,7 @@
 
 > 生成日期：2026-08-31
 > 评审形式：五位专家并行源码级走查（架构 / 工程质量 / 安全威胁建模 / UX 双端一致性 / 性能与数据），主评审对全部 load-bearing 结论做源码抽查交叉验证。
-> 关联文档：`docs/reports/project-analysis-2026-08-31.md`（第一轮总体评审）、`docs/reports/functional-analysis-and-serpent-comparison-2026-08-31.md`（功能对照 Serpent）。
+> 关联文档：`docs/archive/2026-09/analysis-superseded/project-analysis-2026-08-31.md`（第一轮总体评审）、`docs/archive/2026-09/analysis-superseded/functional-analysis-and-serpent-comparison-2026-08-31.md`（功能对照 Serpent）。
 
 ---
 

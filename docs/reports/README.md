@@ -26,13 +26,13 @@
 
 `desktop-uiux-review-2026-08-29.md`(桌面端 M1–M7/L 项评审)、`webui-review-2026-08-29.md`(WebUI 评审)——对应方案见 `docs/plans/desktop-uiux-optimization-plan-2026-08-29.md`、`docs/plans/next-phase-design-2026-08-29.md`。
 
-### 08-30 Serpent 对比与任务包研究系列(4 份)
+### 08-30 Serpent 对比与任务包研究系列(4 份,其中 2 份已蒸馏归档)
 
-`serpent-reference-study-2026-08-30.md`(参考项目研究)、`serpent-vs-assetmanager-2026-08-30.md`(能力对比)、`task-package-research-2026-08-30.md`(任务包调研)、`t0-stabilization-summary-2026-08-30.md`(T0 稳定化总结,自 artifacts 归流)。
+`serpent-reference-study-2026-08-30.md`、`serpent-vs-assetmanager-2026-08-30.md` —— 2026-09-02 蒸馏合并至 [`serpent-expert-analysis-distilled-2026-09-02.md`](serpent-expert-analysis-distilled-2026-09-02.md),原件移入 [`archive/2026-09/analysis-superseded/`](../archive/2026-09/analysis-superseded/);`task-package-research-2026-08-30.md`(任务包调研,已完结)、`t0-stabilization-summary-2026-08-30.md`(T0 稳定化总结,自 artifacts 归流)仍在活跃区。
 
-### 08-31 综合分析与专家评审系列(5 份)
+### 08-31 综合分析与专家评审系列(5 份,其中 4 份已蒸馏归档,1 份活跃)
 
-`expert-panel-deep-analysis-2026-08-31.md`(五专家团深度评审)、`functional-analysis-and-serpent-comparison-2026-08-31.md`、`global-synthesis-analysis-2026-08-31.md`、`pm-capability-analysis-2026-08-31.md`、`project-analysis-2026-08-31.md`。
+`expert-panel-deep-analysis-2026-08-31.md`(五专家团深度评审,**活跃区,并行会话编辑中**,其第 5 行关联链接已随归档重写);`functional-analysis-and-serpent-comparison-2026-08-31.md`、`global-synthesis-analysis-2026-08-31.md`、`pm-capability-analysis-2026-08-31.md`、`project-analysis-2026-08-31.md` —— 2026-09-02 蒸馏合并至 [`serpent-expert-analysis-distilled-2026-09-02.md`](serpent-expert-analysis-distilled-2026-09-02.md),原件移入 [`archive/2026-09/analysis-superseded/`](../archive/2026-09/analysis-superseded/)。
 
 ### 09-01 审计与修复系列(4 份)
 

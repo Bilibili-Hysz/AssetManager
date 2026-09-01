@@ -3,7 +3,7 @@
 
 
 > 综合：7 位专家调研（用户演进/市场格局/规模分发 + 前期 Serpent 四域对比）+ 本会话全部一手实施证据。
-> 三份战略输入：①用户与场景演进（北极星/三层旅程/Top6 方向/12 不做）②市场与竞品格局（生态位真空实证/趋势 Top5）③规模化与分发工程（G1-G10 差距/10 万张压力分级/最小路径）。前期四域对比：`docs/reports/pm-capability-analysis-2026-08-31.md`、`docs/reports/serpent-vs-assetmanager-2026-08-30.md`。
+> 三份战略输入：①用户与场景演进（北极星/三层旅程/Top6 方向/12 不做）②市场与竞品格局（生态位真空实证/趋势 Top5）③规模化与分发工程（G1-G10 差距/10 万张压力分级/最小路径）。前期四域对比：`docs/archive/2026-09/analysis-superseded/pm-capability-analysis-2026-08-31.md`、`docs/archive/2026-09/analysis-superseded/serpent-vs-assetmanager-2026-08-30.md`(均已蒸馏:docs/reports/serpent-expert-analysis-distilled-2026-09-02.md)。
 
 ---
 

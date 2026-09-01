@@ -217,5 +217,5 @@ git show <剥离 commit> -- webui/src/App.tsx | git apply -R
 ## 相关文档
 
 - `docs/plans/development-roadmap-2026-08-30.md` —— 战略定位与路线图
-- `docs/reports/serpent-reference-study-2026-08-30.md` —— 竞品零电商的外部佐证
+- `docs/archive/2026-09/analysis-superseded/serpent-reference-study-2026-08-30.md`(已蒸馏:docs/reports/serpent-expert-analysis-distilled-2026-09-02.md) —— 竞品零电商的外部佐证
 - `docs/adr/0004-order-state-machine-placement.md` —— 订单状态机决策（保留）

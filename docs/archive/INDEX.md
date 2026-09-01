@@ -205,7 +205,7 @@
 | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.test.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.test.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
 | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
 
-## 2026-09(docs 精简轮,113 份)
+## 2026-09(docs 精简轮,119 份;第二轮分析系列蒸馏并入)
 
 > 2026-09-02 结构归档:活跃区从 185 份降至 70 份。compose/reports 整体(98 份)、reports/ 被取代细扫描(12 份)、plans/ 完结方案(3 份)。内容零改写;指向它们的活跃链接已同步重写。
 
@@ -342,3 +342,16 @@
 | docs/plans/build-closure-remediation-plan-2026-09-02.md | 2026-09/plans-done/build-closure-remediation-plan-2026-09-02.md | 已执行完毕(A:build.py webui_build;B:setup_cython 清理) | build.py 已落地(ff1e0de/821efbb) |
 | docs/plans/documentation-maintenance-plan-2026-08-27.md | 2026-09/plans-done/documentation-maintenance-plan-2026-08-27.md | 已执行完毕(三态机制已门禁化) | scripts/check_documents.py |
 | docs/plans/task-package-2026-08-30.md | 2026-09/plans-done/task-package-2026-08-30.md | 已被 v2 取代 | docs/plans/task-package-2026-09-01.md |
+
+### analysis-superseded(6 份)
+
+归档原因:08-30~31 分析系列(6 份;expert-panel 因并行会话占用未纳入)蒸馏合并为 1 份摘要,原件零改写归档 · 取代者:`docs/reports/serpent-expert-analysis-distilled-2026-09-02.md`
+
+| 原路径 | 新路径 | 归档原因 | 取代者 |
+|---|---|---|---|
+| docs/reports/functional-analysis-and-serpent-comparison-2026-08-31.md | 2026-09/analysis-superseded/functional-analysis-and-serpent-comparison-2026-08-31.md | 功能清单+Serpent对照,缺失项多数已落地 | serpent-expert-analysis-distilled §三 |
+| docs/reports/global-synthesis-analysis-2026-08-31.md | 2026-09/analysis-superseded/global-synthesis-analysis-2026-08-31.md | meta-analysis汇总,根因聚类+批判单份评审 | serpent-expert-analysis-distilled §四 |
+| docs/reports/pm-capability-analysis-2026-08-31.md | 2026-09/analysis-superseded/pm-capability-analysis-2026-08-31.md | PM能力差距决策依据 | serpent-expert-analysis-distilled §三 |
+| docs/reports/project-analysis-2026-08-31.md | 2026-09/analysis-superseded/project-analysis-2026-08-31.md | 四视角联合评审(完整评级表见原件) | serpent-expert-analysis-distilled §四 R登记 |
+| docs/reports/serpent-reference-study-2026-08-30.md | 2026-09/analysis-superseded/serpent-reference-study-2026-08-30.md | 事实层调研,部分结论被 serpent-vs 修正 | serpent-expert-analysis-distilled §一/§二 |
+| docs/reports/serpent-vs-assetmanager-2026-08-30.md | 2026-09/analysis-superseded/serpent-vs-assetmanager-2026-08-30.md | Serpent 对照权威版,修正 reference-study 两条认知 | serpent-expert-analysis-distilled §一修正/§二 |
