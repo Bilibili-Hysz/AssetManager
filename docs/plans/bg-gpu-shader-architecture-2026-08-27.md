@@ -5,6 +5,8 @@
 > **范围**:`docs/full-review/**` 不涉及。本文是 LIVING 与证据文化下的实施蓝图,每步落地必须伴随
 > commit + 命令 + 平台 + 版本 + digest 的 dated 证据。
 
+> **范围收窄（2026-08-28）**：经 `bg-simplify-image-only-2026-08-28.md` 决策,背景**源**收敛为单张静态图片,移除视频背景与"着色器作为背景类型";滤镜**特效层**保留并着色器化(`none/blur/mosaic/kuwahara/shader`)。即本文 §0 目标第 2 条"视频背景"与第 3 条"Shadertoy 程序化**背景**"已收窄为:视频背景**不做**,Shadertoy 片段仅作图片滤镜特效层(`iChannel0=图片`)。背景架构仍以本文为准;`bg-simplify-image-only-2026-08-28.md` 已于 2026-09-02 收敛轮并入本文并归档(`archive/2026-09/plans-done/`)。
+
 ## 0. 目标(来自产品诉求)
 
 1. 滤镜处理沉入 **OpenGL/GPU 着色器**(blur / mosaic / Kuwahara 均有 GLSL 版,且可扩展)。

@@ -205,7 +205,7 @@
 | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.test.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.test.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
 | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
 
-## 2026-09(docs 精简轮,133 份;第二轮分析系列蒸馏并入;第三轮 module-audits 蒸馏并入 11 份;收敛轮已完结报告归档 3 份)
+## 2026-09(docs 精简轮,134 份;第二轮分析系列蒸馏并入;第三轮 module-audits 蒸馏并入 11 份;收敛轮已完结报告归档 3 份;收敛轮 plans 范围决策并入 1 份)
 
 > 2026-09-02 结构归档:活跃区从 185 份降至 70 份。compose/reports 整体(98 份)、reports/ 被取代细扫描(12 份)、plans/ 完结方案(3 份)。内容零改写;指向它们的活跃链接已同步重写。
 
@@ -345,6 +345,7 @@
 | docs/plans/build-closure-remediation-plan-2026-09-02.md | 2026-09/plans-done/build-closure-remediation-plan-2026-09-02.md | 已执行完毕(A:build.py webui_build;B:setup_cython 清理) | build.py 已落地(ff1e0de/821efbb) |
 | docs/plans/documentation-maintenance-plan-2026-08-27.md | 2026-09/plans-done/documentation-maintenance-plan-2026-08-27.md | 已执行完毕(三态机制已门禁化) | scripts/check_documents.py |
 | docs/plans/task-package-2026-08-30.md | 2026-09/plans-done/task-package-2026-08-30.md | 已被 v2 取代 | docs/plans/task-package-2026-09-01.md |
+| docs/plans/bg-simplify-image-only-2026-08-28.md | 2026-09/plans-done/bg-simplify-image-only-2026-08-28.md | 范围收窄决策(仅图片背景+着色器化滤镜),已并入父文档 bg-gpu-shader-architecture-2026-08-27 头部范围注记 | docs/plans/bg-gpu-shader-architecture-2026-08-27.md |
 
 ### analysis-superseded(6 份)
 

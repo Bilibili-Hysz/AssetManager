@@ -45,7 +45,7 @@
 
 ### 4. 方案与计划（plans）
 
-[`plans/`](plans/) —— 改造方案与任务包，12 份现行：`architecture-reliability-roadmap-2026-08-31.md`（H1 实施中）、`task-package-2026-09-01.md`（交托手册 v2）、`p0-security-remediation-2026-08-31.md`（提案，未实施）、`port-architecture-2026-08-30.md`（分期实施）、`evolution-strategy-2026-08-31.md`、`development-roadmap-2026-08-30.md`、`ux-improvement-plan-2026-08-30.md`（未实施）、`desktop-uiux-optimization-plan-2026-08-29.md`、`next-phase-design-2026-08-29.md`、`bg-gpu-shader-architecture-2026-08-27.md`（M1 已落地）、`bg-simplify-image-only-2026-08-28.md`、`workspace-cleanup-plan-2026-08-31.md`（阶段 0 完毕）。已执行完毕/被取代的 3 份（`build-closure-remediation-plan-2026-09-02`、`documentation-maintenance-plan-2026-08-27`、`task-package-2026-08-30`）于 2026-09-02 移入 [`archive/2026-09/plans-done/`](archive/2026-09/plans-done/)。
+[`plans/`](plans/) —— 改造方案与任务包，11 份现行：`architecture-reliability-roadmap-2026-08-31.md`（H1 实施中）、`task-package-2026-09-01.md`（交托手册 v2）、`p0-security-remediation-2026-08-31.md`（提案，未实施）、`port-architecture-2026-08-30.md`（分期实施）、`evolution-strategy-2026-08-31.md`、`development-roadmap-2026-08-30.md`、`ux-improvement-plan-2026-08-30.md`（未实施）、`desktop-uiux-optimization-plan-2026-08-29.md`、`next-phase-design-2026-08-29.md`、`bg-gpu-shader-architecture-2026-08-27.md`（M1 已落地；范围收窄注记见其头部，原 `bg-simplify-image-only-2026-08-28.md` 已并入本文）、`workspace-cleanup-plan-2026-08-31.md`（阶段 0 完毕）。已执行完毕/被取代的 4 份（`build-closure-remediation-plan-2026-09-02`、`documentation-maintenance-plan-2026-08-27`、`task-package-2026-08-30`、`bg-simplify-image-only-2026-08-28`）于 2026-09-02 移入 [`archive/2026-09/plans-done/`](archive/2026-09/plans-done/)。
 
 ### 5. 证据账本（compose）
 
