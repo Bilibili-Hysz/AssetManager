@@ -135,7 +135,7 @@ $PY scripts/gen_web_tokens.py --check
 #### A3 · 修复 skip 限流 DoS（S2）
 
 - **证据**：`lan/api.py:134-136` 定义 `_SKIP/_PUBLIC_SKIP/_OPTIONAL_SKIP`，`/api/image` 等 6+ 条路由用 skip（`:225` 系），`/api/stats`（`:291`）也是；`lan/security.py:186` skip 完全跳过限流；但认证中间件对随机 Bearer 仍跑撤销表查询 + 50k 轮 PBKDF2（`lan/server.py:1131-1134`）。
-- **改法（2026-09-01 12:10 修正，依据 `docs/reports/task-package-validity-check-2026-09-01.md` §3.1）**：**不需要新增档位**——三档已具备：`auth_strict`（`api.py:137-139`）、`browse`（`:163-164`）、`skip`（`:134-136`），语义见 `security.py:181-182`，处理分支在 `:282` 与 `:297-300`。
+- **改法（2026-09-01 12:10 修正，依据 `../archive/2026-09/reports-superseded/task-package-validity-check-2026-09-01.md` §3.1）**：**不需要新增档位**——三档已具备：`auth_strict`（`api.py:137-139`）、`browse`（`:163-164`）、`skip`（`:134-136`），语义见 `security.py:181-182`，处理分支在 `:282` 与 `:297-300`。
   - 方案 A（本轮必做）：把 7 条 skip 路由改挂既有 `_BROWSE` 系档位——`/api/image`(`:225`)、`/api/thumbnails/{path}`(`:235`)、`/api/thumbnails/batch`(`:236`)、`/api/revision`(`:276`)、`/api/stats`(`:291`)、`/ws`(`:307`)、`/assets`(`:377`)。
   - **⚠️ 隐藏前置依赖（原方案未识别）**：`tests/lan/test_route_policy*.py:26` 断言注释 "only media/status polling stays skip-open"、`:81` 返回 `"skip"` —— **测试契约已把 media 保持 skip 固化**，必须与代码同改，否则 `check_route_capabilities` 门禁红。
   - 方案 B（load-bearing，仍有效）：PBKDF2 前置"格式预检 + 失败计数桶"，随机 token 根本不进哈希（认证流程 `server.py:1125-1140`，预检位尚未加）。**新路由必须显式声明限流档位**（含未提交的 `/mcp`，见 D2）。

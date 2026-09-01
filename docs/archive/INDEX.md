@@ -205,7 +205,7 @@
 | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.test.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.test.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
 | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
 
-## 2026-09(docs 精简轮,130 份;第二轮分析系列蒸馏并入;第三轮 module-audits 蒸馏并入,11 份)
+## 2026-09(docs 精简轮,133 份;第二轮分析系列蒸馏并入;第三轮 module-audits 蒸馏并入 11 份;收敛轮已完结报告归档 3 份)
 
 > 2026-09-02 结构归档:活跃区从 185 份降至 70 份。compose/reports 整体(98 份)、reports/ 被取代细扫描(12 份)、plans/ 完结方案(3 份)。内容零改写;指向它们的活跃链接已同步重写。
 
@@ -332,6 +332,9 @@
 | docs/reports/ui-optimization-priority-2026-08-15.md | 2026-09/reports-superseded/ui-optimization-priority-2026-08-15.md | 08-10~08-15 行号级细扫描,结论已被后续评审取代 | docs/reports/desktop-uiux-review-2026-08-29.md 等 08-29~09-02 系列 |
 | docs/reports/ui-rendering-audit-2026-08-10.md | 2026-09/reports-superseded/ui-rendering-audit-2026-08-10.md | 08-10~08-15 行号级细扫描,结论已被后续评审取代 | docs/reports/desktop-uiux-review-2026-08-29.md 等 08-29~09-02 系列 |
 | docs/reports/visual-drawing-audit-2026-08-15.md | 2026-09/reports-superseded/visual-drawing-audit-2026-08-15.md | 08-10~08-15 行号级细扫描,结论已被后续评审取代 | docs/reports/desktop-uiux-review-2026-08-29.md 等 08-29~09-02 系列 |
+| docs/reports/t0-stabilization-summary-2026-08-30.md | 2026-09/reports-superseded/t0-stabilization-summary-2026-08-30.md | T0 止血系列实施总结,已完结 | docs/plans/task-package-2026-09-01.md(后续任务包) |
+| docs/reports/task-package-research-2026-08-30.md | 2026-09/reports-superseded/task-package-research-2026-08-30.md | 任务包实施调研纪要,v1 已归档,已完结 | docs/plans/task-package-2026-09-01.md(v2 交托手册) |
+| docs/reports/task-package-validity-check-2026-09-01.md | 2026-09/reports-superseded/task-package-validity-check-2026-09-01.md | 任务包时效性检验快照,已完结 | docs/plans/task-package-2026-09-01.md( §3.1 引用) |
 
 ### plans-done
 

@@ -2,7 +2,7 @@
 
 > 状态:**LIVING(导航)** · updated: 2026-09-02 · 本目录两层定位:① 分模块审查底稿(2026-08-10~11 P0/P1 轮,已蒸馏为 [`module-audit-distilled-2026-09-02.md`](module-audit-distilled-2026-09-02.md),原件归档至 `archive/2026-09/module-audits-superseded/`);② 08-29 起各会话产出报告的归流地。原 08-10~08-15 细扫描系列 12 份已于 2026-09-02 移入 `archive/2026-09/reports-superseded/`(结论被 08-29~09-02 评审取代)。报告正文内容零改写(2026-09-02 梳理轮仅追加状态头元数据)。全库功能分类导航见 [`docs/README.md`](../README.md),证据账本见 [`docs/compose/README.md`](../compose/README.md)。
 
-## 文件清单(18 顶层 + 1 子目录)
+## 文件清单(15 顶层 + 1 子目录)
 
 ### module-* 系列(已蒸馏为 1 份,2026-09-02 收敛轮)
 
@@ -26,7 +26,7 @@
 
 ### 08-30 Serpent 对比与任务包研究系列(4 份,其中 2 份已蒸馏归档)
 
-`serpent-reference-study-2026-08-30.md`、`serpent-vs-assetmanager-2026-08-30.md` —— 2026-09-02 蒸馏合并至 [`serpent-expert-analysis-distilled-2026-09-02.md`](serpent-expert-analysis-distilled-2026-09-02.md),原件移入 [`archive/2026-09/analysis-superseded/`](../archive/2026-09/analysis-superseded/);`task-package-research-2026-08-30.md`(任务包调研,已完结)、`t0-stabilization-summary-2026-08-30.md`(T0 稳定化总结,自 artifacts 归流)仍在活跃区。
+`serpent-reference-study-2026-08-30.md`、`serpent-vs-assetmanager-2026-08-30.md` —— 2026-09-02 蒸馏合并至 [`serpent-expert-analysis-distilled-2026-09-02.md`](serpent-expert-analysis-distilled-2026-09-02.md),原件移入 [`archive/2026-09/analysis-superseded/`](../archive/2026-09/analysis-superseded/);`task-package-research-2026-08-30.md`(任务包调研,已完结)、`t0-stabilization-summary-2026-08-30.md`(T0 稳定化总结,自 artifacts 归流)—— 已于 2026-09-02 收敛轮归档至 [`archive/2026-09/reports-superseded/`](../archive/2026-09/reports-superseded/)。
 
 ### 08-31 综合分析与专家评审系列(5 份,其中 4 份已蒸馏归档,1 份活跃)
 
@@ -34,7 +34,7 @@
 
 ### 09-01 审计与修复系列(4 份)
 
-`architecture-function-and-reliability-review-2026-09-01.md`(当前架构权威复核,overview 头部指向本文)、`re-audit-2026-09-01.md`、`cleanup-and-git-repair-2026-09-01.md`(五轮工程垃圾清理与 git 对象库修复记录)、`task-package-validity-check-2026-09-01.md`。
+`architecture-function-and-reliability-review-2026-09-01.md`(当前架构权威复核,overview 头部指向本文)、`re-audit-2026-09-01.md`、`cleanup-and-git-repair-2026-09-01.md`(五轮工程垃圾清理与 git 对象库修复记录)、`task-package-validity-check-2026-09-01.md`(任务包时效性检验快照,已完结,2026-09-02 收敛轮归档至 [`archive/2026-09/reports-superseded/`](../archive/2026-09/reports-superseded/))。
 
 ### 09-02 完整盘点、交叉验证与文档梳理(2 份)
 

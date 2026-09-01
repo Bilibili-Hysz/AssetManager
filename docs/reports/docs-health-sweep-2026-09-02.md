@@ -28,8 +28,8 @@
 | `reports/module-lan-core.md`、`module-lan-routes.md`（08-10 P0 轮） | 历史底稿（行号已失效，发现项由后续批次关闭）→ 2026-09-02 收敛轮已蒸馏为 `module-audit-distilled-2026-09-02.md`，原件归档 `archive/2026-09/module-audits-superseded/` |
 | `reports/module-assets-p1.md`、`module-repositories-p1.md`（08-11 P1 轮） | 历史底稿（同上）→ 同上 |
 | `reports/desktop-uiux-review-2026-08-29.md`、`webui-review-2026-08-29.md` | 现行（评审基线） |
-| `reports/t0-stabilization-summary-2026-08-30.md` | 已完结 |
-| `reports/task-package-research-2026-08-30.md`、`task-package-validity-check-2026-09-01.md` | 已完结（任务包配套纪要/检验快照） |
+| `reports/t0-stabilization-summary-2026-08-30.md` | 已完结 → 2026-09-02 收敛轮归档 `archive/2026-09/reports-superseded/` |
+| `reports/task-package-research-2026-08-30.md`、`task-package-validity-check-2026-09-01.md` | 已完结（任务包配套纪要/检验快照）→ 同上归档 |
 | `reports/serpent-reference-study-2026-08-30.md` | ~~现行(参考)~~ 已于第二轮精简(2026-09-02)归档，取代者:serpent-expert-analysis-distilled |
 | `reports/serpent-vs-assetmanager-2026-08-30.md` | ~~现行~~ 已归档，取代者:serpent-expert-analysis-distilled |
 | `reports/functional-analysis-and-serpent-comparison-2026-08-31.md`、`pm-capability-analysis-2026-08-31.md`、`project-analysis-2026-08-31.md` | ~~现行(参考)~~ 已归档，取代者:serpent-expert-analysis-distilled |
