@@ -1,5 +1,5 @@
 # AssetManager ↔ Serpent 全维度差异对照（2026-08-30）
-> 状态:**现行** · Serpent 对照权威版本,修正了 reference-study 的两条认知 · 状态登记:2026-09-02(文档梳理轮补登)
+> 状态:**已归档(被蒸馏取代)** · 取代者:[serpent-expert-analysis-distilled-2026-09-02.md](../../reports/serpent-expert-analysis-distilled-2026-09-02.md) · 归档:2026-09-02(第二轮精简)
 
 
 > 方法：Serpent 侧为只读探索代理的全维度事实清点（八板块、全部带 `_REF_Serpent` 内文件证据）；AssetManager 侧基于本会话多轮评审/实施的一手认知（file:line 见 docs/reports/ 下各评审与调研文档）。本文只做对照与判断，事实细节以两边证据为准。

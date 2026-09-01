@@ -1,5 +1,5 @@
 # PM 视角能力差距分析：从 Serpent 学什么（2026-08-31）
-> 状态:**现行(参考)** · PM 视角能力差距决策依据 · 状态登记:2026-09-02(文档梳理轮补登)
+> 状态:**已归档(被蒸馏取代)** · 取代者:[serpent-expert-analysis-distilled-2026-09-02.md](../../reports/serpent-expert-analysis-distilled-2026-09-02.md) · 归档:2026-09-02(第二轮精简)
 
 
 > 依据：四位分域专家报告（架构运行时/数据检索/自动化生态/交付质量，全文见会话代理输出 `C:\Users\86177\.zcode\cli\agents\sess_*\agent_*\output.txt`），对照前期文档 `docs/reports/serpent-vs-assetmanager-2026-08-30.md`。立场：项目经理的资源分配决策，不是功能 wishlist。

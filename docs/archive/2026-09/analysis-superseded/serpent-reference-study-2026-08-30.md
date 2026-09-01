@@ -1,5 +1,5 @@
 # Serpent 参考项目研究（同类竞品实现方案拆解）
-> 状态:**现行(参考)** · 注意:两条结论(以图搜图/AI 对话)已被 serpent-vs-assetmanager-2026-08-30.md 修正 · 状态登记:2026-09-02(文档梳理轮补登)
+> 状态:**已归档(被蒸馏取代)** · 取代者:[serpent-expert-analysis-distilled-2026-09-02.md](../../reports/serpent-expert-analysis-distilled-2026-09-02.md) · 归档:2026-09-02(第二轮精简)
 
 
 > 研究日期：2026-08-30

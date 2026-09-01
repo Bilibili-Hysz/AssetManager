@@ -1,5 +1,5 @@
 # AssetManager 功能维度分析报告 · 与 Serpent 对照
-> 状态:**现行(参考)** · 功能清单与 Serpent 对照 · 状态登记:2026-09-02(文档梳理轮补登)
+> 状态:**已归档(被蒸馏取代)** · 取代者:[serpent-expert-analysis-distilled-2026-09-02.md](../../reports/serpent-expert-analysis-distilled-2026-09-02.md) · 归档:2026-09-02(第二轮精简)
 
 
 > **分析维度**：功能清单 / 实现方式 / 特性 + 参考项目对照
