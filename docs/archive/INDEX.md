@@ -1,6 +1,6 @@
 # 归档总账(INDEX)
 
-> 本目录存放已被取代、已执行完毕或已去重的文档原件,保证据可追溯。**日常查阅请走 README / docs/overview-2026-08-27.md;证据查询走 docs/full-review 与 docs/compose/reports。**
+> 本目录存放已被取代、已执行完毕或已去重的文档原件,保证据可追溯。**日常查阅请走 README / docs/overview-2026-08-27.md;证据查询走 docs/full-review 与 docs/archive/2026-09/compose-reports/(原 compose/reports)。**
 > 维护规则:任何移入本目录的文件必须在此登记一行;任何从本目录取回的文件必须删除登记行。登记日期:2026-08-27。
 
 ## 2026-08/root-loose(原 docs/ 根散落文件,15 份)
@@ -204,3 +204,141 @@
 | 2026-08/recovered-grid-zoom-interpolation/webui/src/pages/LoginPage.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/pages/LoginPage.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
 | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.test.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.test.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
 | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
+
+## 2026-09(docs 精简轮,113 份)
+
+> 2026-09-02 结构归档:活跃区从 185 份降至 70 份。compose/reports 整体(98 份)、reports/ 被取代细扫描(12 份)、plans/ 完结方案(3 份)。内容零改写;指向它们的活跃链接已同步重写。
+
+### compose-reports
+
+归档原因:compose/reports 证据账本原件整体归档(2026-09-02 精简轮) · 取代者:compose/distilled/ 蒸馏层为日常入口;本表逐份检索
+
+| 原路径 | 新路径 | 归档原因 | 取代者 |
+|---|---|---|---|
+| docs/compose/reports/2026-07-21-gate-home-react-migration.md | 2026-09/compose-reports/2026-07-21-gate-home-react-migration.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/2026-07-21-stability-baseline.md | 2026-09/compose-reports/2026-07-21-stability-baseline.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/a3-service-assembly-2026-08-02.md | 2026-09/compose-reports/a3-service-assembly-2026-08-02.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/b1-runtime-sharing-2026-08-03.md | 2026-09/compose-reports/b1-runtime-sharing-2026-08-03.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/batch-a-delivery-safety.md | 2026-09/compose-reports/batch-a-delivery-safety.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/batch-b-file-operation-consistency.md | 2026-09/compose-reports/batch-b-file-operation-consistency.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/batch-c-lan-webui-reliability.md | 2026-09/compose-reports/batch-c-lan-webui-reliability.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/batch-d-scoped-library-services.md | 2026-09/compose-reports/batch-d-scoped-library-services.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/desktop-lan-webui-architecture-migration.md | 2026-09/compose-reports/desktop-lan-webui-architecture-migration.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/desktop-lan-webui-architecture-recalibration.md | 2026-09/compose-reports/desktop-lan-webui-architecture-recalibration.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/desktop-lan-webui-architecture-task-a.md | 2026-09/compose-reports/desktop-lan-webui-architecture-task-a.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/desktop-lan-webui-architecture-task-b.md | 2026-09/compose-reports/desktop-lan-webui-architecture-task-b.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/desktop-lan-webui-architecture-task-c.md | 2026-09/compose-reports/desktop-lan-webui-architecture-task-c.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/desktop-lan-webui-architecture-task-d.md | 2026-09/compose-reports/desktop-lan-webui-architecture-task-d.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/desktop-ui-visual-closure-2026-08-01.md | 2026-09/compose-reports/desktop-ui-visual-closure-2026-08-01.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g10-project-session-binding-2026-08-06.md | 2026-09/compose-reports/g10-project-session-binding-2026-08-06.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g11-core-store-session-binding-2026-08-06.md | 2026-09/compose-reports/g11-core-store-session-binding-2026-08-06.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g12-auth-share-session-contract-2026-08-06.md | 2026-09/compose-reports/g12-auth-share-session-contract-2026-08-06.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g13-auth-share-repository-session-binding-2026-08-06.md | 2026-09/compose-reports/g13-auth-share-repository-session-binding-2026-08-06.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g14-auth-share-strict-repository-hardening-2026-08-06.md | 2026-09/compose-reports/g14-auth-share-strict-repository-hardening-2026-08-06.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g15-metadata-repository-session-binding-2026-08-06.md | 2026-09/compose-reports/g15-metadata-repository-session-binding-2026-08-06.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g16-tag-repository-session-binding-2026-08-06.md | 2026-09/compose-reports/g16-tag-repository-session-binding-2026-08-06.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-1-asset-index-generation-cas-2026-08-06.md | 2026-09/compose-reports/g17-1-asset-index-generation-cas-2026-08-06.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-10-runtime-cutover-2026-08-07.md | 2026-09/compose-reports/g17-10-runtime-cutover-2026-08-07.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-11-queue-generation-cas-2026-08-07.md | 2026-09/compose-reports/g17-11-queue-generation-cas-2026-08-07.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-12-per-task-claim-2026-08-07.md | 2026-09/compose-reports/g17-12-per-task-claim-2026-08-07.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-13-per-task-completion-cas-2026-08-07.md | 2026-09/compose-reports/g17-13-per-task-completion-cas-2026-08-07.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-14-enqueue-upsert-2026-08-07.md | 2026-09/compose-reports/g17-14-enqueue-upsert-2026-08-07.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-15-recovery-busy-retry-2026-08-07.md | 2026-09/compose-reports/g17-15-recovery-busy-retry-2026-08-07.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-16-cross-process-wakeup-conflict-2026-08-07.md | 2026-09/compose-reports/g17-16-cross-process-wakeup-conflict-2026-08-07.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-17-a-b-schema-token-roundtrip-2026-08-07.md | 2026-09/compose-reports/g17-17-a-b-schema-token-roundtrip-2026-08-07.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-17-c-claim-token-generation-2026-08-08.md | 2026-09/compose-reports/g17-17-c-claim-token-generation-2026-08-08.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-17-claim-identity-plan-2026-08-07.md | 2026-09/compose-reports/g17-17-claim-identity-plan-2026-08-07.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-17-d-worker-token-cas-2026-08-08.md | 2026-09/compose-reports/g17-17-d-worker-token-cas-2026-08-08.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-17-e-worker-lease-renewal-2026-08-08.md | 2026-09/compose-reports/g17-17-e-worker-lease-renewal-2026-08-08.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-17-f-cutover-cross-process-plan-2026-08-08.md | 2026-09/compose-reports/g17-17-f-cutover-cross-process-plan-2026-08-08.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-2-schema-contract-2026-08-06.md | 2026-09/compose-reports/g17-2-schema-contract-2026-08-06.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-3-asset-index-publish-result-retry-2026-08-06.md | 2026-09/compose-reports/g17-3-asset-index-publish-result-retry-2026-08-06.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-4-transaction-finality-degraded-observability-2026-08-06.md | 2026-09/compose-reports/g17-4-transaction-finality-degraded-observability-2026-08-06.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-5-refresh-warning-reconciliation-contract-2026-08-07.md | 2026-09/compose-reports/g17-5-refresh-warning-reconciliation-contract-2026-08-07.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-6-desktop-warning-consumption-2026-08-07.md | 2026-09/compose-reports/g17-6-desktop-warning-consumption-2026-08-07.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-7-2-runtime-worker-lifecycle-2026-08-07.md | 2026-09/compose-reports/g17-7-2-runtime-worker-lifecycle-2026-08-07.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-7-3-worker-failure-restart-marker-2026-08-07.md | 2026-09/compose-reports/g17-7-3-worker-failure-restart-marker-2026-08-07.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-7-4-caller-inventory-marker-ownership-2026-08-07.md | 2026-09/compose-reports/g17-7-4-caller-inventory-marker-ownership-2026-08-07.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-7-final-closure-2026-08-07.md | 2026-09/compose-reports/g17-7-final-closure-2026-08-07.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-7-reconciliation-queue-phase-1-2026-08-07.md | 2026-09/compose-reports/g17-7-reconciliation-queue-phase-1-2026-08-07.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-8-worker-supervisor-2026-08-07.md | 2026-09/compose-reports/g17-8-worker-supervisor-2026-08-07.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-9-sqlite-reconciliation-queue-foundation-2026-08-07.md | 2026-09/compose-reports/g17-9-sqlite-reconciliation-queue-foundation-2026-08-07.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-asset-index-session-binding-2026-08-06.md | 2026-09/compose-reports/g17-asset-index-session-binding-2026-08-06.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g17-stop-the-world-cutover-release-ownership-checklist-2026-08-08.md | 2026-09/compose-reports/g17-stop-the-world-cutover-release-ownership-checklist-2026-08-08.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g3e-raw-connection-compat-2026-08-05.md | 2026-09/compose-reports/g3e-raw-connection-compat-2026-08-05.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g4-schema-lifecycle-2026-08-05.md | 2026-09/compose-reports/g4-schema-lifecycle-2026-08-05.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g5-search-error-contract-2026-08-06.md | 2026-09/compose-reports/g5-search-error-contract-2026-08-06.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g6-1-backup-validation-2026-08-04.md | 2026-09/compose-reports/g6-1-backup-validation-2026-08-04.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g6-1-metadata-export-2026-08-04.md | 2026-09/compose-reports/g6-1-metadata-export-2026-08-04.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g6-1-orphan-quarantine-2026-08-04.md | 2026-09/compose-reports/g6-1-orphan-quarantine-2026-08-04.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g6-1-product-entry-contract-2026-08-04.md | 2026-09/compose-reports/g6-1-product-entry-contract-2026-08-04.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g6-1-restore-2026-08-04.md | 2026-09/compose-reports/g6-1-restore-2026-08-04.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g6-5-database-integrity-2026-08-03.md | 2026-09/compose-reports/g6-5-database-integrity-2026-08-03.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g6-6-security-preflight-contract-2026-08-04.md | 2026-09/compose-reports/g6-6-security-preflight-contract-2026-08-04.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g6-6-security-preflight-implementation-2026-08-04.md | 2026-09/compose-reports/g6-6-security-preflight-implementation-2026-08-04.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g6-lan-fallback-2026-08-06.md | 2026-09/compose-reports/g6-lan-fallback-2026-08-06.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g7-p1-safety-and-info-2026-08-06.md | 2026-09/compose-reports/g7-p1-safety-and-info-2026-08-06.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g8-repository-error-contract-2026-08-06.md | 2026-09/compose-reports/g8-repository-error-contract-2026-08-06.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/g9-search-result-set-2026-08-06.md | 2026-09/compose-reports/g9-search-result-set-2026-08-06.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/lan-security-fixes.md | 2026-09/compose-reports/lan-security-fixes.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/mainline-audit-followup-2026-08-05.md | 2026-09/compose-reports/mainline-audit-followup-2026-08-05.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/mainline-parallel-batch-2026-08-04.md | 2026-09/compose-reports/mainline-parallel-batch-2026-08-04.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/opencode-session-2026-08-10-startup.md | 2026-09/compose-reports/opencode-session-2026-08-10-startup.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/opencode-session-2026-08-10-summary.md | 2026-09/compose-reports/opencode-session-2026-08-10-summary.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/opencode-session-2026-08-11-startup.md | 2026-09/compose-reports/opencode-session-2026-08-11-startup.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/opencode-session-2026-08-11-summary.md | 2026-09/compose-reports/opencode-session-2026-08-11-summary.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/real-image-io-directory-benchmark-protocol-2026-08-04.md | 2026-09/compose-reports/real-image-io-directory-benchmark-protocol-2026-08-04.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/realtime-dataflow-hardening.md | 2026-09/compose-reports/realtime-dataflow-hardening.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/repository-baseline-2026-08-01.md | 2026-09/compose-reports/repository-baseline-2026-08-01.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/repository-followup-review-2026-08-01.md | 2026-09/compose-reports/repository-followup-review-2026-08-01.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/runtime-adapter-failure-ownership.md | 2026-09/compose-reports/runtime-adapter-failure-ownership.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/session-07d28cba9ffeR7yeBnz5N4prK7-final.md | 2026-09/compose-reports/session-07d28cba9ffeR7yeBnz5N4prK7-final.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/session-07d28cba9ffeR7yeBnz5N4prK7-organization.md | 2026-09/compose-reports/session-07d28cba9ffeR7yeBnz5N4prK7-organization.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/task-10-runtime-websocket-bridge.md | 2026-09/compose-reports/task-10-runtime-websocket-bridge.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/task-11-runtime-isolation.md | 2026-09/compose-reports/task-11-runtime-isolation.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/task-12-realtime-provider.md | 2026-09/compose-reports/task-12-realtime-provider.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/task-13-projection-migration.md | 2026-09/compose-reports/task-13-projection-migration.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/task-14-browser-realtime-acceptance.md | 2026-09/compose-reports/task-14-browser-realtime-acceptance.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/ui-rendering-audit-2026-08-10.md | 2026-09/compose-reports/ui-rendering-audit-2026-08-10.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/webui-dependency-security-upgrade.md | 2026-09/compose-reports/webui-dependency-security-upgrade.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/webui-desktop-dataflow-audit.md | 2026-09/compose-reports/webui-desktop-dataflow-audit.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/webui-gap-analysis.md | 2026-09/compose-reports/webui-gap-analysis.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/webui-migration-batch-commit-plan-2026-08-08.md | 2026-09/compose-reports/webui-migration-batch-commit-plan-2026-08-08.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/webui-migration-ownership-manifest-2026-08-08.md | 2026-09/compose-reports/webui-migration-ownership-manifest-2026-08-08.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/zcode-session-2026-08-11-desktop-fine-scan.md | 2026-09/compose-reports/zcode-session-2026-08-11-desktop-fine-scan.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/zcode-session-2026-08-11-frontend-scan.md | 2026-09/compose-reports/zcode-session-2026-08-11-frontend-scan.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/zcode-session-2026-08-11-low-batch-1-lan-auth.md | 2026-09/compose-reports/zcode-session-2026-08-11-low-batch-1-lan-auth.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/zcode-session-2026-08-11-p1-round.md | 2026-09/compose-reports/zcode-session-2026-08-11-p1-round.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/zcode-session-2026-08-11-p2-round.md | 2026-09/compose-reports/zcode-session-2026-08-11-p2-round.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/zcode-session-2026-08-11-summary.md | 2026-09/compose-reports/zcode-session-2026-08-11-summary.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/zcode-session-2026-08-12-dev-plan-rounds.md | 2026-09/compose-reports/zcode-session-2026-08-12-dev-plan-rounds.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+| docs/compose/reports/zcode-session-2026-08-12-low-priority-rounds.md | 2026-09/compose-reports/zcode-session-2026-08-12-low-priority-rounds.md | compose/reports 证据账本原件整体归档(2026-09-02 精简轮) | compose/distilled/ 蒸馏层为日常入口;本表逐份检索 |
+
+### reports-superseded
+
+归档原因:08-10~08-15 行号级细扫描,结论已被后续评审取代 · 取代者:docs/reports/desktop-uiux-review-2026-08-29.md 等 08-29~09-02 系列
+
+| 原路径 | 新路径 | 归档原因 | 取代者 |
+|---|---|---|---|
+| docs/reports/architecture-review-2026-08-15.md | 2026-09/reports-superseded/architecture-review-2026-08-15.md | 08-10~08-15 行号级细扫描,结论已被后续评审取代 | docs/reports/desktop-uiux-review-2026-08-29.md 等 08-29~09-02 系列 |
+| docs/reports/desktop-fine-scan-2026-08-11.md | 2026-09/reports-superseded/desktop-fine-scan-2026-08-11.md | 08-10~08-15 行号级细扫描,结论已被后续评审取代 | docs/reports/desktop-uiux-review-2026-08-29.md 等 08-29~09-02 系列 |
+| docs/reports/file-list-architecture-review-2026-08-15.md | 2026-09/reports-superseded/file-list-architecture-review-2026-08-15.md | 08-10~08-15 行号级细扫描,结论已被后续评审取代 | docs/reports/desktop-uiux-review-2026-08-29.md 等 08-29~09-02 系列 |
+| docs/reports/file-list-decomposition-plan-2026-08-15.md | 2026-09/reports-superseded/file-list-decomposition-plan-2026-08-15.md | 08-10~08-15 行号级细扫描,结论已被后续评审取代 | docs/reports/desktop-uiux-review-2026-08-29.md 等 08-29~09-02 系列 |
+| docs/reports/file-list-refresh-audit-2026-08-15.md | 2026-09/reports-superseded/file-list-refresh-audit-2026-08-15.md | 08-10~08-15 行号级细扫描,结论已被后续评审取代 | docs/reports/desktop-uiux-review-2026-08-29.md 等 08-29~09-02 系列 |
+| docs/reports/frontend-fine-scan-2026-08-11.md | 2026-09/reports-superseded/frontend-fine-scan-2026-08-11.md | 08-10~08-15 行号级细扫描,结论已被后续评审取代 | docs/reports/desktop-uiux-review-2026-08-29.md 等 08-29~09-02 系列 |
+| docs/reports/menubar-review-2026-08-10.md | 2026-09/reports-superseded/menubar-review-2026-08-10.md | 08-10~08-15 行号级细扫描,结论已被后续评审取代 | docs/reports/desktop-uiux-review-2026-08-29.md 等 08-29~09-02 系列 |
+| docs/reports/p2-round-2026-08-11.md | 2026-09/reports-superseded/p2-round-2026-08-11.md | 08-10~08-15 行号级细扫描,结论已被后续评审取代 | docs/reports/desktop-uiux-review-2026-08-29.md 等 08-29~09-02 系列 |
+| docs/reports/panel-uiux-composition-audit-2026-08-15.md | 2026-09/reports-superseded/panel-uiux-composition-audit-2026-08-15.md | 08-10~08-15 行号级细扫描,结论已被后续评审取代 | docs/reports/desktop-uiux-review-2026-08-29.md 等 08-29~09-02 系列 |
+| docs/reports/ui-optimization-priority-2026-08-15.md | 2026-09/reports-superseded/ui-optimization-priority-2026-08-15.md | 08-10~08-15 行号级细扫描,结论已被后续评审取代 | docs/reports/desktop-uiux-review-2026-08-29.md 等 08-29~09-02 系列 |
+| docs/reports/ui-rendering-audit-2026-08-10.md | 2026-09/reports-superseded/ui-rendering-audit-2026-08-10.md | 08-10~08-15 行号级细扫描,结论已被后续评审取代 | docs/reports/desktop-uiux-review-2026-08-29.md 等 08-29~09-02 系列 |
+| docs/reports/visual-drawing-audit-2026-08-15.md | 2026-09/reports-superseded/visual-drawing-audit-2026-08-15.md | 08-10~08-15 行号级细扫描,结论已被后续评审取代 | docs/reports/desktop-uiux-review-2026-08-29.md 等 08-29~09-02 系列 |
+
+### plans-done
+
+归档原因:方案已执行完毕或被新版本取代 · 取代者:见各取代者注记
+
+| 原路径 | 新路径 | 归档原因 | 取代者 |
+|---|---|---|---|
+| docs/plans/build-closure-remediation-plan-2026-09-02.md | 2026-09/plans-done/build-closure-remediation-plan-2026-09-02.md | 已执行完毕(A:build.py webui_build;B:setup_cython 清理) | build.py 已落地(ff1e0de/821efbb) |
+| docs/plans/documentation-maintenance-plan-2026-08-27.md | 2026-09/plans-done/documentation-maintenance-plan-2026-08-27.md | 已执行完毕(三态机制已门禁化) | scripts/check_documents.py |
+| docs/plans/task-package-2026-08-30.md | 2026-09/plans-done/task-package-2026-08-30.md | 已被 v2 取代 | docs/plans/task-package-2026-09-01.md |

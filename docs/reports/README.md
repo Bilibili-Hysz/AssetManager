@@ -1,8 +1,8 @@
 # docs/reports 导航(README)
 
-> 状态:**LIVING(导航)** · updated: 2026-09-02 · 本目录两层定位:① 08-10~08-15 的行号级审查底稿(module-* 系列 + 08-15 评审系列,full-review 之前的最后证据);② 08-29 起各会话产出报告的归流地。报告正文内容零改写。全库功能分类导航见 [`docs/README.md`](../README.md),证据账本见 [`docs/compose/README.md`](../compose/README.md)。
+> 状态:**LIVING(导航)** · updated: 2026-09-02 · 本目录两层定位:① 08-11 的 module-* 分模块审查底稿(P1 第一轮证据);② 08-29 起各会话产出报告的归流地。原 08-10~08-15 细扫描系列 12 份已于 2026-09-02 移入 `archive/2026-09/reports-superseded/`(结论被 08-29~09-02 评审取代)。报告正文内容零改写。全库功能分类导航见 [`docs/README.md`](../README.md),证据账本见 [`docs/compose/README.md`](../compose/README.md)。
 
-## 文件清单(40 顶层 + 1 子目录)
+## 文件清单(28 顶层 + 1 子目录)
 
 ### module-* 系列(11 份,2026-08-11 分模块审查,P1 第一轮)
 
@@ -18,13 +18,9 @@
 | `module-maintenance.md` | 完整性/维护服务 |
 | `module-repositories-p1.md` / `module-runtime.md` | 仓库层 P1 / Runtime 生命周期 |
 
-### 08-15 评审系列(7 份)
+### 08-15 评审系列 与 08-10/08-11 杂项(12 份,已归档)
 
-`architecture-review-2026-08-15`、`file-list-architecture-review-2026-08-15`、`file-list-decomposition-plan-2026-08-15`(file_list 拆分方案,后续已落地)、`file-list-refresh-audit-2026-08-15`、`panel-uiux-composition-audit-2026-08-15`、`ui-optimization-priority-2026-08-15`、`visual-drawing-audit-2026-08-15`
-
-### 08-10/08-11 杂项(5 份)
-
-`desktop-fine-scan-2026-08-11`、`frontend-fine-scan-2026-08-11`(前端 75 项扫描,已全部修复)、`menubar-review-2026-08-10`、`p2-round-2026-08-11`、`ui-rendering-audit-2026-08-10`(**本目录为权威复本**;compose/reports 下的同名文件仅作证据保留)
+`architecture-review-2026-08-15`、`file-list-architecture-review-2026-08-15`、`file-list-decomposition-plan-2026-08-15`、`file-list-refresh-audit-2026-08-15`、`panel-uiux-composition-audit-2026-08-15`、`ui-optimization-priority-2026-08-15`、`visual-drawing-audit-2026-08-15`、`desktop-fine-scan-2026-08-11`、`frontend-fine-scan-2026-08-11`、`menubar-review-2026-08-10`、`p2-round-2026-08-11`、`ui-rendering-audit-2026-08-10` —— 2026-09-02 移入 [`archive/2026-09/reports-superseded/`](../archive/2026-09/reports-superseded/),多数发现已由后续批次关闭或被 08-29~09-02 评审覆盖。
 
 ### 08-29 双端 UI/UX 评审系列(2 份)
 
@@ -53,6 +49,6 @@
 ## 与相邻证据的关系
 
 - **查询状态请走**:`docs/full-review/**`(dated 快照 + manifest,进行中任务,勿动)。
-- **查询会话证据请走**:`docs/compose/reports/`(98 份)。
+- **查询会话证据请走**:`docs/archive/2026-09/compose-reports/`(98 份)。
 - **08-01 基线审计走**:`docs/baseline-2026-08-01/`(原 DeepSeek Docs)。
-- 本目录定位:08-10~08-15 行号级审查底稿 + 08-29 起会话报告归流地;底稿多数发现已由后续批次关闭或登记。
+- 本目录定位:08-11 module-* 审查底稿 + 08-29 起会话报告归流地;底稿多数发现已由后续批次关闭或登记。

@@ -45,15 +45,15 @@
 
 ### 4. 方案与计划（plans）
 
-[`plans/`](plans/) —— 改造方案与任务包。**现行**：`architecture-reliability-roadmap-2026-08-31.md`（H1 实施中）、`task-package-2026-09-01.md`（交托手册 v2）、`p0-security-remediation-2026-08-31.md`（提案，未实施）、`port-architecture-2026-08-30.md`（分期实施）、`evolution-strategy-2026-08-31.md`、`development-roadmap-2026-08-30.md`、`ux-improvement-plan-2026-08-30.md`（未实施）、`desktop-uiux-optimization-plan-2026-08-29.md`、`next-phase-design-2026-08-29.md`、`bg-gpu-shader-architecture-2026-08-27.md`（M1 已落地）、`bg-simplify-image-only-2026-08-28.md`、`workspace-cleanup-plan-2026-08-31.md`（阶段 0 完毕）。**已执行完毕**：`build-closure-remediation-plan-2026-09-02.md`（P1 构建闭环：A 接入 build.py、B 删 setup_cython + 清宣传，2026-09-02 收尾）。**已执行完毕**：`documentation-maintenance-plan-2026-08-27.md`（机制已由 `scripts/check_documents.py` 门禁化）。**已被取代**：`task-package-2026-08-30.md`（v1，由 09-01 v2 取代）。
+[`plans/`](plans/) —— 改造方案与任务包，12 份现行：`architecture-reliability-roadmap-2026-08-31.md`（H1 实施中）、`task-package-2026-09-01.md`（交托手册 v2）、`p0-security-remediation-2026-08-31.md`（提案，未实施）、`port-architecture-2026-08-30.md`（分期实施）、`evolution-strategy-2026-08-31.md`、`development-roadmap-2026-08-30.md`、`ux-improvement-plan-2026-08-30.md`（未实施）、`desktop-uiux-optimization-plan-2026-08-29.md`、`next-phase-design-2026-08-29.md`、`bg-gpu-shader-architecture-2026-08-27.md`（M1 已落地）、`bg-simplify-image-only-2026-08-28.md`、`workspace-cleanup-plan-2026-08-31.md`（阶段 0 完毕）。已执行完毕/被取代的 3 份（`build-closure-remediation-plan-2026-09-02`、`documentation-maintenance-plan-2026-08-27`、`task-package-2026-08-30`）于 2026-09-02 移入 [`archive/2026-09/plans-done/`](archive/2026-09/plans-done/)。
 
 ### 5. 证据账本（compose）
 
-[`compose/`](compose/README.md) —— 多智能体工作证据：`distilled/`（9 份决策摘要）、`reports/`（98 份会话报告）；历史原件在 `archive/2026-08/compose-raw/`。
+[`compose/`](compose/README.md) —— 多智能体工作证据：现仅 `distilled/`（9 份决策摘要，日常入口）。原 `reports/`（98 份会话报告）于 2026-09-02 整体移入 [`archive/2026-09/compose-reports/`](archive/2026-09/compose-reports/)；更早的 specs/plans/handoffs 原件在 `archive/2026-08/compose-raw/`。
 
 ### 6. 报告归流（reports）
 
-[`reports/`](reports/) —— 会话产出报告的归流地（审计、修复、专家评审等，如 `cleanup-and-git-repair-2026-09-01.md`、`expert-panel-deep-analysis-2026-08-31.md`、`deepseek-archive-2026-08-25/`）。
+[`reports/`](reports/) —— 会话产出报告的归流地（08-29 起评审/专家分析系列 + module-* 分模块审查底稿，如 `cleanup-and-git-repair-2026-09-01.md`、`expert-panel-deep-analysis-2026-08-31.md`、`deepseek-archive-2026-08-25/`）。已被 08-29~09-02 评审取代的 12 份 08-10~08-15 细扫描于 2026-09-02 移入 [`archive/2026-09/reports-superseded/`](archive/2026-09/reports-superseded/)。
 
 ### 7. 图示（diagrams）
 
@@ -70,4 +70,4 @@
 - "当年 08-01 审计怎么评价这个项目" → `baseline-2026-08-01/`
 - "已知弱点清单" → `deep-weakness-audit-2026-08-22/`
 - "接下来做什么" → `plans/`
-- "某次会话/某轮工作的证据" → `compose/reports/`、`reports/`、`archive/INDEX.md`
+- "某次会话/某轮工作的证据" → `reports/`、`archive/2026-09/compose-reports/`、`archive/INDEX.md`

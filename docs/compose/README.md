@@ -1,6 +1,6 @@
 # compose 证据账本导航(README)
 
-> 状态:**LIVING(导航)** · updated: 2026-08-27 · 本目录是会话工作证据账本。**2026-08-27 合并批**:specs/plans/handoffs 的 99 份原件已内容级合并为 `distilled/` 蒸馏层,原件移入 `docs/archive/2026-08/compose-raw/`(逐份登记于 archive INDEX,取代者=对应摘要);compose/reports 作为证据账本核心**零改动**。
+> 状态:**LIVING(导航)** · updated: 2026-09-02 · 本目录是会话工作证据账本。**2026-09-02 精简批**:`reports/` 98 份原件整体移入 `docs/archive/2026-09/compose-reports/`(逐份登记于 archive INDEX);本目录现仅存蒸馏层。**2026-08-27 合并批**:specs/plans/handoffs 的 99 份原件已内容级合并为 `distilled/` 蒸馏层,原件移入 `docs/archive/2026-08/compose-raw/`(逐份登记于 archive INDEX,取代者=对应摘要)。
 > 检索规则:蒸馏层为日常入口;原件仅追溯用。**不执行**任何"不得执行未勾选项"的历史计划。
 
 ## 目录结构
@@ -8,7 +8,7 @@
 | 子目录 | 说明 |
 |---|---|
 | `distilled/` | **蒸馏层(9 份决策摘要,2026-08-27 生成)**:合并了原 specs/plans/handoffs 的信息量 |
-| `reports/` | 98 份证据账本(会话实测/批次证据;零改动) |
+| ~~reports/~~ | 98 份证据账本,2026-09-02 整体归档至 `docs/archive/2026-09/compose-reports/` |
 | ~~specs/ plans/ handoffs/~~ | 原件已归档至 `docs/archive/2026-08/compose-raw/` |
 
 ## distilled/ 蒸馏层(日常入口)
@@ -25,7 +25,9 @@
 | `2026-07-24-webui-cleanup-filelist.md` | WebUI 遗留清理 + 文件列表项目交互(6 份) |
 | `2026-08-03-04-session-summaries.md` | 三会话交接包摘要:webui-session-02 / desktop-ui-session-03 / mainline-session-04(19 份) |
 
-## reports/(98,零改动)
+## reports/(98 份,已归档至 `docs/archive/2026-09/compose-reports/`)
+
+以下系列检索表保留供按前缀定位;文件本体一律在 `docs/archive/2026-09/compose-reports/`:
 
 按系列检索(全部为 07-21 之后证据):
 
@@ -40,7 +42,7 @@
 | task | `task-10-runtime-websocket-bridge` … `task-14-browser-realtime-acceptance` | WebUI 实时批次 |
 | 会话账本 | `zcode-session-2026-08-11-*`、`zcode-session-2026-08-12-*`、`opencode-session-2026-08-10/11-*`、`session-07d28cba9ffeR7yeBnz5N4prK7-*` | 各会话实测账本(数字为当时快照) |
 | webui | `webui-gap-analysis`、`webui-dependency-security-upgrade`、`webui-desktop-dataflow-audit`、`webui-migration-batch-commit-plan-2026-08-08`、`webui-migration-ownership-manifest-2026-08-08` | WebUI 迁移/审计 |
-| 其他 | `lan-security-fixes`、`real-image-io-directory-benchmark-protocol-2026-08-04`、`ui-rendering-audit-2026-08-10`(复本,见 [`docs/reports/ui-rendering-audit-2026-08-10.md`](../reports/ui-rendering-audit-2026-08-10.md)) | 杂项/去重 |
+| 其他 | `lan-security-fixes`、`real-image-io-directory-benchmark-protocol-2026-08-04`、`ui-rendering-audit-2026-08-10`(复本,见 [`docs/archive/2026-09/reports-superseded/ui-rendering-audit-2026-08-10.md`](../archive/2026-09/reports-superseded/ui-rendering-audit-2026-08-10.md)) | 杂项/去重 |
 
 ## 归档原件(仅追溯)
 
