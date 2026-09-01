@@ -1,4 +1,6 @@
 # 2026-07-13 批:WebUI React 迁移与 LAN 安全修复(决策摘要)
+> 状态:**历史蒸馏(已完结会话摘要)** · 2026-08-27 内容级合并自 compose-raw 原件,原件见 docs/archive/2026-08/compose-raw/ · 状态登记:2026-09-02(文档梳理轮补登)
+
 
 > 摘要起草: 2026-08-27 · 源文件: `docs/compose/specs/2026-07-13-webui-react-design.md`、`docs/compose/plans/2026-07-13-lan-security-fixes.md`、`docs/compose/plans/2026-07-13-localized-view-mode-stable-id.md`、`docs/compose/plans/2026-07-13-webui-react-plan.md` · 原件归档: `docs/archive/2026-08/compose-raw/`
 

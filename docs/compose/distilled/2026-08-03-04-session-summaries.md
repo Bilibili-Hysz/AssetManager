@@ -1,4 +1,6 @@
 # 2026-08-03~04 会话交接摘要(webui-session-02 / desktop-ui-session-03 / mainline-session-04)
+> 状态:**历史蒸馏(已完结会话摘要)** · 2026-08-27 内容级合并自 compose-raw 原件,原件见 docs/archive/2026-08/compose-raw/ · 状态登记:2026-09-02(文档梳理轮补登)
+
 
 > 摘要起草: 2026-08-27 · 源文件(19 份):`docs/compose/handoffs/webui-session-02-2026-08-03/`(11)、`docs/compose/handoffs/desktop-ui-session-03-2026-08-04/`(6)、`docs/compose/handoffs/assetsmanager-mainline-session-04-2026-08-04/`(2) · 原件归档: `docs/archive/2026-08/compose-raw/`
 

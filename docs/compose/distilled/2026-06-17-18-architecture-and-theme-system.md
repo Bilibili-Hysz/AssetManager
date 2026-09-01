@@ -1,4 +1,6 @@
 # 2026-06-17~18 批:架构重构与主题系统(决策摘要)
+> 状态:**历史蒸馏(已完结会话摘要)** · 2026-08-27 内容级合并自 compose-raw 原件,原件见 docs/archive/2026-08/compose-raw/ · 状态登记:2026-09-02(文档梳理轮补登)
+
 
 > 摘要起草: 2026-08-27 · 源文件: `docs/compose/specs/2026-06-17-refactor-architecture-design.md`、`2026-06-18-custom-theme-system-design.md`、`2026-06-18-theme-editor-phase2-design.md` + `docs/compose/plans/2026-06-17-refactor-architecture.md`、`2026-06-18-custom-theme-system.md`、`2026-06-18-theme-editor-phase2.md`、`2026-06-18-theme-editor-phase3.md` · 原件归档: `docs/archive/2026-08/compose-raw/`
 

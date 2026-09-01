@@ -1,4 +1,6 @@
 # AssetManager ↔ Serpent 全维度差异对照（2026-08-30）
+> 状态:**现行** · Serpent 对照权威版本,修正了 reference-study 的两条认知 · 状态登记:2026-09-02(文档梳理轮补登)
+
 
 > 方法：Serpent 侧为只读探索代理的全维度事实清点（八板块、全部带 `_REF_Serpent` 内文件证据）；AssetManager 侧基于本会话多轮评审/实施的一手认知（file:line 见 docs/reports/ 下各评审与调研文档）。本文只做对照与判断，事实细节以两边证据为准。
 > 提醒：此前 `docs/reports/serpent-reference-study-2026-08-30.md` 的两条认知被本次清点修正——Serpent **没有**以图搜图（文档明示"不提供 AI 搜索"，`docs/user-guide/ai.md:70`），也**没有** AI 对话；其 AI 仅覆盖描述/打标/评分三类分析任务。

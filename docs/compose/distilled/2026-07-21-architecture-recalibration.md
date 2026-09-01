@@ -1,4 +1,6 @@
 # 2026-07-21 架构重定标批:Desktop-LAN-WebUI 分层与运行时(决策摘要)
+> 状态:**历史蒸馏(已完结会话摘要)** · 2026-08-27 内容级合并自 compose-raw 原件,原件见 docs/archive/2026-08/compose-raw/ · 状态登记:2026-09-02(文档梳理轮补登)
+
 
 > 摘要起草: 2026-08-27 · 源文件(15 份):`docs/compose/specs/2026-07-21-{desktop-lan-webui-architecture-closure-design,desktop-lan-webui-architecture-design,desktop-lan-webui-architecture-recalibration-design,realtime-dataflow-hardening,runtime-event-router-design,project-library-workspace-design}.md` + `docs/compose/plans/2026-07-21-{desktop-lan-webui-architecture-migration,desktop-lan-webui-architecture-recalibration,desktop-lan-webui-architecture-task-d,desktop-lan-webui-architecture-closure,realtime-dataflow-hardening,runtime-adapter-failure-ownership,runtime-event-router-implementation,project-library-workspace,webui-resource-library-workspace-redesign}.md` · 原件归档: `docs/archive/2026-08/compose-raw/`
 

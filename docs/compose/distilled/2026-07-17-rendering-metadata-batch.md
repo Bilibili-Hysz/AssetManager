@@ -1,4 +1,6 @@
 # 2026-07-17 批:渲染/元数据/主题稳定性 + 早期审计结论(决策摘要)
+> 状态:**历史蒸馏(已完结会话摘要)** · 2026-08-27 内容级合并自 compose-raw 原件,原件见 docs/archive/2026-08/compose-raw/ · 状态登记:2026-09-02(文档梳理轮补登)
+
 
 > 摘要起草: 2026-08-27 · 源文件: `docs/compose/plans/2026-07-17-{lan-first-image-linear-scan,metadata-combined-read,smooth-scroll-thumbnail-timing,theme-transition-stability,zoom-grid-relayout}.md` + `docs/compose/plans/{lan-error-audit,p1-audit-findings}.md`(2026-06-17 早期审计) · 原件归档: `docs/archive/2026-08/compose-raw/`
 

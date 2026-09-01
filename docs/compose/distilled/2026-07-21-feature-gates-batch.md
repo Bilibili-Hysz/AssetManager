@@ -1,4 +1,6 @@
 # 2026-07-21 功能/门禁子批:预览池/信息面板/WebUI 工作区/窗口退出(决策摘要)
+> 状态:**历史蒸馏(已完结会话摘要)** · 2026-08-27 内容级合并自 compose-raw 原件,原件见 docs/archive/2026-08/compose-raw/ · 状态登记:2026-09-02(文档梳理轮补登)
+
 
 > 摘要起草: 2026-08-27 · 源文件(19 份):`docs/compose/specs/2026-07-21-{layered-preview-pool-design,webui-workspace-redesign-design,weekly-stability-closure-design}.md` + `docs/compose/plans/2026-07-21-{filelist-scroll-boundary-redesign,gate-full-library-preview-pool,gate-home-react-migration,infopanel-grid-scroll-boundaries,infopanel-viewer-image-fit,lan-no-auth-login,layered-preview-pool,legacy-infopanel-project-preview,preview-gate-responsive-recovery,public-theme-setter,session-close-lan-websocket-regression,webui-dependency-security-upgrade,webui-desktop-dataflow-audit,weekly-stability-closure,window-exit-stop-failure-teardown,window-stop-failure-close-session-regression}.md` · 原件归档: `docs/archive/2026-08/compose-raw/`
 

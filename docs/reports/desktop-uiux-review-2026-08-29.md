@@ -1,4 +1,6 @@
 # AssetManager 桌面端 UI/UX 设计合理性评审报告
+> 状态:**现行** · 双端 UI/UX 评审基线;后续整改见 plans/desktop-uiux-optimization-plan-2026-08-29.md · 状态登记:2026-09-02(文档梳理轮补登)
+
 
 > 日期：2026-08-29 · 分支 `feat/quality-audit-2026-08-17` · 方法：4 路代码审查（主题体系/对话框/面板/a11y-i18n）+ 冻结审计对账 + PySide6 offscreen 真实主题 QSS 渲染目检（`tmp/ux_review/*.png`）
 > 边界：渲染证据产生于 offscreen 平台，标注"需真机复核"的条目在结论中已剔除平台假象；所有代码结论带 file:line。

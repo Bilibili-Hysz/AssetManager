@@ -1,4 +1,6 @@
 # ADR 0001: Architecture Governance Baseline
+> 维护状态:**LIVING** · 决策(架构治理基线)仍有效 · 状态登记:2026-09-02(文档梳理轮补登)
+
 
 Date: 2026-06-13
 

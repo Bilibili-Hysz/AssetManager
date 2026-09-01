@@ -1,4 +1,6 @@
 # 2026-07-24 批:WebUI 遗留清理与文件列表项目交互(决策摘要)
+> 状态:**历史蒸馏(已完结会话摘要)** · 2026-08-27 内容级合并自 compose-raw 原件,原件见 docs/archive/2026-08/compose-raw/ · 状态登记:2026-09-02(文档梳理轮补登)
+
 
 > 摘要起草: 2026-08-27 · 源文件(6 份):`docs/compose/specs/2026-07-24-{filelist-project-interaction-design,webui-legacy-cleanup-design}.md` + `docs/compose/plans/2026-07-24-{filelist-project-interaction,gate-workspace-preview-responsive-fix,theme-infopanel-preview,webui-legacy-cleanup}.md` · 原件归档: `docs/archive/2026-08/compose-raw/`
 

@@ -1,4 +1,6 @@
 # 模块排 Bug 清单（module-assets-p1.md · 2026-08-11 P1 第1轮）
+> 状态:**历史底稿(已过期)** · 2026-08-11 P1 轮行号级审计,行号已随代码演化失效;发现项由后续评审批次关闭 · 状态登记:2026-09-02(文档梳理轮补登)
+
 
 > 来源: 只读探索代理审计（ZCode Explore），行号经源码逐一核对，调用点经 grep 交叉验证。
 > 范围: asset/metadata/thumbnail/search/project/asset_index/asset_index_reconciliation/favorite/gallery + core/directory_cache、core/project_data + library_export_service（已知项核实）+ lan/server.py:1502（已知项核实）。

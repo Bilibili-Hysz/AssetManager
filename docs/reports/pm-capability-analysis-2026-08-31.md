@@ -1,4 +1,6 @@
 # PM 视角能力差距分析：从 Serpent 学什么（2026-08-31）
+> 状态:**现行(参考)** · PM 视角能力差距决策依据 · 状态登记:2026-09-02(文档梳理轮补登)
+
 
 > 依据：四位分域专家报告（架构运行时/数据检索/自动化生态/交付质量，全文见会话代理输出 `C:\Users\86177\.zcode\cli\agents\sess_*\agent_*\output.txt`），对照前期文档 `docs/reports/serpent-vs-assetmanager-2026-08-30.md`。立场：项目经理的资源分配决策，不是功能 wishlist。
 > 背景：A=AssetManager（本地优先资产库 + LAN 分享门户，商城已剥离）；B=Serpent（单机专业 DAM 工作站，Electron，7 周 1268 commits，v0.1.5）。

@@ -1,4 +1,6 @@
 # 2026-06-19~21 批:背景效果/主题 UI/性能优化/分享系统/WebUI 视觉(决策摘要)
+> 状态:**历史蒸馏(已完结会话摘要)** · 2026-08-27 内容级合并自 compose-raw 原件,原件见 docs/archive/2026-08/compose-raw/ · 状态登记:2026-09-02(文档梳理轮补登)
+
 
 > 摘要起草: 2026-08-27 · 源文件: `docs/compose/specs/2026-06-19-background-enhancement.md`、`2026-06-19-theme-ui-redesign.md`、`2026-06-20-performance-optimization-design.md`、`2026-06-20-sharing-ui-redesign.md`、`2026-06-21-share-system-redesign.md`、`2026-06-21-web-ui-visual-upgrade.md` + 对应同名 6 份 plans · 原件归档: `docs/archive/2026-08/compose-raw/`
 

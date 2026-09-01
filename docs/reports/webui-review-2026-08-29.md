@@ -1,4 +1,6 @@
 # AssetManager WebUI 架构与设计评审报告
+> 状态:**现行** · WebUI 架构与设计评审基线 · 状态登记:2026-09-02(文档梳理轮补登)
+
 
 > 日期：2026-08-29 · 对象：`webui/`（React 18.3 + Vite 7 + TS 5.6 strict + Tailwind 3，aiohttp LAN 托管 SPA）
 > 方法：2 路代码审查（架构数据层 / 设计模式 a11y i18n 响应式）+ 本机验证（`npm run build` ✓、自带 axe 门禁 23 扫描全绿、Playwright 真实 Chromium 截图 10 张）+ 未定义令牌等关键结论经主会话 grep 复核

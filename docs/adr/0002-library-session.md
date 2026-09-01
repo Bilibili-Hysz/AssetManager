@@ -1,4 +1,6 @@
 # ADR 0002: Library Session Boundary
+> 维护状态:**LIVING** · 决策(library session 边界)仍有效 · 状态登记:2026-09-02(文档梳理轮补登)
+
 
 Date: 2026-06-15
 
