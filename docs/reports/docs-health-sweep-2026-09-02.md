@@ -52,3 +52,23 @@
 
 - 扫描脚本口径与结构精简轮一致（剥离 fenced code block；`*.md:数字` 形态的代码证据锚点不计入导航断链）。
 - archive 登记核对曾出现"缺 14 份"的中间结论，经逐段核查为匹配口径差异（recovered 段与 scratch 段登记行不带 `| docs/` 前缀），实际登记完整——详见 `archive/INDEX.md` 各段。
+
+## 七、后续收敛轮登记（2026-09-02 第三/四轮）
+
+本报告第五节遗留项 2（分析系列蒸馏）已在第二轮执行完毕；本节登记其后的两轮收敛及终态。
+
+| 轮次 | 处置 | 活跃区变化 | 提交 |
+|---|---|---|---|
+| 第三轮 A | `reports/module-*` 11 份行号级审计底稿 → 蒸馏为 `module-audit-distilled-2026-09-02.md` | −10 | `bb4d321` |
+| 第三轮 B | t0-stabilization-summary / task-package-research / task-package-validity-check 归档 | −3 | `f751a8d` |
+| 第三轮 C | `bg-simplify-image-only` 范围决策并入父文档 `bg-gpu-shader-architecture` | −1 | `73c1c03` |
+| 第四轮 D | 08-01 冻结基线簇 48 份 + deepseek 逐字副本 8 份迁入 `archive/2026-09/` | −56 | `afc4cf4` |
+| 第四轮 E | 08-22 冻结弱审计簇 11 份迁入 `archive/2026-09/` | −11 | `691b37c` |
+
+**关键判定（第四轮）**：门禁 `check_documents.py` 只校验「FROZEN 标记存在 / archive 逐份登记 / LIVING 时效 / 导航目标存在」，**不做全库断链检查**。因此 FROZEN 簇迁入 `archive/` 是可行的——只需把 `FROZEN_MARKERS` 路径同步到新位置，冻结保证（内容不可改写）完全不丢，`archive/` 与 `FROZEN` 两种状态正交共存。同步改动的还有 `check_boundaries.py` docstring 里的验收标准来源路径。
+
+- **内容零改写**：两簇 67 份全部为位置变更。唯一的内容改动是 `deepseek-archive-2026-08-25/` 内部 21 处指向基线的相对链接（`../../../baseline-*` → `../../baseline-*`），属迁移必需的几何修正，正文未改。
+- **复扫结果**：活跃区 103 条链接中 31 条为 `file:line` 代码证据锚点（非链接），**真实断链 0**；迁入两簇内部 113 条链接中剩 7 条断链，全部位于 FROZEN 基线簇内、指向上一轮已归档的 `compose/reports/`，系迁移前既有缺陷，FROZEN 纪律下不予改写。
+- **终态**：活跃区 md **58 份**（根 9 / adr 5 / compose 10 / full-review 12 / plans 11 / reports 11）；`archive/2026-09/` 段登记 **201 份**；双门禁每轮 exit 0；42 份并行会话 WIP 全程未触碰。
+
+**遗留**：根 `README.md`（第 101 行目录树、第 252 行表格）与 `docs/overview-2026-08-27.md`（第 137/398/415 行）仍写有旧的 `docs/baseline-2026-08-01/`、`docs/deep-weakness-audit-2026-08-22/` 路径；二者均为并行会话 WIP，待其提交后同步。
