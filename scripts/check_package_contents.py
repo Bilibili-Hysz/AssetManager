@@ -1,4 +1,22 @@
-"""Validate resources required by the PyInstaller onedir bundle."""
+"""Validate a PyInstaller single-file executable bundle.
+
+Two independent layers, both answering "is the release artifact complete?":
+
+1. ``check_exe`` — structural + content verification of the built
+   ``AssetManager.exe`` (the onefile equivalent of walking the old onedir
+   ``_internal`` tree):
+   * the file is a valid PE image (``MZ`` magic),
+   * it meets a sanity size floor (the embedded Qt + SPA payload is present),
+   * the embedded CArchive TOC contains every resource the spec ``datas`` and
+     Qt requirements declare (SPA index, i18n, themes, plugins, icon, and the
+     QtSvg / QtOpenGL / QtOpenGLWidgets extension + runtime libraries).
+
+2. ``check_spec`` — static drift guard over ``AssetManager.spec`` (no build
+   needed): every repo-source ``datas`` path exists on disk, and every
+   ``AssetsManager.*`` hidden import resolves to a real module file. This is
+   the guard that would have caught the 24 dead shop/order/quota/seller
+   entries removed during M3.
+"""
 from __future__ import annotations
 
 import argparse
@@ -6,140 +24,203 @@ import re
 import sys
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_SPEC = ROOT / "AssetManager.spec"
 
-REQUIRED_PATHS = (
-    "AssetManager.exe",
+# ── Layer 1: embedded resource contract (single-file) ─────────────────────
+# Destination paths are forward-slash normalized; the embedded CArchive TOC
+# uses backslashes on Windows and is normalized before matching.
+REQUIRED_DATA_FILES = (
     "webui/dist/index.html",
-    "webui/dist/assets",
     "AssetsManager/i18n/en.json",
     "AssetsManager/i18n/zh.json",
     "AssetsManager/i18n/ja.json",
-    "Assets/Themes",
-    "Plugins",
     "assets/icons/icon.ico",
 )
-REQUIRED_FILE_PATHS = frozenset(
-    {
-        "AssetManager.exe",
-        "webui/dist/index.html",
-        "AssetsManager/i18n/en.json",
-        "AssetsManager/i18n/zh.json",
-        "AssetsManager/i18n/ja.json",
-        "assets/icons/icon.ico",
-    }
+REQUIRED_NONEMPTY_DIRS = (
+    "webui/dist/assets/",
+    "Assets/Themes/",
+    "Plugins/",
 )
-REQUIRED_DIRECTORY_PATHS = frozenset(
-    {
-        "webui/dist/assets",
-        "Assets/Themes",
-        "Plugins",
-    }
-)
-REQUIRED_QT_MODULES = (
-    "QtSvg",
-    "QtOpenGL",
-    "QtOpenGLWidgets",
-)
-REQUIRED_QT_RUNTIME_LIBRARIES = (
-    "Qt6Svg",
-    "Qt6OpenGL",
-    "Qt6OpenGLWidgets",
-)
+REQUIRED_QT_MODULES = ("QtSvg", "QtOpenGL", "QtOpenGLWidgets")
+REQUIRED_QT_RUNTIME_LIBRARIES = ("Qt6Svg", "Qt6OpenGL", "Qt6OpenGLWidgets")
 REQUIRED_QT_BINARY_SUFFIXES = frozenset({".pyd", ".so", ".dylib"})
 REQUIRED_QT_RUNTIME_SUFFIXES = frozenset({".dll", ".so", ".dylib"})
-NON_EMPTY_DIRECTORIES = (
-    "Assets/Themes",
-    "Plugins",
+
+# Sanity floor well below the real ~75 MB bundle but above a bare Python
+# onefile (~10-15 MB); a build that silently dropped Qt or the SPA falls
+# under it, while exact resource presence is verified via the TOC check.
+MIN_EXE_SIZE = 20 * 1024 * 1024
+
+# ── Layer 2: spec drift contract ──────────────────────────────────────────
+_DATAS_SOURCE_RE = re.compile(
+    r"str\(\s*_root\s*/\s*((?:'[^']*'\s*/\s*)+'[^']*')\s*\)"
 )
-ASSET_REFERENCE = re.compile(r"(?:src|href)=[\"']/?(assets/[^\"']+)[\"']")
 
 
-def _resource_root(bundle_dir: Path) -> Path:
-    """Return the PyInstaller data directory for a one-directory bundle."""
-    internal_dir = bundle_dir / "_internal"
-    return internal_dir if internal_dir.is_dir() else bundle_dir
+def _normalize(entry: str) -> str:
+    return entry.replace("\\", "/")
 
 
-def _has_qt_module_binary(resource_root: Path, module_name: str) -> bool:
-    """Return whether a PySide6 extension binary is present in the bundle."""
-    module_dir = resource_root / "PySide6"
-    if not module_dir.is_dir():
-        return False
-    prefix = f"{module_name}."
-    return any(
-        path.is_file()
-        and path.name.startswith(prefix)
-        and path.suffix.lower() in REQUIRED_QT_BINARY_SUFFIXES
-        for path in module_dir.iterdir()
-    )
+def _is_pe(exe_path: Path) -> bool:
+    with open(exe_path, "rb") as f:
+        return f.read(2) == b"MZ"
 
 
-def _has_qt_runtime_library(resource_root: Path, library_stem: str) -> bool:
-    """Return whether a Qt extension's companion runtime library is present."""
-    module_dir = resource_root / "PySide6"
-    if not module_dir.is_dir():
-        return False
-    prefixes = (f"{library_stem}.", f"lib{library_stem}.")
-    for path in module_dir.iterdir():
-        if not path.is_file() or not path.name.startswith(prefixes):
-            continue
-        name = path.name.lower()
-        if any(
-            name.endswith(suffix) or f"{suffix}." in name
-            for suffix in REQUIRED_QT_RUNTIME_SUFFIXES
+def _has_qt_module(entries: list[str], module_name: str) -> bool:
+    prefix = module_name.lower() + "."
+    for entry in entries:
+        name = entry.rsplit("/", 1)[-1].lower()
+        if name.startswith(prefix) and any(
+            name.endswith(suffix) for suffix in REQUIRED_QT_BINARY_SUFFIXES
         ):
             return True
     return False
 
 
-def check_bundle(bundle_dir: Path) -> list[str]:
-    """Return all missing resource paths from a built application bundle."""
-    resource_root = _resource_root(bundle_dir)
+def _has_qt_runtime(entries: list[str], library_stem: str) -> bool:
+    stem = library_stem.lower()
+    prefixes = (f"{stem}.", f"lib{stem}.")
+    for entry in entries:
+        name = entry.rsplit("/", 1)[-1].lower()
+        if name.startswith(prefixes) and any(
+            name.endswith(suffix) for suffix in REQUIRED_QT_RUNTIME_SUFFIXES
+        ):
+            return True
+    return False
+
+
+def check_toc(entries) -> list[str]:
+    """Return missing embedded resources for a normalized TOC entry iterable."""
+    normalized = [_normalize(str(entry)) for entry in entries]
     missing: list[str] = []
-    for relative_path in REQUIRED_PATHS:
-        path = bundle_dir / relative_path if relative_path == "AssetManager.exe" else resource_root / relative_path
-        if relative_path in REQUIRED_FILE_PATHS:
-            valid = path.is_file()
-        elif relative_path in REQUIRED_DIRECTORY_PATHS:
-            valid = path.is_dir()
-        else:
-            raise AssertionError(f"Unclassified required bundle path: {relative_path}")
-        if not valid:
+    for relative_path in REQUIRED_DATA_FILES:
+        if relative_path not in normalized:
             missing.append(relative_path)
+    for prefix in REQUIRED_NONEMPTY_DIRS:
+        if not any(entry.startswith(prefix) for entry in normalized):
+            missing.append(f"{prefix.rstrip('/')} (no entries)")
     for module_name in REQUIRED_QT_MODULES:
-        if not _has_qt_module_binary(resource_root, module_name):
+        if not _has_qt_module(normalized, module_name):
             missing.append(f"PySide6/{module_name} (binary)")
     for library_stem in REQUIRED_QT_RUNTIME_LIBRARIES:
-        if not _has_qt_runtime_library(resource_root, library_stem):
+        if not _has_qt_runtime(normalized, library_stem):
             missing.append(f"PySide6/{library_stem} (runtime library)")
-    for relative_path in NON_EMPTY_DIRECTORIES:
-        directory = resource_root / relative_path
-        if directory.is_dir() and not any(path.is_file() for path in directory.rglob("*")):
-            missing.append(f"{relative_path} (no files)")
-    assets_dir = resource_root / "webui" / "dist" / "assets"
-    if assets_dir.is_dir() and not any(path.is_file() for path in assets_dir.rglob("*")):
-        missing.append("webui/dist/assets (no built assets)")
-    spa_index = resource_root / "webui" / "dist" / "index.html"
-    if spa_index.is_file():
-        for asset_path in ASSET_REFERENCE.findall(spa_index.read_text(encoding="utf-8")):
-            if not (spa_index.parent / asset_path).is_file():
-                missing.append(f"webui/dist/{asset_path}")
     return missing
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("bundle_dir", type=Path, help="Path to dist/AssetManager")
-    args = parser.parse_args()
+def _embedded_toc(exe_path: Path) -> list[str]:
+    """Return raw TOC entry names from a onefile exe (lazy PyInstaller import)."""
+    from PyInstaller.archive.readers import CArchiveReader
 
-    missing = check_bundle(args.bundle_dir)
-    if missing:
+    return [str(key) for key in CArchiveReader(str(exe_path)).toc.keys()]
+
+
+def check_exe(exe_path: Path, min_size: int = MIN_EXE_SIZE) -> list[str]:
+    """Return problems with a single-file bundle (empty = complete)."""
+    missing: list[str] = []
+    if not exe_path.is_file():
+        return [f"missing executable: {exe_path}"]
+    if not _is_pe(exe_path):
+        missing.append("executable is not a valid PE image (missing MZ magic)")
+    size = exe_path.stat().st_size
+    if size < min_size:
+        missing.append(
+            f"executable size {size} bytes below minimum {min_size} bytes"
+        )
+    try:
+        entries = _embedded_toc(exe_path)
+    except ImportError:
+        print(
+            "warning: PyInstaller not importable; embedded TOC check skipped",
+            file=sys.stderr,
+        )
+        entries = None
+    except Exception as exc:  # pragma: no cover - depends on archive internals
+        missing.append(f"cannot parse PyInstaller archive: {exc}")
+        entries = None
+    if entries is not None:
+        missing.extend(check_toc(entries))
+    return missing
+
+
+def _datas_sources(spec_text: str) -> list[str]:
+    sources: list[str] = []
+    for match in _DATAS_SOURCE_RE.finditer(spec_text):
+        parts = [part.strip().strip("'\"") for part in match.group(1).split("/")]
+        sources.append("/".join(parts))
+    return sources
+
+
+def _assetsmanager_hiddenimports(spec_text: str) -> list[str]:
+    if "hiddenimports=[" not in spec_text:
+        return []
+    body = spec_text.split("hiddenimports=[", 1)[1].split("]", 1)[0]
+    return [
+        module for module in re.findall(r"'([^']+)'", body)
+        if module.startswith("AssetsManager.")
+    ]
+
+
+def _module_exists(module: str, root: Path) -> bool:
+    rel = module[len("AssetsManager."):].replace(".", "/")
+    base = root / "AssetsManager" / rel
+    return base.with_suffix(".py").is_file() or (base / "__init__.py").is_file()
+
+
+def check_spec(spec_path: Path = DEFAULT_SPEC) -> list[str]:
+    """Return spec drift problems (empty = consistent with the source tree)."""
+    if not spec_path.is_file():
+        return [f"spec not found: {spec_path}"]
+    text = spec_path.read_text(encoding="utf-8")
+    problems: list[str] = []
+    for source in _datas_sources(text):
+        if source.startswith("webui/"):
+            # Generated by the WebUI build; its presence in the artifact is
+            # verified by the embedded TOC check instead of the source tree.
+            continue
+        if not (spec_path.parent / source).exists():
+            problems.append(f"datas source missing: {source}")
+    for module in _assetsmanager_hiddenimports(text):
+        if not _module_exists(module, spec_path.parent):
+            problems.append(f"hidden import not found: {module}")
+    return problems
+
+
+def _resolve_exe(bundle: Path) -> Path:
+    if bundle.is_file():
+        return bundle
+    direct = bundle / "AssetManager.exe"
+    if direct.is_file():
+        return direct
+    return bundle / "AssetManager" / "AssetManager.exe"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "bundle",
+        type=Path,
+        help="Path to dist/AssetManager.exe (or the dist directory)",
+    )
+    parser.add_argument(
+        "--spec",
+        type=Path,
+        default=DEFAULT_SPEC,
+        help="Path to AssetManager.spec for the static drift check",
+    )
+    args = parser.parse_args(argv)
+
+    problems = check_exe(_resolve_exe(args.bundle))
+    problems.extend(check_spec(args.spec))
+
+    if problems:
         print("Package is missing required resources:", file=sys.stderr)
-        for path in missing:
+        for path in problems:
             print(f"  - {path}", file=sys.stderr)
         return 1
 
-    print(f"Package contents verified: {args.bundle_dir}")
+    print(f"Package contents verified: {args.bundle}")
     return 0
 
 

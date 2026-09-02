@@ -1,17 +1,17 @@
 ; Inno Setup 6 script — per-user Windows installer for AssetManager.
 ;
-; Why per-user (PrivilegesRequired=lowest): the app writes its RuntimeData
-; directory NEXT TO the executable (see AssetsManager/core/path_resolver.py),
-; so installing into %LOCALAPPDATA%\Programs keeps every write inside the
-; user profile — no UAC prompt, no Program Files ACL wall.
+; Why per-user (PrivilegesRequired=lowest): the app writes its RuntimeData to
+; %LOCALAPPDATA%\AssetManager (see AssetsManager/core/path_resolver.py), so
+; installing into %LOCALAPPDATA%\Programs keeps every write inside the user
+; profile — no UAC prompt, no Program Files ACL wall.
 ;
 ; Version discipline: constants.py (AssetsManager/core/constants.py) is the
 ; single source of truth. scripts/build_installer.py reads APP_VERSION from
 ; there and stamps installer/_version.iss, which is #included below. Do NOT
 ; hardcode a version in this file.
 ;
-; Package contents: the full PyInstaller onedir output (dist/AssetManager),
-; built beforehand via `pyinstaller AssetManager.spec`.
+; Package contents: the single-file PyInstaller executable
+; (dist/AssetManager.exe), built beforehand via `pyinstaller AssetManager.spec`.
 
 #define MyAppName "AssetManager"
 #define MyAppExeName "AssetManager.exe"
@@ -56,9 +56,9 @@ Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.i
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; Full onedir bundle — everything PyInstaller collected, preserving the
-; _internal layout of PyInstaller 6.
-Source: "..\dist\AssetManager\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+; Single-file executable — everything PyInstaller collected is embedded inside
+; the onefile exe, so there is no directory tree to recurse.
+Source: "..\dist\AssetManager.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -70,6 +70,6 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}
 [UninstallRun]
 ; Nothing — no services/tasks to stop.
 
-; NOTE: no [UninstallDelete] on purpose. RuntimeData lives in {app} next to
-; the exe; the uninstaller must not wipe user data, so leftover runtime
-; files stay until the user removes the folder themselves.
+; NOTE: no [UninstallDelete] on purpose. RuntimeData lives in
+; %LOCALAPPDATA%\AssetManager (outside {app}), so the uninstaller never
+; touches user data.

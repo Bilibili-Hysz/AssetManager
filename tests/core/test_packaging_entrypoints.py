@@ -117,7 +117,7 @@ def test_ci_package_smoke_builds_from_foreign_cwd():
     assert "Build PyInstaller bundle from foreign cwd" in source
     assert "$env:GITHUB_WORKSPACE" in source
     assert "$env:RUNNER_TEMP" in source
-    assert "check_package_contents.py $bundlePath" in source
+    assert "check_package_contents.py $executable" in source
 
 
 def test_ci_package_smoke_starts_frozen_runtime():

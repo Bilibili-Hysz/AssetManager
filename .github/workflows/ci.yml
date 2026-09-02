@@ -160,23 +160,23 @@ jobs:
       - name: Verify bundled resources
         shell: pwsh
         run: |
-          $bundlePath = Join-Path $env:RUNNER_TEMP "assetmanager-package\dist\AssetManager"
-          python scripts/check_package_contents.py $bundlePath
+          $executable = Join-Path $env:RUNNER_TEMP "assetmanager-package\dist\AssetManager.exe"
+          python scripts/check_package_contents.py $executable
       - name: Smoke-test frozen Qt imports and icon rendering
         shell: pwsh
         run: |
-          $bundlePath = Join-Path $env:RUNNER_TEMP "assetmanager-package\dist\AssetManager"
-          $executable = Join-Path $bundlePath "AssetManager.exe"
-          $process = Start-Process -FilePath $executable -ArgumentList "--package-smoke" -WorkingDirectory $bundlePath -WindowStyle Hidden -PassThru -Wait
+          $distPath = Join-Path $env:RUNNER_TEMP "assetmanager-package\dist"
+          $executable = Join-Path $distPath "AssetManager.exe"
+          $process = Start-Process -FilePath $executable -ArgumentList "--package-smoke" -WorkingDirectory $distPath -WindowStyle Hidden -PassThru -Wait
           if ($process.ExitCode -ne 0) {
             throw "Frozen Qt/icon package smoke failed with code $($process.ExitCode)"
           }
       - name: Smoke-test frozen runtime
         shell: pwsh
         run: |
-          $bundlePath = Join-Path $env:RUNNER_TEMP "assetmanager-package\dist\AssetManager"
-          $executable = Join-Path $bundlePath "AssetManager.exe"
-          $process = Start-Process -FilePath $executable -WorkingDirectory $bundlePath -WindowStyle Hidden -PassThru
+          $distPath = Join-Path $env:RUNNER_TEMP "assetmanager-package\dist"
+          $executable = Join-Path $distPath "AssetManager.exe"
+          $process = Start-Process -FilePath $executable -WorkingDirectory $distPath -WindowStyle Hidden -PassThru
           try {
             Start-Sleep -Seconds 15
             if ($process.HasExited) {

@@ -2,7 +2,7 @@
 """Build the per-user Windows installer (Inno Setup) for AssetManager.
 
 Position in the release pipeline: run AFTER ``pyinstaller AssetManager.spec``
-has produced the onedir bundle at ``dist/AssetManager``. Steps:
+has produced the single-file executable at ``dist/AssetManager.exe``. Steps:
 
 1. Read APP_VERSION from ``AssetsManager/core/constants.py`` (single source
    of truth) and stamp ``installer/_version.iss`` with
@@ -34,6 +34,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CONSTANTS = ROOT / "AssetsManager" / "core" / "constants.py"
 DEFAULT_ISS = ROOT / "installer" / "assetmanager.iss"
 DEFAULT_VERSION_INCLUDE = ROOT / "installer" / "_version.iss"
+BUNDLE_EXE = ROOT / "dist" / "AssetManager.exe"
 
 APP_VERSION_RE = re.compile(r'^APP_VERSION\s*=\s*"([^"]+)"', re.MULTILINE)
 
@@ -200,6 +201,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         print("dry-run: ISCC invocation skipped (static checks passed).")
         return 0
+
+    if not BUNDLE_EXE.is_file():
+        raise BuildError(
+            f"{BUNDLE_EXE} not found; run `pyinstaller AssetManager.spec` first."
+        )
 
     iscc = locate_iscc()
     print(f"ISCC: {iscc}")
