@@ -320,6 +320,36 @@ a = Analysis(
     noarchive=False,
 )
 
+# ── Size reduction: drop dead-weight binaries & trim Qt translations ────
+# The excludes above strip Python bindings only; their underlying C++ DLLs
+# are still collected by the PySide6 hook, so filter a.binaries here.  Qt
+# translations are trimmed to the languages the app ships (en/zh/ja + zh_TW).
+_DROP_BINARIES = {
+    # Stray OpenSSL pulled from PortableGit on PATH — Python's own
+    # Python314/DLLs/libcrypto-3.dll + libssl-3.dll is what `ssl` needs.
+    'libcrypto-3-x64.dll',
+    'libssl-3-x64.dll',
+    # QML stack C++ DLLs — QtQuick/QtQml bindings are excluded above.
+    'Qt6Quick.dll',
+    'Qt6Qml.dll',
+    'Qt6QmlModels.dll',
+    'Qt6QmlMeta.dll',
+    'Qt6QmlWorkerScript.dll',
+    # QtPdf + virtual keyboard — unused by the app.
+    'Qt6Pdf.dll',
+    'Qt6PdfWidgets.dll',
+    'Qt6VirtualKeyboard.dll',
+}
+
+a.binaries = [_b for _b in a.binaries if Path(_b[0]).name not in _DROP_BINARIES]
+
+_KEEP_QM = _re.compile(r'^(qt|qtbase|qt_help)_(en|zh_CN|zh_TW|ja)\.qm$')
+
+a.datas = [
+    _d for _d in a.datas
+    if not (_d[0].endswith('.qm') and not _KEEP_QM.match(Path(_d[0]).name))
+]
+
 pyz = PYZ(a.pure)
 
 # Shared EXE metadata (identical across both bundle shapes).
