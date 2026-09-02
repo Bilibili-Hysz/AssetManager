@@ -97,6 +97,8 @@ spec `datas`（`AssetManager.spec:75-87`）目标刻意镜像仓库相对层级�
 
 ### 4.1 M1 · 数据根独立化（P0，与单 exe 解耦，先行合入）
 
+> **状态：已实施（`967b896`，2026-09-02）。** 相对下文的实现差异：① 幂等采用「目标已存在即跳过」，未另写 `.data_root_migrated` 标记（效果等价、更简单）；② 迁移用 `shutil.move` 单步完成（跨卷时其内部自动 copy+delete），未单列 `copytree` 分支；③ 并发竞争用 `_data_root_migration_looks_complete()`（仿 `database.py` 既有 `_legacy_migration_looks_complete`）判「已完成」，而非 `.migrating` 锁；④ 迁移以 `move` 语义执行（源目录移除），避免 §4.6 R6 的数据分叉。单测 8 例覆盖 user_data_root/runtime_root/迁移的 move/skip/noop/fail-closed。
+
 1. **新增 `user_data_root()`**（`path_resolver.py`）：frozen → `Path(os.environ["LOCALAPPDATA"])/"AssetManager"`；dev → 保持现状推导（`Path(__file__)...parent.parent.parent`）。`runtime_root()` frozen 分支改为 `user_data_root()/"RuntimeData"`（保持内部名字，迁移零结构改动）。
 2. **首启迁移 `migrate_data_root()`**（frozen 且目标不存在而来源存在时执行）：
    - 来源候选：① `exe旁/RuntimeData`（旧 frozen 布局）。开发仓库 RuntimeData **不迁**。
@@ -171,7 +173,7 @@ spec `datas`（`AssetManager.spec:75-87`）目标刻意镜像仓库相对层级�
 
 | 里程碑 | 内容 | 性质 |
 |---|---|---|
-| M1 | 数据根独立化 + 首启迁移（§4.1） | 代码改动面最小、收益最大；先行 |
+| M1 | 数据根独立化 + 首启迁移（§4.1） | ✅ 已实施（`967b896`） |
 | M2 | 插件双层 + 主题双层（§4.2/4.3） | 消除 F1/F2/F3 |
 | M3 | spec 单文件 + 流水线 + 版本策略（§4.4-4.6） | 低风险尾段 |
 
