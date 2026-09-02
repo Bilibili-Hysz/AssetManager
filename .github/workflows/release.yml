@@ -52,19 +52,34 @@ jobs:
           python-version: "3.13"
       - name: Install packaging dependencies
         run: pip install -r requirements.txt -r requirements-lan.txt -r requirements-dev.txt
-      - name: Build PyInstaller bundle
+      - name: Build PyInstaller bundles (onefile + onedir)
         shell: pwsh
-        run: pyinstaller --noconfirm --clean AssetManager.spec
+        run: |
+          foreach ($mode in @("onefile", "onedir")) {
+            $env:AM_BUNDLE_MODE = $mode
+            pyinstaller --noconfirm --clean AssetManager.spec
+            if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+            }
+          }
+          Remove-Item Env:AM_BUNDLE_MODE -ErrorAction SilentlyContinue
       - name: Verify bundled resources
         shell: pwsh
-        run: python scripts/check_package_contents.py dist\AssetManager.exe
+        run: |
+          python scripts/check_package_contents.py dist\AssetManager.exe
+          python scripts/check_package_contents.py dist\AssetManager
       - name: Smoke-test frozen Qt imports and icon rendering
         shell: pwsh
         run: |
-          $executable = Join-Path $env:GITHUB_WORKSPACE "dist\AssetManager.exe"
-          $process = Start-Process -FilePath $executable -ArgumentList "--package-smoke" -WorkingDirectory (Split-Path $executable) -WindowStyle Hidden -PassThru -Wait
-          if ($process.ExitCode -ne 0) {
-            throw "Frozen Qt/icon package smoke failed with code $($process.ExitCode)"
+          $executables = @(
+            (Join-Path $env:GITHUB_WORKSPACE "dist\AssetManager.exe"),
+            (Join-Path $env:GITHUB_WORKSPACE "dist\AssetManager\AssetManager.exe")
+          )
+          foreach ($executable in $executables) {
+            $process = Start-Process -FilePath $executable -ArgumentList "--package-smoke" -WorkingDirectory (Split-Path $executable) -WindowStyle Hidden -PassThru -Wait
+            if ($process.ExitCode -ne 0) {
+              throw "Frozen Qt/icon package smoke failed with code $($process.ExitCode)"
+            }
           }
       # Per-user Inno Setup installer (A2). Version comes from
       # AssetsManager/core/constants.py via scripts/build_installer.py, which
@@ -74,24 +89,38 @@ jobs:
       - name: Build Windows installer
         shell: pwsh
         run: python scripts/build_installer.py
-      - name: Prepare release artifact
+      - name: Prepare release artifacts (onefile + onedir zips)
         shell: pwsh
         run: |
-          $bundle = Join-Path $env:GITHUB_WORKSPACE "dist\AssetManager.exe"
-          $archiveName = "AssetManager-$($env:GITHUB_REF_NAME).zip"
-          $archive = Join-Path $env:RUNNER_TEMP $archiveName
-          $checksumName = "$archiveName.sha256"
-          $checksum = Join-Path $env:RUNNER_TEMP $checksumName
-          Compress-Archive -Path $bundle -DestinationPath $archive
-          $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
-          "$hash  $archiveName" | Set-Content -LiteralPath $checksum -Encoding ascii
-      - name: Transfer release artifact
+          $distPath = Join-Path $env:GITHUB_WORKSPACE "dist"
+          $tag = $env:GITHUB_REF_NAME
+
+          # onefile: single exe zipped flat at the archive root.
+          $onefileExe = Join-Path $distPath "AssetManager.exe"
+          $onefileZipName = "AssetManager-$tag-win64.zip"
+          $onefileZip = Join-Path $env:RUNNER_TEMP $onefileZipName
+          Compress-Archive -Path $onefileExe -DestinationPath $onefileZip
+          $onefileHash = (Get-FileHash -LiteralPath $onefileZip -Algorithm SHA256).Hash
+          "$onefileHash  $onefileZipName" | Set-Content -LiteralPath "$onefileZip.sha256" -Encoding ascii
+
+          # onedir: portable folder zipped under its own top-level directory
+          # (Compress-Archive wraps a directory argument, so the archive opens
+          # as AssetManager/AssetManager.exe + AssetManager/_internal/...).
+          $onedirDir = Join-Path $distPath "AssetManager"
+          $onedirZipName = "AssetManager-$tag-win64-portable.zip"
+          $onedirZip = Join-Path $env:RUNNER_TEMP $onedirZipName
+          Compress-Archive -Path $onedirDir -DestinationPath $onedirZip
+          $onedirHash = (Get-FileHash -LiteralPath $onedirZip -Algorithm SHA256).Hash
+          "$onedirHash  $onedirZipName" | Set-Content -LiteralPath "$onedirZip.sha256" -Encoding ascii
+      - name: Transfer release artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-bundle
           path: |
-            ${{ runner.temp }}/AssetManager-${{ github.ref_name }}.zip
-            ${{ runner.temp }}/AssetManager-${{ github.ref_name }}.zip.sha256
+            ${{ runner.temp }}/AssetManager-${{ github.ref_name }}-win64.zip
+            ${{ runner.temp }}/AssetManager-${{ github.ref_name }}-win64.zip.sha256
+            ${{ runner.temp }}/AssetManager-${{ github.ref_name }}-win64-portable.zip
+            ${{ runner.temp }}/AssetManager-${{ github.ref_name }}-win64-portable.zip.sha256
           if-no-files-found: error
       - name: Transfer installer artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -125,36 +154,47 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = $env:GITHUB_REF_NAME
-          $archiveName = "AssetManager-$tag.zip"
-          $checksumName = "$archiveName.sha256"
-          $archive = Join-Path $env:RUNNER_TEMP "release-bundle\$archiveName"
-          $checksum = Join-Path $env:RUNNER_TEMP "release-bundle\$checksumName"
-          foreach ($path in @($archive, $checksum)) {
-            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-              throw "Release artifact was not downloaded: $path"
+          $bundleDir = Join-Path $env:RUNNER_TEMP "release-bundle"
+          $installerDir = Join-Path $env:RUNNER_TEMP "release-installer"
+
+          # Both zips + sidecars, in a deterministic order.
+          $archiveNames = @(
+            "AssetManager-$tag-win64.zip",
+            "AssetManager-$tag-win64-portable.zip"
+          )
+          $uploadFiles = @()
+          foreach ($name in $archiveNames) {
+            $zip = Join-Path $bundleDir $name
+            $sidecar = Join-Path $bundleDir "$name.sha256"
+            foreach ($path in @($zip, $sidecar)) {
+              if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+                throw "Release artifact was not downloaded: $path"
+              }
             }
+            $uploadFiles += $zip
+            $uploadFiles += $sidecar
           }
 
-          $installers = @(Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TEMP "release-installer") -Filter "AssetManager-*-setup.exe" -File)
+          # Installer (exactly one) + its sidecar.
+          $installers = @(Get-ChildItem -LiteralPath $installerDir -Filter "AssetManager-*-setup.exe" -File)
           if ($installers.Count -ne 1) {
             throw "Expected exactly one installer, found $($installers.Count)"
           }
           $installer = $installers[0]
           $installerName = $installer.Name
-          $installerChecksumName = "$installerName.sha256"
-          $installerChecksum = Join-Path $installer.DirectoryName $installerChecksumName
+          $installerChecksum = Join-Path $installer.DirectoryName "$installerName.sha256"
           if (-not (Test-Path -LiteralPath $installerChecksum -PathType Leaf)) {
-            throw "Installer checksum was not downloaded: $installerChecksumName"
+            throw "Installer checksum was not downloaded: $installerChecksum"
           }
+          $uploadFiles += $installer.FullName
+          $uploadFiles += $installerChecksum
 
           $releaseJson = gh release view $tag --repo "${{ github.repository }}" --json assets
           if ($LASTEXITCODE -ne 0) {
             throw "Release $tag does not exist in ${{ github.repository }}; refusing to create or target another release"
           }
           $release = $releaseJson | ConvertFrom-Json
-          $uploadNames = @(
-            $archiveName, $checksumName, $installerName, $installerChecksumName
-          )
+          $uploadNames = @($uploadFiles | ForEach-Object { Split-Path -Leaf $_ })
           $existingNames = @(
             $release.assets |
               Where-Object { $uploadNames -ccontains $_.name } |
@@ -164,19 +204,24 @@ jobs:
             throw "Release asset(s) already exist: $($existingNames -join ', '). Reruns are intentionally no-overwrite; delete the existing asset(s) before rerunning."
           }
 
-          $recordedHash = (Get-Content -LiteralPath $checksum -Raw).Trim() -split '\s+' | Select-Object -First 1
-          $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
-          if ($actualHash -cne $recordedHash) {
-            throw "SHA-256 mismatch for ${archiveName}: expected $recordedHash, got $actualHash"
+          # SHA-256 discipline: every zip and the installer must match its sidecar.
+          foreach ($name in $archiveNames) {
+            $zip = Join-Path $bundleDir $name
+            $sidecar = Join-Path $bundleDir "$name.sha256"
+            $recorded = (Get-Content -LiteralPath $sidecar -Raw).Trim() -split '\s+' | Select-Object -First 1
+            $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
+            if ($actual -cne $recorded) {
+              throw "SHA-256 mismatch for $name: expected $recorded, got $actual"
+            }
           }
 
           $recordedInstallerHash = (Get-Content -LiteralPath $installerChecksum -Raw).Trim() -split '\s+' | Select-Object -First 1
           $actualInstallerHash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash
           if ($actualInstallerHash -cne $recordedInstallerHash) {
-            throw "SHA-256 mismatch for ${installerName}: expected $recordedInstallerHash, got $actualInstallerHash"
+            throw "SHA-256 mismatch for $installerName: expected $recordedInstallerHash, got $actualInstallerHash"
           }
 
-          gh release upload --repo "${{ github.repository }}" $tag $archive $checksum $installer.FullName $installerChecksum
+          gh release upload --repo "${{ github.repository }}" $tag @uploadFiles
           if ($LASTEXITCODE -ne 0) {
             throw "Release upload failed for $tag in ${{ github.repository }}"
           }

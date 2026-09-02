@@ -150,42 +150,58 @@ jobs:
           New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
           Push-Location $env:RUNNER_TEMP
           try {
-            & pyinstaller --noconfirm --clean --distpath $distPath --workpath $workPath (Join-Path $env:GITHUB_WORKSPACE "AssetManager.spec")
-            if ($LASTEXITCODE -ne 0) {
-              exit $LASTEXITCODE
+            foreach ($mode in @("onefile", "onedir")) {
+              $env:AM_BUNDLE_MODE = $mode
+              & pyinstaller --noconfirm --clean --distpath $distPath --workpath $workPath (Join-Path $env:GITHUB_WORKSPACE "AssetManager.spec")
+              if ($LASTEXITCODE -ne 0) {
+                exit $LASTEXITCODE
+              }
             }
           } finally {
             Pop-Location
+            Remove-Item Env:AM_BUNDLE_MODE -ErrorAction SilentlyContinue
           }
       - name: Verify bundled resources
         shell: pwsh
         run: |
-          $executable = Join-Path $env:RUNNER_TEMP "assetmanager-package\dist\AssetManager.exe"
+          $distPath = Join-Path $env:RUNNER_TEMP "assetmanager-package\dist"
+          $executable = Join-Path $distPath "AssetManager.exe"
           python scripts/check_package_contents.py $executable
+          python scripts/check_package_contents.py (Join-Path $distPath "AssetManager")
       - name: Smoke-test frozen Qt imports and icon rendering
         shell: pwsh
         run: |
           $distPath = Join-Path $env:RUNNER_TEMP "assetmanager-package\dist"
-          $executable = Join-Path $distPath "AssetManager.exe"
-          $process = Start-Process -FilePath $executable -ArgumentList "--package-smoke" -WorkingDirectory $distPath -WindowStyle Hidden -PassThru -Wait
-          if ($process.ExitCode -ne 0) {
-            throw "Frozen Qt/icon package smoke failed with code $($process.ExitCode)"
+          $executables = @(
+            (Join-Path $distPath "AssetManager.exe"),
+            (Join-Path $distPath "AssetManager\AssetManager.exe")
+          )
+          foreach ($executable in $executables) {
+            $process = Start-Process -FilePath $executable -ArgumentList "--package-smoke" -WorkingDirectory (Split-Path $executable) -WindowStyle Hidden -PassThru -Wait
+            if ($process.ExitCode -ne 0) {
+              throw "Frozen Qt/icon package smoke failed with code $($process.ExitCode)"
+            }
           }
       - name: Smoke-test frozen runtime
         shell: pwsh
         run: |
           $distPath = Join-Path $env:RUNNER_TEMP "assetmanager-package\dist"
-          $executable = Join-Path $distPath "AssetManager.exe"
-          $process = Start-Process -FilePath $executable -WorkingDirectory $distPath -WindowStyle Hidden -PassThru
-          try {
-            Start-Sleep -Seconds 15
-            if ($process.HasExited) {
-              throw "Frozen runtime exited early with code $($process.ExitCode)"
-            }
-          } finally {
-            if (-not $process.HasExited) {
-              Stop-Process -Id $process.Id -Force
-              $process.WaitForExit()
+          $executables = @(
+            (Join-Path $distPath "AssetManager.exe"),
+            (Join-Path $distPath "AssetManager\AssetManager.exe")
+          )
+          foreach ($executable in $executables) {
+            $process = Start-Process -FilePath $executable -WorkingDirectory (Split-Path $executable) -WindowStyle Hidden -PassThru
+            try {
+              Start-Sleep -Seconds 15
+              if ($process.HasExited) {
+                throw "Frozen runtime exited early with code $($process.ExitCode)"
+              }
+            } finally {
+              if (-not $process.HasExited) {
+                Stop-Process -Id $process.Id -Force
+                $process.WaitForExit()
+              }
             }
           }
 

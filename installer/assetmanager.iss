@@ -1,17 +1,19 @@
 ; Inno Setup 6 script — per-user Windows installer for AssetManager.
 ;
-; Why per-user (PrivilegesRequired=lowest): the app writes its RuntimeData to
-; %LOCALAPPDATA%\AssetManager (see AssetsManager/core/path_resolver.py), so
-; installing into %LOCALAPPDATA%\Programs keeps every write inside the user
-; profile — no UAC prompt, no Program Files ACL wall.
+; Why per-user (PrivilegesRequired=lowest): the app is portable — frozen builds
+; keep all writable data (RuntimeData/Plugins/Themes) NEXT TO the executable
+; (see AssetsManager/core/path_resolver.py). Installing the single exe into
+; %LOCALAPPDATA%\Programs therefore keeps every write inside the user profile
+; — no UAC prompt, no Program Files ACL wall.
 ;
 ; Version discipline: constants.py (AssetsManager/core/constants.py) is the
 ; single source of truth. scripts/build_installer.py reads APP_VERSION from
 ; there and stamps installer/_version.iss, which is #included below. Do NOT
 ; hardcode a version in this file.
 ;
-; Package contents: the single-file PyInstaller executable
-; (dist/AssetManager.exe), built beforehand via `pyinstaller AssetManager.spec`.
+; Package contents: the single-file (onefile) PyInstaller executable
+; (dist/AssetManager.exe), built beforehand via `python build.py --build
+; --mode onefile` (or `pyinstaller AssetManager.spec`, whose default is onefile).
 
 #define MyAppName "AssetManager"
 #define MyAppExeName "AssetManager.exe"
@@ -70,6 +72,7 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}
 [UninstallRun]
 ; Nothing — no services/tasks to stop.
 
-; NOTE: no [UninstallDelete] on purpose. RuntimeData lives in
-; %LOCALAPPDATA%\AssetManager (outside {app}), so the uninstaller never
-; touches user data.
+; NOTE: no [UninstallDelete] on purpose. The app is portable, so RuntimeData
+; lives NEXT TO the exe (inside {app}). The uninstaller removes the installed
+; exe and leaves the runtime-written RuntimeData it never created in place,
+; preserving user data.

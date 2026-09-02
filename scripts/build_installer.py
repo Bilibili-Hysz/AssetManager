@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Build the per-user Windows installer (Inno Setup) for AssetManager.
 
-Position in the release pipeline: run AFTER ``pyinstaller AssetManager.spec``
-has produced the single-file executable at ``dist/AssetManager.exe``. Steps:
+Position in the release pipeline: run AFTER the onefile build
+(``python build.py --build --mode onefile`` or ``pyinstaller AssetManager.spec``
+in its default mode) has produced ``dist/AssetManager.exe``. Steps:
 
 1. Read APP_VERSION from ``AssetsManager/core/constants.py`` (single source
    of truth) and stamp ``installer/_version.iss`` with
