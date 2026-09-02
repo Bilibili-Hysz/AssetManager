@@ -75,3 +75,47 @@
 - **活跃区轨迹（逐提交实测）**：256（收敛前）→ 143（精简轮）→ 139（蒸馏轮）→ 125（收敛 A/B/C）→ 69（Round D）→ **58**（Round E）。口径与第四节二次更正一致。
 
 **遗留**：根 `README.md`（第 101 行目录树、第 252 行表格）与 `docs/overview-2026-08-27.md`（第 137/398/415 行）仍写有旧的 `docs/baseline-2026-08-01/`、`docs/deep-weakness-audit-2026-08-22/` 路径；二者均为并行会话 WIP，待其提交后同步。
+
+## 八、最终收敛轮与终态认证（2026-09-02 收尾轮）
+
+### 8.1 Round G 补登（本报告原 §七 未覆盖）
+
+| 轮次 | 处置 | 活跃区变化 | 提交 |
+|---|---|---|---|
+| Round G | `docs/compose/distilled/` 9 份历史蒸馏（06-17~08-04 已完结会话摘要）合并为 1 份 `docs/compose/compose-session-decisions-distilled-2026-09-02.md`（按 9 批次「背景/决策要点/落地状态/仍生效约束」速查表，保留决策条文）；原件零改写 `git mv` → `archive/2026-09/compose-distilled-superseded/`；`adr/0003` 唯一直接引用改指合并文档 | 58 → **50**（−8） | `823fefe` |
+
+### 8.2 收尾轮（第二十轮）——新增统一入口，不再刪减
+
+- **决策**：收敛已达自然终点（活跃区 50 份、归档 210 份、双门禁 exit 0、真实断链 0），无安全可归档候选；`plans/` 11 份为互补的现行执行指令、`full-review/` 12 份为进行中审计区，强行归档违反"提案而非实现"且破坏活跃上下文，故**不再刪减**。
+- **产出**：新增 1 份自有入口文档 `docs/GETTING-STARTED.md`（LIVING·2026-09-02），作为项目文档统一入口——含项目定位、30 秒阅读路径、LIVING/FROZEN/ARCHIVED 三层纪律、按问题路由表、并发维护红线、门禁说明；所有链接实测存在（0 断链）。
+- 提交 `8a0ea6b`（仅该文件，+62 行）；并行会话 WIP 改动保持未暂存。
+
+### 8.3 终态认证
+
+| 维度 | 结论 | 证据 |
+|---|---|---|
+| 活跃区规模 | **50 份** md | 根 9 / adr 5 / compose 2 / full-review 12 / plans 11 / reports 11（与 §七 58 相比，Round G −8） |
+| 归档登记 | `archive/2026-09/` **210 份**（全量 343 份含 2026-08 段） | 逐份登记于 `docs/archive/INDEX.md` |
+| 双门禁 | **exit 0 ×2** | `check_documents.py` + `check_boundaries.py`（收尾轮复跑通过） |
+| 相对链接 | **真实断链 0** | 活跃区（排除并行 WIP）全量复扫；30 条"断链"均为 `architecture-reliability-roadmap` 的 `file:line` 代码证据锚点（指向 `.py/.tsx` 源文件），属误报 |
+| 文档树合理性 | **达标** | 导航可达（README 功能地图 + GETTING-STARTED 入口）、历史可溯（INDEX 逐份登记）、纪律清晰（三层状态）、门禁绿 |
+
+> 口径重申：活跃区 = `docs/` 下排除 `docs/archive/` 与 `docs/full-review/archive/` 的 md；`git mv` 不减少文件总量（docs 总量 495 不变）；`git ls-tree` 对中文路径加引号，须用 `-z` 免引号输出。
+
+### 8.4 并行会话待收尾清单（文档侧，本会话不触碰）
+
+以下 7 份文档为并行会话未提交改动（非本收敛轮职责），待其自身收尾：
+
+1. `README.md`（仓库根，旧路径同步）
+2. `docs/architecture.md`（当前架构权威文档）
+3. `docs/overview-2026-08-27.md`（结构快照，旧路径同步）
+4. `docs/plans/architecture-reliability-roadmap-2026-08-31.md`（可靠性路线图）
+5. `docs/reports/cleanup-and-git-repair-2026-09-01.md`
+6. `docs/reports/expert-panel-deep-analysis-2026-08-31.md`
+7. `docs/archive/2026-09/plans-done/task-package-2026-08-30.md`
+
+代码与测试侧另有 34 份未提交改动（feature 工作），同属并行会话，不在文档收敛范围内。
+
+### 8.5 结论
+
+文档收敛闭环完成：从 256 份活跃区经精简/蒸馏/收敛多轮处理至 **50 份**，约 210 份历史与证据迁入 `archive/` 并逐份溯源，双门禁持续 exit 0、真实断链 0。文档树已处于"合理"状态——仅余并行会话的 7 份 WIP 待其自行收尾（尤其根 `README.md` 与 `docs/overview` 的旧路径同步）。后续若需进一步收口 `plans/`（互补视角）或 `full-review/`（进行中审计区），须由用户明确授权范围。

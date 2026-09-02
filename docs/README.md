@@ -2,6 +2,7 @@
 
 > 状态：LIVING · updated: 2026-09-02
 > 本文件是 `docs/` 的功能分类索引：回答"我要的信息在哪类文档里"。各目录内部的细粒度导航见各自的 README/INDEX。
+> **新人入口**：首次阅读请从 [`GETTING-STARTED.md`](GETTING-STARTED.md) 开始（项目定位 + 30 秒阅读路径 + LIVING/FROZEN/ARCHIVED 三层状态纪律）。
 
 ## 按功能分类
 
