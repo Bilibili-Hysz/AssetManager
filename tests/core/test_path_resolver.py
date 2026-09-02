@@ -593,153 +593,53 @@ def test_flush_directory_durable_current_platform(tmp_path):
     database._flush_directory_durable(tmp_path)
 
 
-# ── M1 data-root independence (single-exe release) ──────────────────────
-# The frozen runtime data root must live under %LOCALAPPDATA%\AssetManager
-# instead of next to the executable, and the first launch must migrate any
-# legacy exe-adjacent RuntimeData there.  Development is a strict no-op.
+# ── M1 data-root portability (single-exe release) ───────────────────────
+# The frozen data root lives NEXT TO the executable (portable) for both the
+# onefile and onedir bundles, so moving the app moves its data.  There is no
+# first-launch migration — the exe directory is the data root by definition.
+# Development keeps the repository-local layout unchanged.
 
-def test_user_data_root_frozen_uses_local_app_data(monkeypatch, tmp_path):
+
+def test_user_data_root_frozen_is_exe_adjacent(monkeypatch, tmp_path):
     import sys
 
     from AssetsManager.core import path_resolver
 
-    local_app_data = tmp_path / "LocalAppData"
     exe = tmp_path / "install" / "AssetManager.exe"
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(exe))
-    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
 
-    assert path_resolver.user_data_root() == local_app_data / "AssetManager"
+    assert path_resolver.user_data_root() == exe.parent
 
 
-def test_user_data_root_frozen_falls_back_to_home(monkeypatch):
+def test_user_data_root_frozen_onedir_is_bundle_dir(monkeypatch, tmp_path):
     import sys
-    from pathlib import Path
 
     from AssetsManager.core import path_resolver
 
+    # onedir: the exe sits in dist/AssetManager (beside the _internal dir).
+    exe = tmp_path / "dist" / "AssetManager" / "AssetManager.exe"
     monkeypatch.setattr(sys, "frozen", True, raising=False)
-    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
 
-    assert path_resolver.user_data_root() == Path.home() / "AppData" / "Local" / "AssetManager"
+    assert path_resolver.user_data_root() == exe.parent
 
 
-def test_runtime_root_frozen_is_under_user_data_root(monkeypatch, tmp_path):
+def test_runtime_root_frozen_is_next_to_exe(monkeypatch, tmp_path):
     import sys
 
     from AssetsManager.core import path_resolver
 
-    local_app_data = tmp_path / "LocalAppData"
     exe = tmp_path / "install" / "AssetManager.exe"
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(exe))
-    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
 
-    assert path_resolver.runtime_root() == local_app_data / "AssetManager" / "RuntimeData"
-
-
-def test_migrate_data_root_is_noop_in_dev():
-    from AssetsManager.core import path_resolver
-
-    # Development (not frozen) must never touch the filesystem.
-    assert path_resolver.migrate_data_root() is None
-
-
-def test_migrate_data_root_moves_legacy_runtime_data(monkeypatch, tmp_path):
-    import sys
-
-    from AssetsManager.core import path_resolver
-
-    local_app_data = tmp_path / "LocalAppData"
-    exe_dir = tmp_path / "install"
-    exe = exe_dir / "AssetManager.exe"
-    legacy = exe_dir / "RuntimeData"
-    (legacy / "Shared").mkdir(parents=True)
-    (legacy / "Shared" / "settings.json").write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(sys, "frozen", True, raising=False)
-    monkeypatch.setattr(sys, "executable", str(exe))
-    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
-
-    path_resolver.migrate_data_root()
-
-    target = local_app_data / "AssetManager" / "RuntimeData"
-    assert (target / "Shared" / "settings.json").exists()
-    assert not legacy.exists()
-
-
-def test_migrate_data_root_skips_when_target_exists(monkeypatch, tmp_path):
-    import sys
-
-    from AssetsManager.core import path_resolver
-
-    local_app_data = tmp_path / "LocalAppData"
-    exe_dir = tmp_path / "install"
-    exe = exe_dir / "AssetManager.exe"
-    legacy = exe_dir / "RuntimeData"
-    (legacy / "Shared").mkdir(parents=True)
-    (legacy / "Shared" / "settings.json").write_text("legacy", encoding="utf-8")
-    target = local_app_data / "AssetManager" / "RuntimeData"
-    (target / "Shared").mkdir(parents=True)
-    (target / "Shared" / "settings.json").write_text("existing", encoding="utf-8")
-    monkeypatch.setattr(sys, "frozen", True, raising=False)
-    monkeypatch.setattr(sys, "executable", str(exe))
-    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
-
-    path_resolver.migrate_data_root()
-
-    # Never clobber: the existing target is authoritative and legacy survives.
-    assert (target / "Shared" / "settings.json").read_text(encoding="utf-8") == "existing"
-    assert (legacy / "Shared" / "settings.json").read_text(encoding="utf-8") == "legacy"
-
-
-def test_migrate_data_root_noop_when_no_legacy(monkeypatch, tmp_path):
-    import sys
-
-    from AssetsManager.core import path_resolver
-
-    local_app_data = tmp_path / "LocalAppData"
-    exe = tmp_path / "install" / "AssetManager.exe"
-    monkeypatch.setattr(sys, "frozen", True, raising=False)
-    monkeypatch.setattr(sys, "executable", str(exe))
-    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
-
-    path_resolver.migrate_data_root()
-
-    assert not (local_app_data / "AssetManager" / "RuntimeData").exists()
-
-
-def test_migrate_data_root_fails_closed_on_move_failure(monkeypatch, tmp_path):
-    import sys
-
-    import pytest
-
-    from AssetsManager.core import path_resolver
-
-    local_app_data = tmp_path / "LocalAppData"
-    exe_dir = tmp_path / "install"
-    exe = exe_dir / "AssetManager.exe"
-    legacy = exe_dir / "RuntimeData"
-    (legacy / "Shared").mkdir(parents=True)
-    (legacy / "Shared" / "settings.json").write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(sys, "frozen", True, raising=False)
-    monkeypatch.setattr(sys, "executable", str(exe))
-    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
-
-    def fail_move(*_args, **_kwargs):
-        raise OSError("injected data-root migration failure")
-
-    monkeypatch.setattr(path_resolver.shutil, "move", fail_move)
-
-    with pytest.raises(RuntimeError, match="Data root migration failed"):
-        path_resolver.migrate_data_root()
-
-    # Fail-closed: the legacy data is preserved for a later retry.
-    assert legacy.exists()
+    assert path_resolver.runtime_root() == exe.parent / "RuntimeData"
 
 
 # ── M2 plugin/theme two-layer (single-exe release) ──────────────────────
-# Frozen builds relocate the writable extension locations (Plugins, Themes)
-# under the per-user data root and add read-only bundled sources under
+# Frozen builds keep the writable extension locations (Plugins, Themes)
+# next to the executable (portable) and add read-only bundled sources under
 # _MEIPASS so built-in themes and seed plugins stay reachable.
 
 def test_plugins_root_dev_uses_repository():
@@ -756,13 +656,11 @@ def test_plugins_root_frozen_uses_user_data_root(monkeypatch, tmp_path):
 
     from AssetsManager.core import path_resolver
 
-    local_app_data = tmp_path / "LocalAppData"
     exe = tmp_path / "install" / "AssetManager.exe"
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(exe))
-    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
 
-    assert path_resolver.plugins_root() == local_app_data / "AssetManager" / "Plugins"
+    assert path_resolver.plugins_root() == exe.parent / "Plugins"
 
 
 def test_themes_dir_dev_uses_repository():
@@ -779,14 +677,12 @@ def test_themes_dir_frozen_uses_user_data_root_and_creates(monkeypatch, tmp_path
 
     from AssetsManager.core import path_resolver
 
-    local_app_data = tmp_path / "LocalAppData"
     exe = tmp_path / "install" / "AssetManager.exe"
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(exe))
-    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
 
     themes = path_resolver.themes_dir()
-    assert themes == local_app_data / "AssetManager" / "Themes"
+    assert themes == exe.parent / "Themes"
     assert themes.is_dir()  # writable user layer is materialized eagerly
 
 
@@ -856,12 +752,10 @@ def test_default_search_paths_includes_builtin_when_frozen(monkeypatch, tmp_path
 
     meipass = tmp_path / "bundle"
     (meipass / "Plugins" / "Addons").mkdir(parents=True)
-    local_app_data = tmp_path / "LocalAppData"
     exe = tmp_path / "install" / "AssetManager.exe"
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(exe))
     monkeypatch.setattr(sys, "_MEIPASS", str(meipass), raising=False)
-    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
 
     manager = PluginManagerService.__new__(PluginManagerService)
     paths = manager.default_search_paths()

@@ -1,13 +1,9 @@
 """PathResolver — resolves library-specific paths for data storage."""
 import hashlib
-import logging
 import os
-import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-
-_log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -119,20 +115,22 @@ def root_identity(
 
 
 def user_data_root() -> Path:
-    """Return the per-user application data root directory.
+    """Return the application data root directory (portable, exe-adjacent).
 
-    Frozen (single-exe) builds store all writable data under
-    ``%LOCALAPPDATA%\\AssetManager`` so nothing depends on the executable's
-    (often read-only or removable) install directory.  Development runs keep
-    the repository-local layout unchanged for zero-surprise parity.
+    Frozen builds — both the single-file executable and the onedir bundle —
+    keep all writable data NEXT TO the executable so the app is fully
+    portable: ``Path(sys.executable).parent`` is the directory the exe sits in
+    for onefile, and the ``dist/AssetManager`` directory (beside ``_internal``)
+    for onedir.  Moving the executable moves its data with it.  Development
+    runs keep the repository-local layout unchanged for zero-surprise parity.
+
+    The portable contract assumes the install directory is writable (a green
+    folder the user owns, or the per-user ``{localappdata}\\Programs`` install
+    root).  A read-only location (e.g. Program Files) would make this fail; by
+    design the app does not silently relocate data to a hidden per-user path.
     """
     if getattr(sys, 'frozen', False):
-        local_app_data = os.environ.get("LOCALAPPDATA")
-        if local_app_data:
-            return Path(local_app_data) / "AssetManager"
-        # Fallback for Windows sessions without LOCALAPPDATA (rare).  The
-        # conventional per-user location keeps the writable contract intact.
-        return Path.home() / "AppData" / "Local" / "AssetManager"
+        return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent.parent.parent
 
 
@@ -141,64 +139,12 @@ def runtime_root() -> Path:
     return user_data_root() / "RuntimeData"
 
 
-def _data_root_migration_looks_complete(legacy: Path, target: Path) -> bool:
-    """Return whether a failed legacy data-root move may be treated as done.
-
-    ``shutil.move`` of a directory can raise a spurious ``OSError`` when a
-    concurrent process already completed the rename (the source vanished) or
-    already delivered the payload.  Both states are idempotently complete:
-    failing startup afterwards would poison a healthy install over a race.
-    """
-    if not target.exists():
-        return False
-    if not legacy.exists():
-        # The source vanished: another process completed the rename.
-        return True
-    # Both directories still exist: accept only when the canonical
-    # coordination payload has arrived at the target.
-    return (target / "Shared").exists() and not (legacy / "Shared").exists()
-
-
-def migrate_data_root() -> None:
-    """Migrate the frozen data root from exe-adjacent to per-user storage.
-
-    No-op in development.  In frozen builds the legacy layout kept
-    ``RuntimeData`` next to the executable; move it under
-    ``%LOCALAPPDATA%\\AssetManager`` on first run so the data root is
-    independent of the install directory.  The move is idempotent (a present
-    target is never clobbered) and fail-closed (a genuinely failed move
-    raises rather than silently starting with an empty data root).
-    """
-    if not getattr(sys, 'frozen', False):
-        return
-    legacy = Path(sys.executable).parent / "RuntimeData"
-    target = runtime_root()
-    if not legacy.exists() or target.exists():
-        # Nothing to migrate, or a previous run already relocated the data.
-        # Never clobber an existing target with a stale legacy tree.
-        return
-    target.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        shutil.move(str(legacy), str(target))
-        _log.info("Migrated data root from %s to %s", legacy, target)
-    except OSError as exc:
-        if not _data_root_migration_looks_complete(legacy, target):
-            raise RuntimeError(
-                f"Data root migration failed: {legacy} -> {target}"
-            ) from exc
-
-
 def shared_dir() -> Path:
     """Return the shared data directory (cross-library)."""
     d = runtime_root() / "Shared"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
-
-# Relocate the frozen data root before any shared-directory consumer runs.
-# ``SHARED_DIR`` (below) materializes the *new* root; migrating first keeps
-# settings, crash, and library data from being re-created next to the exe.
-migrate_data_root()
 
 SHARED_DIR = shared_dir()
 
@@ -289,9 +235,9 @@ def db_path(library_root: str | Path | RootIdentity) -> Path:
 def plugins_root() -> Path:
     """Return the writable Plugins/ directory (user extension location).
 
-    Frozen builds keep user plugins under the per-user data root so they are
-    independent of the (often read-only or removable) install directory;
-    development keeps the repository ``Plugins/`` directory unchanged.
+    Frozen builds keep user plugins next to the executable (portable) so they
+    follow the data root; development keeps the repository ``Plugins/``
+    directory unchanged.
     """
     if getattr(sys, 'frozen', False):
         return user_data_root() / "Plugins"
@@ -336,12 +282,12 @@ def builtin_plugins_addons_dir() -> Path | None:
 def themes_dir() -> Path:
     """Return the writable user themes directory.
 
-    Frozen builds store user themes under the per-user data root so they
-    survive the executable's (read-only or removable) install directory — in
-    onefile the bundled ``_MEIPASS`` location is a session-scoped temp
-    directory and must never be written to.  Development keeps the repository
-    ``Assets/Themes`` directory (built-in + user themes coexist) unchanged.
-    Built-in read-only themes are resolved separately (builtin_themes_dir()).
+    Frozen builds store user themes next to the executable (portable) under
+    the data root — in onefile the bundled ``_MEIPASS`` location is a
+    session-scoped temp directory and must never be written to.  Development
+    keeps the repository ``Assets/Themes`` directory (built-in + user themes
+    coexist) unchanged.  Built-in read-only themes are resolved separately
+    (builtin_themes_dir()).
     """
     if getattr(sys, 'frozen', False):
         d = user_data_root() / "Themes"
