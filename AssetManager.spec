@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for AssetManager — single-directory bundle.
+"""PyInstaller spec for AssetManager — single-file bundle.
 
 Refactored architecture (2026-06-10).
 Application services: library, asset, metadata, tag, file_operation,
@@ -161,7 +161,6 @@ a = Analysis(
         'AssetsManager.lan.routes._helpers',
         'AssetsManager.lan.routes._resource_urls',
         'AssetsManager.lan.routes.auth',
-        'AssetsManager.lan.routes.commerce_policy',
         'AssetsManager.lan.routes.downloads',
         'AssetsManager.lan.routes.favorites',
         'AssetsManager.lan.routes.files',
@@ -171,16 +170,7 @@ a = Analysis(
         'AssetsManager.lan.routes.pages',
         'AssetsManager.lan.routes.quicksearch',
         'AssetsManager.lan.routes.quota',
-        'AssetsManager.lan.routes.seller_auth',
-        'AssetsManager.lan.routes.seller_profile',
         'AssetsManager.lan.routes.shares',
-        'AssetsManager.lan.routes.shop',
-        'AssetsManager.lan.routes.shop._common',
-        'AssetsManager.lan.routes.shop.cart',
-        'AssetsManager.lan.routes.shop.catalog',
-        'AssetsManager.lan.routes.shop.delivery',
-        'AssetsManager.lan.routes.shop.orders',
-        'AssetsManager.lan.routes.storefront_analytics',
         'AssetsManager.lan.routes.system',
         'AssetsManager.lan.routes.tags',
         'AssetsManager.lan.routes.thumbnails',
@@ -221,10 +211,8 @@ a = Analysis(
         'AssetsManager.application.library_settings_adapter',
         'AssetsManager.application.library_watcher_service',
         'AssetsManager.application.metadata_service',
-        'AssetsManager.application.order_service',
         'AssetsManager.application.plugin_service',
         'AssetsManager.application.project_service',
-        'AssetsManager.application.quota_service',
         'AssetsManager.application.reconciliation_queue',
         'AssetsManager.application.reconciliation_queue_migration',
         'AssetsManager.application.reconciliation_queue_store',
@@ -232,13 +220,7 @@ a = Analysis(
         'AssetsManager.application.runtime_events',
         'AssetsManager.application.search_service',
         'AssetsManager.application.security_preflight',
-        'AssetsManager.application.seller_auth_service',
-        'AssetsManager.application.seller_profile_service',
         'AssetsManager.application.share_service',
-        'AssetsManager.application.shop_authorization',
-        'AssetsManager.application.shop_buyer_service',
-        'AssetsManager.application.shop_service',
-        'AssetsManager.application.storefront_analytics_service',
         'AssetsManager.application.tag_canonicalizer',
         'AssetsManager.application.tag_service',
         'AssetsManager.application.thumbnail_cache_lifecycle',
@@ -263,15 +245,9 @@ a = Analysis(
         'AssetsManager.repositories.free_download_quota_repository',
         'AssetsManager.repositories.gallery_home_repository',
         'AssetsManager.repositories.metadata_repository',
-        'AssetsManager.repositories.order_repository',
         'AssetsManager.repositories.plugin_metadata_repository',
-        'AssetsManager.repositories.quota_repository',
         'AssetsManager.repositories.revoked_token_repository',
-        'AssetsManager.repositories.seller_profile_repository',
         'AssetsManager.repositories.share_repository',
-        'AssetsManager.repositories.shop_buyer_repository',
-        'AssetsManager.repositories.shop_repository',
-        'AssetsManager.repositories.storefront_analytics_repository',
         'AssetsManager.repositories.tag_repository',
         'AssetsManager.repositories.thumbnail_repository',
         # Controllers
@@ -299,7 +275,7 @@ a = Analysis(
         # Heavy optional modules (not packaged by default)
         'scipy', 'numpy', 'pytest', 'pygments', 'setuptools',
         'tkinter', 'unittest', 'test', 'tests',
-        'pip', 'pkg_resources', 'distutils',
+        'pip', 'pkg_resources',
         'matplotlib', 'pandas',
         # Qt modules not used by this app
         'PySide6.QtQuick', 'PySide6.QtQml', 'PySide6.QtPdf',
@@ -327,13 +303,12 @@ a = Analysis(
     noarchive=False,
 )
 
-pyz = PYZ(a.pure, a.zipped_data, cipher=None)
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
-    a.zipfiles,
     a.datas,
     [],
     name='AssetManager',
@@ -351,18 +326,4 @@ exe = EXE(
     entitlements_file=None,
     icon=str(_root / 'Assets' / 'icons' / 'icon.ico'),
     version=_version_info,
-)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    # Keep UPX disabled consistently (EXE above also sets upx=False): UPX on
-    # Qt DLLs risks broken/AV-flagged bundles, and a split EXE=False /
-    # COLLECT=True setting silently compressed only the collected binaries.
-    upx=False,
-    upx_exclude=[],
-    name='AssetManager',
 )
