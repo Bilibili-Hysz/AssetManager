@@ -4,13 +4,13 @@ type: plan
 status: LIVING
 date: 2026-09-02
 area: packaging / release
-owner: agent（M1/M2 已实施，M3 提案）
+owner: agent（M1/M2 已实施，M3 部分实施）
 supersedes: none
 ---
 
 # 单 exe 发布架构方案（2026-09-02）
 
-> 长期架构任务。给出从 onedir+安装器 迁移到"单 exe 分发"的完整路径、代码级改动清单与风险边界。**M1（数据根独立化）与 M2（插件/主题双层）已实施合入**，M3（spec 单文件化）仍为提案。
+> 长期架构任务。给出从 onedir+安装器 迁移到"单 exe 分发"的完整路径、代码级改动清单与风险边界。**M1（数据根独立化）、M2（插件/主题双层）、M3 前半（spec 单文件化 + build.py 单文件适配）已实施合入**；M3 剩余为流水线适配（check_package_contents 退役 / installer B / CI 同步）。
 
 ## 1. 背景与目标
 
@@ -132,6 +132,8 @@ spec `datas`（`AssetManager.spec:75-87`）目标刻意镜像仓库相对层级�
 
 ### 4.4 M3 · spec 单文件化（P2）
 
+> **状态：已实施（`6c3c385`，2026-09-02）。** 相对下文的实现差异：① 实证发现当前 spec 的 `EXE` 本就无 `exclude_binaries=True`（已是 onefile 形态），只是额外挂了 `COLLECT` 把同样 binaries/datas 再拷一份到 `_internal`（重复打包）——故修复 = 删 `COLLECT` + 去掉死参数 `a.zipfiles`/`a.zipped_data`（PyInstaller 6.x 恒为空，`build_main.py:728-730`），而非"并入"；② spec `excludes` 移除 `distutils`（Python 3.12+ 下由 setuptools vendored，PyInstaller 别名 hook 与显式 exclude 冲突致构建 `ValueError`）；③ 清理 24 个过时 hiddenimports（shop/order/quota/seller 功能已从代码库删除，首次真实构建暴露其 "Hidden import not found" ERROR）。真实产物 `dist/AssetManager.exe` ≈72MB，`--package-smoke` exit 0，构建日志零 ERROR。
+
 - `AssetManager.spec`：删除 `COLLECT`（356-368），将 `a.binaries/a.zipfiles/a.datas` 并入 `EXE`（332-354）；`console=False`、icon、version 保持。
 - `datas` 目标层级**不改**（§2.3 已证只读资源在 onefile 下全兼容）。
 - 决策点：`runtime_tmpdir`（默认 `%TEMP%\_MEIxxxx` 即可，除非需防 AV/清理策略）。
@@ -139,13 +141,15 @@ spec `datas`（`AssetManager.spec:75-87`）目标刻意镜像仓库相对层级�
 
 ### 4.5 M3 · 构建流水线（P2）
 
-| 位置 | 改动 |
-|---|---|
-| `build.py:51-77` `optimize()` | 删除（针对 `_internal/` 的 Qt 清理在单文件下失效） |
-| `build.py` 产物 | `dist/AssetManager/` → `dist/AssetManager.exe` |
-| `scripts/check_package_contents.py` | 适配单文件：校验内容从"目录树"改为"spec datas/hiddenimports 一致性"或退役 |
-| `scripts/build_installer.py` + `installer/assetmanager.iss` | 二选一：**A 纯绿色分发**（installer 退役，release 只传 exe+sha256）；**B 安装器包一层**（iss 打包单 exe 至 `{localappdata}\Programs\AssetManager`，卸载清 `%LOCALAPPDATA%\AssetManager`） |
-| `.github/workflows/release.yml:57-102` | 产物路径/artifact 名同步 |
+> **状态：build.py 两行已实施（`6c3c385`）；check_package_contents / installer / CI 三行待实施。**
+
+| 位置 | 改动 | 状态 |
+|---|---|---|
+| `build.py:51-77` `optimize()` | 删除（针对 `_internal/` 的 Qt 清理在单文件下失效） | ✅ 已实施 |
+| `build.py` 产物 | `dist/AssetManager/` → `dist/AssetManager.exe` | ✅ 已实施 |
+| `scripts/check_package_contents.py` | 适配单文件：校验内容从"目录树"改为"spec datas/hiddenimports 一致性"或退役 | ⏳ 待实施 |
+| `scripts/build_installer.py` + `installer/assetmanager.iss` | 二选一：**A 纯绿色分发**（installer 退役，release 只传 exe+sha256）；**B 安装器包一层**（iss 打包单 exe 至 `{localappdata}\Programs\AssetManager`，卸载清 `%LOCALAPPDATA%\AssetManager`） | ⏳ 待实施（Q5 已定 B） |
+| `.github/workflows/release.yml:57-102` | 产物路径/artifact 名同步 | ⏳ 待实施 |
 
 ### 4.6 M3 · 版本 / 升级 / 回滚（P2）
 
@@ -180,7 +184,7 @@ spec `datas`（`AssetManager.spec:75-87`）目标刻意镜像仓库相对层级�
 |---|---|---|
 | M1 | 数据根独立化 + 首启迁移（§4.1） | ✅ 已实施（`967b896`） |
 | M2 | 插件双层 + 主题双层（§4.2/4.3） | ✅ 已实施（`2591463`）；修 F2/F3，F1 实证不成立 |
-| M3 | spec 单文件 + 流水线 + 版本策略（§4.4-4.6） | 低风险尾段 |
+| M3 | spec 单文件 + build.py 适配（§4.4/4.5） | ✅ 已实施（`6c3c385`）；流水线适配（check_package_contents/installer/CI）待实施 |
 
 每里程碑独立提交 + 双门禁 + 单测 + 手工冒烟。
 
