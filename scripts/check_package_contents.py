@@ -1,15 +1,15 @@
-"""Validate a PyInstaller single-file executable bundle.
+"""Validate a PyInstaller onefile or onedir bundle.
 
-Two independent layers, both answering "is the release artifact complete?":
+Three independent layers, all answering "is the release artifact complete?":
 
-1. ``check_exe`` — structural + content verification of the built
-   ``AssetManager.exe`` (the onefile equivalent of walking the old onedir
-   ``_internal`` tree):
-   * the file is a valid PE image (``MZ`` magic),
-   * it meets a sanity size floor (the embedded Qt + SPA payload is present),
-   * the embedded CArchive TOC contains every resource the spec ``datas`` and
-     Qt requirements declare (SPA index, i18n, themes, plugins, icon, and the
-     QtSvg / QtOpenGL / QtOpenGLWidgets extension + runtime libraries).
+1. ``check_exe`` / ``check_onedir`` — structural + content verification of a
+   built bundle:
+   * ``check_exe`` walks the embedded CArchive TOC of a onefile
+     ``AssetManager.exe`` (PE magic + size floor + every resource the spec
+     ``datas`` and Qt requirements declare);
+   * ``check_onedir`` walks the collected ``_internal`` tree of an onedir
+     ``dist/AssetManager`` directory against the same resource contract.
+   ``check_bundle`` dispatches on the path type (file -> onefile, dir -> onedir).
 
 2. ``check_spec`` — static drift guard over ``AssetManager.spec`` (no build
    needed): every repo-source ``datas`` path exists on disk, and every
@@ -90,15 +90,26 @@ def _has_qt_runtime(entries: list[str], library_stem: str) -> bool:
     return False
 
 
-def check_toc(entries) -> list[str]:
-    """Return missing embedded resources for a normalized TOC entry iterable."""
+def check_toc(entries, *, case_insensitive: bool = False) -> list[str]:
+    """Return missing embedded resources for a normalized TOC entry iterable.
+
+    ``case_insensitive`` mirrors Windows' case-insensitive filesystem: an
+    onedir bundle merges ``assets/`` and ``Assets/`` (the spec intentionally
+    ships the icon under lowercase ``assets/icons`` and themes under capital
+    ``Assets/Themes``), so the directory walk cannot preserve the spec's
+    mixed casing the way a case-sensitive CArchive TOC does.
+    """
     normalized = [_normalize(str(entry)) for entry in entries]
+    if case_insensitive:
+        normalized = [entry.lower() for entry in normalized]
     missing: list[str] = []
     for relative_path in REQUIRED_DATA_FILES:
-        if relative_path not in normalized:
+        target = relative_path.lower() if case_insensitive else relative_path
+        if target not in normalized:
             missing.append(relative_path)
     for prefix in REQUIRED_NONEMPTY_DIRS:
-        if not any(entry.startswith(prefix) for entry in normalized):
+        pfx = prefix.lower() if case_insensitive else prefix
+        if not any(entry.startswith(pfx) for entry in normalized):
             missing.append(f"{prefix.rstrip('/')} (no entries)")
     for module_name in REQUIRED_QT_MODULES:
         if not _has_qt_module(normalized, module_name):
@@ -144,6 +155,44 @@ def check_exe(exe_path: Path, min_size: int = MIN_EXE_SIZE) -> list[str]:
     return missing
 
 
+def _onedir_entries(bundle_dir: Path) -> list[str]:
+    """Return relative file paths (re the payload root) for an onedir bundle."""
+    # PyInstaller 6 onedir: the payload lives in _internal next to the exe.
+    # Pre-6 onedir layouts kept everything directly beside the exe.
+    payload_root = bundle_dir / "_internal"
+    if not payload_root.is_dir():
+        payload_root = bundle_dir
+    entries: list[str] = []
+    for path in payload_root.rglob("*"):
+        if path.is_file():
+            entries.append(str(path.relative_to(payload_root)))
+    return entries
+
+
+def check_onedir(bundle_dir: Path) -> list[str]:
+    """Return problems with an onedir bundle directory (empty = complete)."""
+    problems: list[str] = []
+    exe = bundle_dir / "AssetManager.exe"
+    if not exe.is_file():
+        return [f"missing onedir executable: {exe}"]
+    if not _is_pe(exe):
+        problems.append("executable is not a valid PE image (missing MZ magic)")
+    entries = _onedir_entries(bundle_dir)
+    if not entries:
+        problems.append("onedir bundle collected no payload files")
+    problems.extend(check_toc(entries, case_insensitive=True))
+    return problems
+
+
+def check_bundle(bundle: Path, min_size: int = MIN_EXE_SIZE) -> list[str]:
+    """Check a onefile exe (path is a file) or an onedir dir (path is a dir)."""
+    if bundle.is_file():
+        return check_exe(bundle, min_size)
+    if bundle.is_dir():
+        return check_onedir(bundle)
+    return [f"bundle path does not exist: {bundle}"]
+
+
 def _datas_sources(spec_text: str) -> list[str]:
     sources: list[str] = []
     for match in _DATAS_SOURCE_RE.finditer(spec_text):
@@ -187,21 +236,12 @@ def check_spec(spec_path: Path = DEFAULT_SPEC) -> list[str]:
     return problems
 
 
-def _resolve_exe(bundle: Path) -> Path:
-    if bundle.is_file():
-        return bundle
-    direct = bundle / "AssetManager.exe"
-    if direct.is_file():
-        return direct
-    return bundle / "AssetManager" / "AssetManager.exe"
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "bundle",
         type=Path,
-        help="Path to dist/AssetManager.exe (or the dist directory)",
+        help="Path to dist/AssetManager.exe (onefile) or dist/AssetManager (onedir)",
     )
     parser.add_argument(
         "--spec",
@@ -211,7 +251,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    problems = check_exe(_resolve_exe(args.bundle))
+    problems = check_bundle(args.bundle)
     problems.extend(check_spec(args.spec))
 
     if problems:

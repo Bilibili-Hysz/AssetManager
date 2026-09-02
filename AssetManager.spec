@@ -1,5 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for AssetManager — single-file bundle.
+"""PyInstaller spec for AssetManager — onefile or onedir bundle.
+
+The AM_BUNDLE_MODE environment variable selects the bundle shape:
+  * ``onefile`` (default) — a single self-extracting ``dist/AssetManager.exe``.
+  * ``onedir`` — a directory ``dist/AssetManager/`` with the exe beside a
+    PyInstaller 6 ``_internal`` directory.
+build.py drives both modes (``--mode onefile|onedir|both``) by running this
+spec once per mode; the Analysis/hiddenimports/datas configuration is shared.
 
 Refactored architecture (2026-06-10).
 Application services: library, asset, metadata, tag, file_operation,
@@ -7,9 +14,19 @@ Application services: library, asset, metadata, tag, file_operation,
 LAN routes: split into focused modules under lan/routes/.
 Core: database migrations, plugins, settings, path resolution.
 """
+import os as _os
 from pathlib import Path
 
 _root = Path(SPECPATH).resolve()
+
+# ── Bundle shape (dual-mode) ─────────────────────────────────────────────
+# AM_BUNDLE_MODE selects onefile (single exe) or onedir (_internal tree).
+# build.py sets this env var per run and builds both modes.
+_BUNDLE_MODE = _os.environ.get('AM_BUNDLE_MODE', 'onefile')
+if _BUNDLE_MODE not in ('onefile', 'onedir'):
+    raise SystemExit(
+        f"AM_BUNDLE_MODE must be 'onefile' or 'onedir', got {_BUNDLE_MODE!r}"
+    )
 
 # ── Version identity (A1) ─────────────────────────────────────────────────
 # AssetsManager/core/constants.py is the single source of truth for the app
@@ -305,12 +322,8 @@ a = Analysis(
 
 pyz = PYZ(a.pure)
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.datas,
-    [],
+# Shared EXE metadata (identical across both bundle shapes).
+_exe_kwargs = dict(
     name='AssetManager',
     debug=False,
     bootloader_ignore_signals=False,
@@ -327,3 +340,32 @@ exe = EXE(
     icon=str(_root / 'Assets' / 'icons' / 'icon.ico'),
     version=_version_info,
 )
+
+if _BUNDLE_MODE == 'onedir':
+    # onedir: the exe carries only pyz + scripts; binaries and datas are
+    # COLLECTed into dist/AssetManager (PyInstaller 6 puts them in _internal).
+    exe = EXE(
+        pyz,
+        a.scripts,
+        [],
+        exclude_binaries=True,
+        **_exe_kwargs,
+    )
+    coll = COLLECT(
+        exe,
+        a.binaries,
+        a.datas,
+        strip=False,
+        upx=False,
+        name='AssetManager',
+    )
+else:
+    # onefile: everything is embedded into a single self-extracting exe.
+    exe = EXE(
+        pyz,
+        a.scripts,
+        a.binaries,
+        a.datas,
+        [],
+        **_exe_kwargs,
+    )

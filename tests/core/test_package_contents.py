@@ -1,4 +1,4 @@
-"""Tests for the single-file bundle resource checker."""
+"""Tests for the onefile + onedir bundle resource checker."""
 from __future__ import annotations
 
 import importlib.util
@@ -173,6 +173,64 @@ def test_check_exe_integrates_toc_missing(monkeypatch, tmp_path):
     monkeypatch.setattr(module, "_embedded_toc", lambda p: [])
     problems = module.check_exe(exe, min_size=2)
     assert "webui/dist/index.html" in problems
+
+
+def _build_onedir(root: Path) -> Path:
+    """A complete onedir bundle: exe + _internal payload mirroring the TOC."""
+    bundle = root / "AssetManager"
+    internal = bundle / "_internal"
+    for rel in _complete_toc():
+        path = internal / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x")
+    exe = bundle / "AssetManager.exe"
+    exe.write_bytes(b"MZ" + b"\x00" * 2048)
+    return bundle
+
+
+# ── check_onedir (directory tree) ─────────────────────────────────────────
+
+def test_check_onedir_accepts_complete_bundle(tmp_path):
+    module = _load_checker()
+    assert module.check_onedir(_build_onedir(tmp_path)) == []
+
+
+def test_check_onedir_rejects_missing_exe(tmp_path):
+    module = _load_checker()
+    bundle = tmp_path / "AssetManager"
+    bundle.mkdir()
+    problems = module.check_onedir(bundle)
+    assert any("missing onedir executable" in p for p in problems)
+
+
+def test_check_onedir_rejects_missing_resource(tmp_path):
+    module = _load_checker()
+    bundle = _build_onedir(tmp_path)
+    (bundle / "_internal" / "webui" / "dist" / "index.html").unlink()
+    problems = module.check_onedir(bundle)
+    assert "webui/dist/index.html" in problems
+
+
+def test_check_bundle_dispatches_file_to_check_exe(monkeypatch, tmp_path):
+    module = _load_checker()
+    exe = tmp_path / "AssetManager.exe"
+    exe.write_bytes(b"MZ" + b"\x00" * 2048)
+    monkeypatch.setattr(module, "check_exe", lambda p, min_size: ["stub"])
+    assert module.check_bundle(exe) == ["stub"]
+
+
+def test_check_bundle_dispatches_dir_to_check_onedir(monkeypatch, tmp_path):
+    module = _load_checker()
+    d = tmp_path / "AssetManager"
+    d.mkdir()
+    monkeypatch.setattr(module, "check_onedir", lambda p: ["stub"])
+    assert module.check_bundle(d) == ["stub"]
+
+
+def test_check_bundle_flags_missing_path(tmp_path):
+    module = _load_checker()
+    problems = module.check_bundle(tmp_path / "nope")
+    assert any("does not exist" in p for p in problems)
 
 
 # ── check_spec (static drift) ──────────────────────────────────────────────
