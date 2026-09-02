@@ -122,6 +122,128 @@ def test_bounded_queue_evicts_finished_but_not_active_tasks(tmp_path):
         queue.enqueue_or_merge(path=tmp_path / "library" / "c", reason="stale", now=3.0)
 
 
+def test_transition_listener_reports_committed_states_and_eviction_once(tmp_path):
+    """Dependent recovery bookkeeping sees every durable queue outcome."""
+    from AssetsManager.application import ReconciliationQueue, ReconciliationState
+
+    root = tmp_path / "library"
+    events = []
+    queue = ReconciliationQueue(
+        library_root=root,
+        max_tasks=1,
+        clock=lambda: 0.0,
+        transition_listener=events.append,
+    )
+
+    first = queue.enqueue_or_merge(
+        path=root,
+        reason="busy",
+        operation_id="op-1",
+        now=0.0,
+    )
+    claimed = queue.claim_next(now=0.0, lease_seconds=10.0)
+    assert claimed is not None
+    retryable = queue.mark_retryable(
+        first.task_id,
+        expected_attempts=claimed.attempts,
+        lease_token=claimed.lease_token,
+        reason="busy",
+        now=0.0,
+    )
+    assert retryable.state is ReconciliationState.RETRYABLE
+    claimed_again = queue.claim_next(now=0.25, lease_seconds=10.0)
+    assert claimed_again is not None
+    queue.mark_terminal(
+        first.task_id,
+        expected_attempts=claimed_again.attempts,
+        lease_token=claimed_again.lease_token,
+        error_type="PermanentError",
+        error="cannot repair",
+        now=0.25,
+    )
+    queue.enqueue_or_merge(
+        path=root / "second",
+        reason="stale",
+        operation_id="op-2",
+        now=0.5,
+    )
+
+    assert [event.reason for event in events] == [
+        "enqueue",
+        "claim",
+        "retryable",
+        "claim",
+        "terminal",
+        "evicted",
+        "enqueue",
+    ]
+    evictions = [event for event in events if event.reason == "evicted"]
+    assert len(evictions) == 1
+    assert evictions[0].current is None
+    assert evictions[0].previous is not None
+    assert evictions[0].previous.task_id == first.task_id
+    assert evictions[0].operation_ids == ("op-1",)
+
+
+def test_failed_transition_listener_retries_on_next_mutation(tmp_path):
+    """A transient observer failure is retried without replaying successes."""
+    from AssetsManager.application import ReconciliationQueue
+
+    root = tmp_path / "library"
+    calls = []
+    fail = {"value": True}
+
+    def listener(transition):
+        calls.append((transition.task_id, transition.reason))
+        if fail["value"]:
+            fail["value"] = False
+            raise RuntimeError("temporary listener outage")
+
+    queue = ReconciliationQueue(
+        library_root=root,
+        transition_listener=listener,
+        clock=lambda: 0.0,
+    )
+    first = queue.enqueue_or_merge(
+        path=root / "first", reason="busy", operation_id="op-1", now=0.0
+    )
+    assert queue.transition_backlog_size == 1
+
+    second = queue.enqueue_or_merge(
+        path=root / "second", reason="stale", operation_id="op-2", now=0.0
+    )
+    assert queue.transition_backlog_size == 0
+    assert queue.transition_backlog_overflow_count == 0
+    assert calls == [
+        (first.task_id, "enqueue"),
+        (first.task_id, "enqueue"),
+        (second.task_id, "enqueue"),
+    ]
+
+
+def test_transition_backlog_overflow_is_observable(tmp_path):
+    """The bounded hand-off reports overflow instead of failing silently."""
+    from AssetsManager.application import ReconciliationQueue
+
+    queue = ReconciliationQueue(
+        library_root=tmp_path / "library",
+        transition_listener=lambda _transition: (_ for _ in ()).throw(
+            RuntimeError("listener unavailable")
+        ),
+        clock=lambda: 0.0,
+    )
+    queue._transition_backlog_limit = 2
+    for index in range(3):
+        queue.enqueue_or_merge(
+            path=tmp_path / "library" / str(index),
+            reason="busy",
+            operation_id=f"op-{index}",
+            now=0.0,
+        )
+    assert queue.transition_backlog_size == 2
+    assert queue.transition_backlog_overflow_count == 1
+
+
 def test_corrupt_marker_fails_closed(tmp_path):
     from AssetsManager.application import ReconciliationQueue, ReconciliationQueuePersistenceError
 

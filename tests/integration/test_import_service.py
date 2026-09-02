@@ -8,8 +8,13 @@ from pathlib import Path
 
 import pytest
 
+import AssetsManager.application.import_manifest_store as manifest_store_module
 from AssetsManager.application.bootstrap import ApplicationBootstrap
-from AssetsManager.application.import_service import ImportService
+from AssetsManager.application.import_service import (
+    ImportBudget,
+    ImportBudgetExceeded,
+    ImportService,
+)
 from AssetsManager.domain.event_bus import EventBus
 from AssetsManager.domain.events import FileSystemChanged
 
@@ -368,7 +373,9 @@ def test_clean_import_finish_failure_enqueues_manifest_recovery(
             call["reason"] == "import_manifest_recovery" for call in queue_calls
         )
         record = store.get(operation_id)
-        assert record["state"] == "running"
+        # The worker may claim the freshly enqueued recovery task before this
+        # assertion; both states are non-terminal and preserve the ACK gate.
+        assert record["state"] in {"running", "recovery_pending"}
     finally:
         bootstrap.library_service.close()
 
@@ -1394,3 +1401,293 @@ def test_closed_session_rejected(tmp_path, monkeypatch):
         service.import_sources([source], dest)
 
     bootstrap.library_service.close()
+
+
+def test_collect_files_enforces_count_and_byte_budgets(tmp_path):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "a.bin").write_bytes(b"1234")
+    (source / "b.bin").write_bytes(b"5678")
+
+    with pytest.raises(ImportBudgetExceeded) as count_error:
+        ImportService._collect_files(
+            [source], budget=ImportBudget(max_files=1, max_total_bytes=100)
+        )
+    assert count_error.value.limit == "max_files"
+    assert count_error.value.scanned_files == 1
+
+    with pytest.raises(ImportBudgetExceeded) as bytes_error:
+        ImportService._collect_files(
+            [source], budget=ImportBudget(max_files=10, max_total_bytes=5)
+        )
+    assert bytes_error.value.limit == "max_total_bytes"
+    assert bytes_error.value.scanned_bytes == 4
+
+
+def test_collect_files_enforces_depth_and_single_file_budget(tmp_path):
+    source = tmp_path / "source"
+    nested = source / "nested"
+    nested.mkdir(parents=True)
+    (nested / "large.bin").write_bytes(b"0123456789")
+
+    with pytest.raises(ImportBudgetExceeded) as depth_error:
+        ImportService._collect_files(
+            [source],
+            budget=ImportBudget(
+                max_files=10, max_total_bytes=100, max_file_bytes=100, max_depth=0
+            ),
+        )
+    assert depth_error.value.limit == "max_depth"
+
+    with pytest.raises(ImportBudgetExceeded) as file_error:
+        ImportService._collect_files(
+            [nested / "large.bin"],
+            budget=ImportBudget(max_files=10, max_total_bytes=100, max_file_bytes=5),
+        )
+    assert file_error.value.limit == "max_file_bytes"
+
+
+def test_collect_files_rejects_direct_source_symlink_and_special_file(tmp_path):
+    target = tmp_path / "target.txt"
+    target.write_text("target")
+    link = tmp_path / "link.txt"
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlink unavailable: {exc}")
+    with pytest.raises(OSError, match="symlink"):
+        ImportService._collect_files([link])
+
+    fifo = tmp_path / "pipe"
+    if hasattr(os, "mkfifo"):
+        os.mkfifo(fifo)
+        with pytest.raises(OSError, match="regular file"):
+            ImportService._collect_files([fifo])
+
+
+def test_copy_time_budget_stops_growth_without_partial_target(
+    tmp_path, monkeypatch
+):
+    """A source that grows after planning cannot bypass the byte ceiling.
+
+    This deliberately disables the manifest store so the assertion covers the
+    direct/legacy import path as well as normal v2 imports.  The first source
+    grows after the read-only target plan; the copy must abort, remove its
+    partial target, and leave later sources untouched.
+    """
+    bootstrap, session, file_operations, _bus = _bootstrap_and_import(
+        tmp_path, monkeypatch
+    )
+    try:
+        first = tmp_path / "first.bin"
+        second = tmp_path / "second.bin"
+        first.write_bytes(b"1234")
+        second.write_bytes(b"next")
+        destination = session.root / "dest"
+        service = _make_service(session, file_operations)
+        # Exercise the path used when no manifest store is available.
+        monkeypatch.setattr(file_operations, "_import_manifest_store", None)
+
+        original_plan = service._plan_targets
+
+        def grow_after_plan(files, target_dir):
+            planned = original_plan(files, target_dir)
+            first.write_bytes(b"12345")
+            return planned
+
+        monkeypatch.setattr(service, "_plan_targets", grow_after_plan)
+        result = service.import_sources(
+            [first, second],
+            destination,
+            budget=ImportBudget(
+                max_files=10,
+                max_total_bytes=100,
+                max_file_bytes=4,
+                max_depth=4,
+            ),
+        )
+
+        assert result.copied == 0
+        assert result.processed == 1
+        assert result.budget_exceeded is True
+        assert result.budget_limit == "max_file_bytes"
+        assert result.degraded is True
+        assert not destination.exists() or not any(destination.iterdir())
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_import_uses_row_backed_manifest_when_legacy_item_cap_is_exceeded(
+    tmp_path, monkeypatch
+):
+    """A normal import must not fail merely because v1/v2 JSON is bounded."""
+    bootstrap, session, file_operations, _bus = _bootstrap_and_import(
+        tmp_path, monkeypatch
+    )
+    try:
+        source_dir = tmp_path / "sources"
+        source_dir.mkdir()
+        (source_dir / "first.txt").write_text("first")
+        (source_dir / "second.txt").write_text("second")
+        # Exercise the v3 selection with a tiny test threshold instead of
+        # creating 10,001 real source files.
+        monkeypatch.setattr(manifest_store_module, "IMPORT_MANIFEST_MAX_ITEMS", 1)
+        destination = session.root / "dest"
+        result = _make_service(session, file_operations).import_sources(
+            [source_dir], destination
+        )
+        assert result.copied == 2
+        store = file_operations._import_manifest_store
+        header = store.get(result.operation_id, include_items=False)
+        assert header is not None
+        assert header["payload"]["payload_version"] == 3
+        assert header["payload"]["item_count"] == 2
+        assert store.connection.execute(
+            "SELECT COUNT(*) FROM import_manifest_items WHERE operation_id=?",
+            (result.operation_id,),
+        ).fetchone()[0] == 2
+        assert (destination / "first.txt").read_text() == "first"
+        assert (destination / "second.txt").read_text() == "second"
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_replay_row_backed_manifest_uses_pending_rows(tmp_path, monkeypatch):
+    bootstrap, session, file_operations, _bus = _bootstrap_and_import(
+        tmp_path, monkeypatch
+    )
+    try:
+        source = tmp_path / "source.txt"
+        source.write_text("source")
+        destination = session.root / "dest"
+        target = destination / source.name
+        service = _make_service(session, file_operations)
+        operation_id = "import-a1b2c3"
+        file_operations._import_manifest_store.create_stream(
+            operation_id=operation_id,
+            destination=destination,
+            items=[{
+                "source": str(source.resolve()),
+                "relative": "",
+                "target": str(target.resolve()),
+                "state": "pending",
+                "copy_id": f"{operation_id}:0",
+                "source_fingerprint": service._source_fingerprint(source),
+            }],
+            item_count=1,
+            state="recovery_pending",
+        )
+        replay = service.replay_import(operation_id)
+        assert replay.copied == 1
+        assert replay.failed == []
+        assert target.read_text() == "source"
+        record = file_operations._import_manifest_store.get(operation_id)
+        assert record["state"] == "completed"
+        assert record["payload"]["items"][0]["state"] == "copied"
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_replay_copy_budget_stops_before_later_manifest_items(tmp_path, monkeypatch):
+    """Replay must enforce the same hard copy budget as a fresh import."""
+    bootstrap, session, file_operations, _bus = _bootstrap_and_import(
+        tmp_path, monkeypatch
+    )
+    try:
+        source_a = tmp_path / "too-large.bin"
+        source_b = tmp_path / "later.bin"
+        source_a.write_bytes(b"12345")
+        source_b.write_bytes(b"next")
+        destination = session.root / "dest"
+        service = ImportService(
+            session,
+            file_operations,
+            budget=ImportBudget(
+                max_files=10,
+                max_total_bytes=100,
+                max_file_bytes=4,
+                max_depth=4,
+            ),
+        )
+        store = file_operations._import_manifest_store
+        operation_id = "import-deadbeef"
+        store.create(
+            operation_id=operation_id,
+            destination=destination,
+            payload={
+                "payload_version": 2,
+                "destination": str(destination.resolve()),
+                "items": [
+                    {
+                        "source": str(source_a.resolve()),
+                        "relative": "",
+                        "target": str((destination / source_a.name).resolve()),
+                        "state": "pending",
+                        "copy_id": f"{operation_id}:0",
+                        "source_fingerprint": service._source_fingerprint(source_a),
+                    },
+                    {
+                        "source": str(source_b.resolve()),
+                        "relative": "",
+                        "target": str((destination / source_b.name).resolve()),
+                        "state": "pending",
+                        "copy_id": f"{operation_id}:1",
+                        "source_fingerprint": service._source_fingerprint(source_b),
+                    },
+                ],
+            },
+            state="recovery_pending",
+        )
+
+        replay = service.replay_import(operation_id)
+
+        assert replay.copied == 0
+        assert replay.processed == 1
+        assert replay.budget_exceeded is True
+        assert replay.budget_limit == "max_file_bytes"
+        assert replay.degraded is True
+        assert not (destination / source_a.name).exists()
+        assert not (destination / source_b.name).exists()
+        record = store.get(operation_id)
+        states = [item["state"] for item in record["payload"]["items"]]
+        assert states == ["failed", "pending"]
+    finally:
+        bootstrap.library_service.close()
+
+
+def test_fingerprint_failure_does_not_downgrade_batch_to_v1(
+    tmp_path, monkeypatch
+):
+    """One unverifiable source must not remove checks from its siblings."""
+    bootstrap, session, file_operations, _bus = _bootstrap_and_import(
+        tmp_path, monkeypatch
+    )
+    try:
+        source_a = tmp_path / "a.txt"
+        source_b = tmp_path / "b.txt"
+        source_a.write_text("a")
+        source_b.write_text("b")
+        destination = session.root / "dest"
+        service = _make_service(session, file_operations)
+        original_fingerprint = service._source_fingerprint
+
+        def fail_one(source, **kwargs):
+            if Path(source) == source_b:
+                raise OSError("fingerprint unavailable")
+            return original_fingerprint(source, **kwargs)
+
+        monkeypatch.setattr(service, "_source_fingerprint", fail_one)
+        result = service.import_sources([source_a, source_b], destination)
+
+        assert result.copied == 1
+        assert result.degraded is True
+        assert any("fingerprint unavailable" in item for item in result.failed)
+        assert (destination / source_a.name).read_text() == "a"
+        assert not (destination / source_b.name).exists()
+        record = file_operations._import_manifest_store.get(result.operation_id)
+        assert record["payload"]["payload_version"] == 2
+        assert [item["state"] for item in record["payload"]["items"]] == [
+            "copied", "failed"
+        ]
+    finally:
+        bootstrap.library_service.close()

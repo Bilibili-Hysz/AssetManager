@@ -64,6 +64,10 @@ _EXPECTED_HISTORY = (
     (40, "asset_search_trigram"),
     (41, "asset_derivative_lifecycle"),
     (42, "command_executions"),
+    (43, "import_manifest_items"),
+    (44, "reconciliation_transition_outbox"),
+    (45, "reconciliation_transition_outbox_dead_letters"),
+    (46, "reconciliation_transition_outbox_delivery_backoff"),
 )
 
 

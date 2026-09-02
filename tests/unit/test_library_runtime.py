@@ -746,6 +746,39 @@ def test_runtime_cache_rejects_closing_runtime_and_next_revision(tmp_path):
         runtime.next_revision()
 
 
+def test_runtime_mark_closing_linearizes_before_router_drain(tmp_path, monkeypatch):
+    """New work is rejected while the router drain is still in progress."""
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    entered = threading.Event()
+    release = threading.Event()
+    result = []
+    original_close = runtime.event_router.close
+
+    def blocked_router_close():
+        entered.set()
+        assert release.wait(5)
+        return original_close()
+
+    monkeypatch.setattr(runtime.event_router, "close", blocked_router_close)
+
+    closer = threading.Thread(target=lambda: result.append(runtime.mark_closing()))
+    closer.start()
+    assert entered.wait(5)
+    assert runtime.is_open is False
+    with pytest.raises(RuntimeError, match="closing or closed"):
+        runtime.next_revision()
+    assert runtime.try_register_lifecycle_adapter(SimpleNamespace(stop=Mock())) is False
+
+    release.set()
+    closer.join(5)
+    assert not closer.is_alive()
+    assert result == [True]
+    runtime.close()
+    bootstrap.library_service.close()
+
+
 def test_reconciliation_worker_is_stopped_with_library_runtime(tmp_path):
     from AssetsManager.application import ApplicationBootstrap
 

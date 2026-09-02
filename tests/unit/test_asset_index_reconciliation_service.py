@@ -49,6 +49,29 @@ def _service(tmp_path, results, **service_kwargs):
     return service, queue, index
 
 
+def test_worker_callbacks_defer_to_durable_transition_outbox(tmp_path):
+    """v44 delivery owns manifest writes after the queue mutation commits."""
+    from types import SimpleNamespace
+
+    from AssetsManager.application import AssetIndexReconciliationService
+
+    calls: list[str] = []
+    service = object.__new__(AssetIndexReconciliationService)
+    service.reconciliation_queue = SimpleNamespace(
+        durable_transition_outbox_enabled=True
+    )
+    service.import_manifest_recovery = SimpleNamespace(
+        acknowledge_task=lambda _task: calls.append("acknowledge"),
+        mark_task_running=lambda _task: calls.append("running"),
+    )
+    task = SimpleNamespace(task_id="durable-outbox-task")
+
+    service._mark_import_recovery_running(task)
+    service._acknowledge_import_recovery(task)
+
+    assert calls == []
+
+
 def test_reconciliation_worker_completes_filesystem_projection_repair(tmp_path):
     from AssetsManager.application import ReconciliationKind, ReconciliationState
 
@@ -317,6 +340,82 @@ def test_background_worker_wakes_on_enqueue_and_stops_cleanly(tmp_path):
     service.stop()
     assert not service.is_running
     service.stop()
+
+
+def test_sweeper_prunes_outbox_history_on_retention_schedule(tmp_path, monkeypatch):
+    """Retention uses wall-clock cutoffs and remains bounded between sweeps."""
+    service, queue, _index = _service(
+        tmp_path,
+        [],
+        wall_clock=iter((1_000.0, 1_005.0)).__next__,
+        transition_outbox_prune_interval=10.0,
+        transition_outbox_ack_retention_seconds=20.0,
+        transition_outbox_dead_letter_retention_seconds=40.0,
+        transition_outbox_prune_limit=7,
+    )
+    prune_calls = []
+    monkeypatch.setattr(
+        queue,
+        "prune_transition_outbox",
+        lambda **kwargs: prune_calls.append(kwargs),
+    )
+
+    class StopAfterTwoSweeps:
+        def __init__(self):
+            self.calls = 0
+
+        def wait(self, _timeout):
+            self.calls += 1
+            return self.calls > 2
+
+    service._run_sweeper(StopAfterTwoSweeps())
+
+    assert prune_calls == [
+        {
+            "acknowledged_before": 980.0,
+            "dead_letter_before": 960.0,
+            "limit": 7,
+        }
+    ]
+
+
+def test_sweeper_retries_outbox_prune_after_failure(tmp_path, monkeypatch):
+    """Retention failure is advisory and retries before its regular interval."""
+    service, queue, _index = _service(
+        tmp_path,
+        [],
+        wall_clock=iter((1_000.0, 1_001.0)).__next__,
+        transition_outbox_prune_interval=60.0,
+    )
+    prune_calls = []
+
+    def flaky_prune(**kwargs):
+        prune_calls.append(kwargs)
+        if len(prune_calls) == 1:
+            raise RuntimeError("temporary prune failure")
+
+    monkeypatch.setattr(queue, "prune_transition_outbox", flaky_prune)
+
+    class StopAfterTwoSweeps:
+        def __init__(self):
+            self.calls = 0
+
+        def wait(self, _timeout):
+            self.calls += 1
+            return self.calls > 2
+
+    service._run_sweeper(StopAfterTwoSweeps())
+
+    assert len(prune_calls) == 2
+    assert prune_calls[0]["limit"] == prune_calls[1]["limit"] == 1000
+    assert (
+        prune_calls[1]["acknowledged_before"]
+        == prune_calls[0]["acknowledged_before"] + 1.0
+    )
+    assert (
+        prune_calls[1]["dead_letter_before"]
+        == prune_calls[0]["dead_letter_before"] + 1.0
+    )
 
 
 def test_worker_start_failure_resets_lifecycle_state(tmp_path, monkeypatch):

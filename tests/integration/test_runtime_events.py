@@ -391,6 +391,97 @@ def test_concurrent_router_close_waits_for_inflight_callback(tmp_path):
         bootstrap.library_service.close()
 
 
+def test_router_close_timeout_stays_pending_and_drains_later(tmp_path, monkeypatch):
+    """A bounded timeout must not mark the router drained prematurely."""
+    from AssetsManager.application import runtime_events as runtime_events_module
+
+    bus = EventBus()
+    bootstrap, session, runtime = _runtime(tmp_path, bus)
+    callback_entered = threading.Event()
+    release_callback = threading.Event()
+    cleanup_calls = []
+
+    def blocked_callback(_event):
+        callback_entered.set()
+        assert release_callback.wait(timeout=5)
+
+    runtime.event_router.subscribe(blocked_callback)
+    publish_thread = threading.Thread(
+        target=bus.publish,
+        args=(TagCatalogChanged(**_identity(session)),),
+    )
+    monkeypatch.setattr(runtime_events_module, "_CLOSE_DRAIN_TIMEOUT", 0.01)
+    try:
+        publish_thread.start()
+        assert callback_entered.wait(timeout=5)
+
+        assert runtime.event_router.close() is False
+        assert runtime.event_router.closed
+        assert not runtime.event_router.drained
+        runtime.event_router.defer_after_drain(lambda: cleanup_calls.append("done"))
+        assert cleanup_calls == []
+
+        release_callback.set()
+        publish_thread.join(timeout=5)
+        assert not publish_thread.is_alive()
+        assert runtime.event_router.drained
+        assert cleanup_calls == ["done"]
+    finally:
+        release_callback.set()
+        publish_thread.join(timeout=5)
+        runtime.close()
+        bootstrap.library_service.close()
+
+
+def test_runtime_close_timeout_defers_service_cleanup_until_router_drains(
+    tmp_path, monkeypatch,
+):
+    """Runtime resources stay alive when the router close deadline expires."""
+    from AssetsManager.application import runtime_events as runtime_events_module
+
+    bus = EventBus()
+    bootstrap, session, runtime = _runtime(tmp_path, bus)
+    callback_entered = threading.Event()
+    release_callback = threading.Event()
+    cleanup_calls = []
+
+    def blocked_callback(_event):
+        callback_entered.set()
+        assert release_callback.wait(timeout=5)
+
+    runtime.event_router.subscribe(blocked_callback)
+    monkeypatch.setattr(runtime_events_module, "_CLOSE_DRAIN_TIMEOUT", 0.01)
+    monkeypatch.setattr(
+        runtime.services.undo_service,
+        "cleanup",
+        lambda: cleanup_calls.append("cleanup"),
+    )
+    publish_thread = threading.Thread(
+        target=bus.publish,
+        args=(TagCatalogChanged(**_identity(session)),),
+    )
+    try:
+        publish_thread.start()
+        assert callback_entered.wait(timeout=5)
+
+        assert runtime.close() is False
+        assert cleanup_calls == []
+        assert runtime._state == "closing"
+        assert runtime._cleanup_pending is True
+
+        release_callback.set()
+        publish_thread.join(timeout=5)
+        assert not publish_thread.is_alive()
+        assert cleanup_calls == ["cleanup"]
+        assert runtime._state == "closed"
+        assert runtime._cleanup_pending is False
+    finally:
+        release_callback.set()
+        publish_thread.join(timeout=5)
+        runtime.close()
+        bootstrap.library_service.close()
+
+
 def test_runtime_close_drains_router_callback_before_rejecting_revisions(
     tmp_path, monkeypatch,
 ):

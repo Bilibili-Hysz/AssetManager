@@ -53,6 +53,7 @@ _OLD_PUBLIC = frozenset({
     # 2026-08-28: gallery SPA pages joined /browse as public shells — the
     # pages themselves enforce nothing; their /api/gallery calls keep auth.
     "/gallery", "/gallery/collection", "/gallery/favorites",
+    "/mcp",
 })
 _OLD_PUBLIC_PREFIXES = ("/assets", "/s", "/storefront", "/store", "/seller", "/app", "/api/shop")
 

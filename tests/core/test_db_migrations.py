@@ -1888,3 +1888,207 @@ def test_v41_database_upgrades_to_v42_keeps_history_and_is_idempotent(memory_db,
         conn, "command_executions", SCHEMA_OBJECT_CONTRACT["command_executions"]
     )
     assert db_migrations.migrate(conn) == original_version  # idempotent
+
+
+def test_v42_missing_command_executions_is_rejected(memory_db, monkeypatch):
+    """A recorded v42 database must not silently accept a missing journal."""
+    from AssetsManager.core import database
+    from AssetsManager.core.db_migrations import migrate
+    from AssetsManager.core.schema_defs import InvalidSchemaError
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    assert _migrate_to(monkeypatch, conn, 42) == 42
+    conn.execute("DROP TABLE command_executions")
+    conn.commit()
+
+    with pytest.raises(InvalidSchemaError, match="command_executions"):
+        migrate(conn)
+
+
+def test_v42_database_upgrades_to_v43_import_manifest_items(memory_db, monkeypatch):
+    from AssetsManager.core import database, db_migrations
+    from AssetsManager.core.schema_defs import SCHEMA_OBJECT_CONTRACT
+    from AssetsManager.core.schema_defs import validate_schema_object
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    assert _migrate_to(monkeypatch, conn, 42) == 42
+    assert conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='import_manifest_items'"
+    ).fetchone() is None
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 43)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", _ALL_MIGRATIONS)
+    assert db_migrations.migrate(conn) == 43
+    assert conn.execute(
+        "SELECT name FROM schema_migrations WHERE version=43"
+    ).fetchone() == ("import_manifest_items",)
+    validate_schema_object(
+        conn,
+        "import_manifest_items",
+        SCHEMA_OBJECT_CONTRACT["import_manifest_items"],
+    )
+    assert db_migrations.migrate(conn) == 43
+
+
+def test_v43_missing_import_manifest_items_is_rejected(memory_db, monkeypatch):
+    from AssetsManager.core import database
+    from AssetsManager.core.db_migrations import migrate
+    from AssetsManager.core.schema_defs import InvalidSchemaError
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    assert _migrate_to(monkeypatch, conn, 43) == 43
+    conn.execute("DROP TABLE import_manifest_items")
+    conn.commit()
+    with pytest.raises(InvalidSchemaError, match="import_manifest_items"):
+        migrate(conn)
+
+
+def test_v43_database_upgrades_to_v44_transition_outbox(memory_db, monkeypatch):
+    from AssetsManager.core import database, db_migrations
+    from AssetsManager.core.schema_defs import validate_schema_object
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    assert _migrate_to(monkeypatch, conn, 43) == 43
+    assert conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' "
+        "AND name='reconciliation_transition_outbox'"
+    ).fetchone() is None
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 44)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", _ALL_MIGRATIONS)
+    assert db_migrations.migrate(conn) == 44
+    assert conn.execute(
+        "SELECT name FROM schema_migrations WHERE version=44"
+    ).fetchone() == ("reconciliation_transition_outbox",)
+    validate_schema_object(
+        conn,
+        "reconciliation_transition_outbox",
+        db_migrations._versioned_schema_contract(
+            "reconciliation_transition_outbox",
+            44,
+        ),
+    )
+    assert db_migrations.migrate(conn) == 44
+
+
+def test_v44_missing_transition_outbox_is_rejected(memory_db, monkeypatch):
+    from AssetsManager.core import database
+    from AssetsManager.core.db_migrations import migrate
+    from AssetsManager.core.schema_defs import InvalidSchemaError
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    assert _migrate_to(monkeypatch, conn, 44) == 44
+    conn.execute("DROP TABLE reconciliation_transition_outbox")
+    conn.commit()
+    with pytest.raises(InvalidSchemaError, match="reconciliation_transition_outbox"):
+        migrate(conn)
+
+
+def test_v44_database_upgrades_to_v45_transition_outbox_dead_letters(memory_db, monkeypatch):
+    from AssetsManager.core import database, db_migrations
+    from AssetsManager.core.schema_defs import SCHEMA_OBJECT_CONTRACT
+    from AssetsManager.core.schema_defs import validate_schema_object
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    assert _migrate_to(monkeypatch, conn, 44) == 44
+    assert conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' "
+        "AND name='reconciliation_transition_outbox_dead_letters'"
+    ).fetchone() is None
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 45)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", _ALL_MIGRATIONS)
+    assert db_migrations.migrate(conn) == 45
+    assert conn.execute(
+        "SELECT name FROM schema_migrations WHERE version=45"
+    ).fetchone() == ("reconciliation_transition_outbox_dead_letters",)
+    validate_schema_object(
+        conn,
+        "reconciliation_transition_outbox_dead_letters",
+        SCHEMA_OBJECT_CONTRACT["reconciliation_transition_outbox_dead_letters"],
+    )
+    assert db_migrations.migrate(conn) == 45
+
+
+def test_v45_missing_transition_outbox_dead_letters_is_rejected(memory_db, monkeypatch):
+    from AssetsManager.core import database
+    from AssetsManager.core.db_migrations import migrate
+    from AssetsManager.core.schema_defs import InvalidSchemaError
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    assert _migrate_to(monkeypatch, conn, 45) == 45
+    conn.execute("DROP TABLE reconciliation_transition_outbox_dead_letters")
+    conn.commit()
+    with pytest.raises(
+        InvalidSchemaError,
+        match="reconciliation_transition_outbox_dead_letters",
+    ):
+        migrate(conn)
+
+
+def test_v45_database_upgrades_to_v46_transition_outbox_delivery_backoff(
+    memory_db,
+    monkeypatch,
+):
+    from AssetsManager.core import database, db_migrations
+    from AssetsManager.core.schema_defs import SCHEMA_OBJECT_CONTRACT
+    from AssetsManager.core.schema_defs import validate_schema_object
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    assert _migrate_to(monkeypatch, conn, 45) == 45
+    conn.execute(
+        "INSERT INTO reconciliation_transition_outbox ("
+        "library_root, queue_generation, task_id, reason, operation_ids, created_at"
+        ") VALUES (?, ?, ?, ?, ?, ?)",
+        ("/library", 1, "legacy-event", "enqueue", "[]", 1.0),
+    )
+    conn.commit()
+
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 46)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", _ALL_MIGRATIONS)
+    assert db_migrations.migrate(conn) == 46
+    assert conn.execute(
+        "SELECT name FROM schema_migrations WHERE version=46"
+    ).fetchone() == ("reconciliation_transition_outbox_delivery_backoff",)
+    assert conn.execute(
+        "SELECT next_delivery_at FROM reconciliation_transition_outbox "
+        "WHERE task_id='legacy-event'"
+    ).fetchone() == (0.0,)
+    indexes = {
+        row[1] for row in conn.execute("PRAGMA index_list('reconciliation_transition_outbox')")
+    }
+    assert "idx_reconciliation_transition_outbox_head" in indexes
+    validate_schema_object(
+        conn,
+        "reconciliation_transition_outbox",
+        SCHEMA_OBJECT_CONTRACT["reconciliation_transition_outbox"],
+    )
+    assert db_migrations.migrate(conn) == 46
+
+
+def test_v46_missing_transition_outbox_delivery_backoff_is_rejected(
+    memory_db,
+    monkeypatch,
+):
+    from AssetsManager.core import database, db_migrations
+    from AssetsManager.core.db_migrations import migrate
+    from AssetsManager.core.schema_defs import InvalidSchemaError
+
+    conn = memory_db
+    conn.executescript(database._SCHEMA)
+    assert _migrate_to(monkeypatch, conn, 45) == 45
+    conn.execute(
+        "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+        (46, "reconciliation_transition_outbox_delivery_backoff", 0.0),
+    )
+    conn.commit()
+    monkeypatch.setattr(db_migrations, "CURRENT_SCHEMA_VERSION", 46)
+    monkeypatch.setattr(db_migrations, "MIGRATIONS", _ALL_MIGRATIONS)
+
+    with pytest.raises(InvalidSchemaError, match="reconciliation_transition_outbox"):
+        migrate(conn)

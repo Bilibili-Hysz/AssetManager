@@ -1459,6 +1459,21 @@ def test_permanent_delete_records_undo_only_after_scoped_delete_succeeds(tmp_pat
         panel._delete_permanent([str(target)])
 
         service.delete_permanent.assert_called_once_with([str(target)], library_root=str(library))
+        # The journal key includes a filesystem identity snapshot so a new
+        # file that later reuses the same path cannot be mistaken for the old
+        # successful delete.  Recompute the hash exactly as _actions does
+        # (_actions.py:492-503), otherwise the lookup can never match.
+        from AssetsManager.application.command_executions import target_identity
+        journal_hash = scoped.command_executions.plan_hash(
+            "file.delete_permanent",
+            [str(target)],
+            target_snapshots=[{"path": str(target), **target_identity(str(target))}],
+        )
+        row = scoped.command_executions._connection_provider().execute(
+            "SELECT status FROM command_executions WHERE plan_hash = ?",
+            (journal_hash,),
+        ).fetchone()
+        assert row == ("succeeded",)
         assert panel._undo_svc.can_undo()
         entry = panel._undo_svc.peek_undo()
         assert entry.type == "batch"
@@ -1596,6 +1611,9 @@ def test_partial_permanent_delete_commits_only_changed_path_backups(tmp_path, mo
         panel._delete_permanent([str(first_target), str(second_target)])
 
         assert panel._undo_svc.can_undo()
+        assert scoped.command_executions._connection_provider().execute(
+            "SELECT count(*) FROM command_executions"
+        ).fetchone() == (0,)
         entry = panel._undo_svc.peek_undo()
         assert entry.type == "batch"
         assert [child.path for child in entry.children] == [str(first_target)]
