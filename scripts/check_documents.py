@@ -49,7 +49,7 @@ UPDATED_RE = re.compile(r"updated:\s*(\d{4}-\d{2}-\d{2})")
 
 FROZEN_MARKERS = [
     "docs/archive/2026-09/baseline-2026-08-01/README.md",
-    "docs/deep-weakness-audit-2026-08-22/README.md",
+    "docs/archive/2026-09/deep-weakness-audit-2026-08-22/README.md",
     "Plugins/Docs/API.md",
     "Plugins/Docs/MODULE_INTERFACES.md",
     "Plugins/Docs/PLUGIN_SYSTEM.md",

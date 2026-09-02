@@ -205,7 +205,7 @@
 | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.test.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.test.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
 | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
 
-## 2026-09(docs 精简轮,190 份;第二轮分析系列蒸馏并入;第三轮 module-audits 蒸馏并入 11 份;收敛轮已完结报告归档 3 份;收敛轮 plans 范围决策并入 1 份;第四轮 08-01 冻结基线簇迁入 48 份 + deepseek 逐字副本 8 份)
+## 2026-09(docs 精简轮,201 份;第二轮分析系列蒸馏并入;第三轮 module-audits 蒸馏并入 11 份;收敛轮已完结报告归档 3 份;收敛轮 plans 范围决策并入 1 份;第四轮冻结簇迁入:08-01 基线 48 份 + deepseek 逐字副本 8 份 + 08-22 弱审计 11 份)
 
 > 2026-09-02 结构归档:活跃区从 185 份降至 70 份。compose/reports 整体(98 份)、reports/ 被取代细扫描(12 份)、plans/ 完结方案(3 份)。内容零改写;指向它们的活跃链接已同步重写。
 
@@ -447,3 +447,21 @@
 | docs/reports/deepseek-archive-2026-08-25/未来方向/README.md | 2026-09/deepseek-archive-2026-08-25/未来方向/README.md | 与 baseline 子集重复的逐字副本 | 2026-09/baseline-2026-08-01/ 同名子集 |
 | docs/reports/deepseek-archive-2026-08-25/架构与设计评价/06-前后端分离深度分析.md | 2026-09/deepseek-archive-2026-08-25/架构与设计评价/06-前后端分离深度分析.md | 与 baseline 子集重复的逐字副本 | 2026-09/baseline-2026-08-01/ 同名子集 |
 | docs/reports/deepseek-archive-2026-08-25/架构与设计评价/README.md | 2026-09/deepseek-archive-2026-08-25/架构与设计评价/README.md | 与 baseline 子集重复的逐字副本 | 2026-09/baseline-2026-08-01/ 同名子集 |
+
+### deep-weakness-audit-2026-08-22(11 份,FROZEN 完成态只读审计·2026-09-02 收敛轮迁入)
+
+归档原因:2026-08-22 全领域弱点审计(130 条发现 + Top-30),完成态只读(FROZEN);其内容**零改写**,130 条发现的逐条状态注记(fixed/open/wontfix)属后续批次,待 `docs/full-review/` 任务重开后方可执行 · 取代者:`docs/reports/re-audit-2026-09-01.md`(09-01 复审)+ `docs/reports/expert-panel-deep-analysis-2026-08-31.md`
+
+| 原路径 | 新路径 | 归档原因 | 取代者 |
+|---|---|---|---|
+| docs/deep-weakness-audit-2026-08-22/01-desktop-ui.md | 2026-09/deep-weakness-audit-2026-08-22/01-desktop-ui.md | 08-22 完成态只读审计,桌面 UI 域弱点;行号/结论已被 09-01 复审覆盖 | re-audit-2026-09-01 · expert-panel-deep-analysis-2026-08-31 |
+| docs/deep-weakness-audit-2026-08-22/02-app-data-pipeline.md | 2026-09/deep-weakness-audit-2026-08-22/02-app-data-pipeline.md | 08-22 完成态只读审计,应用/数据管线域弱点;行号/结论已被 09-01 复审覆盖 | re-audit-2026-09-01 · expert-panel-deep-analysis-2026-08-31 |
+| docs/deep-weakness-audit-2026-08-22/03-app-domain-services.md | 2026-09/deep-weakness-audit-2026-08-22/03-app-domain-services.md | 08-22 完成态只读审计,应用/领域服务域弱点;行号/结论已被 09-01 复审覆盖 | re-audit-2026-09-01 · expert-panel-deep-analysis-2026-08-31 |
+| docs/deep-weakness-audit-2026-08-22/04-core-infrastructure-plugins.md | 2026-09/deep-weakness-audit-2026-08-22/04-core-infrastructure-plugins.md | 08-22 完成态只读审计,核心基础设施与插件域弱点;行号/结论已被 09-01 复审覆盖 | re-audit-2026-09-01 · expert-panel-deep-analysis-2026-08-31 |
+| docs/deep-weakness-audit-2026-08-22/05-domain-repositories.md | 2026-09/deep-weakness-audit-2026-08-22/05-domain-repositories.md | 08-22 完成态只读审计,领域与仓储层弱点;行号/结论已被 09-01 复审覆盖 | re-audit-2026-09-01 · expert-panel-deep-analysis-2026-08-31 |
+| docs/deep-weakness-audit-2026-08-22/06-lan-server-security.md | 2026-09/deep-weakness-audit-2026-08-22/06-lan-server-security.md | 08-22 完成态只读审计,LAN 服务端安全弱点;行号/结论已被 09-01 复审覆盖 | re-audit-2026-09-01 · expert-panel-deep-analysis-2026-08-31 |
+| docs/deep-weakness-audit-2026-08-22/07-webui-frontend.md | 2026-09/deep-weakness-audit-2026-08-22/07-webui-frontend.md | 08-22 完成态只读审计,WebUI 前端弱点;行号/结论已被 09-01 复审覆盖 | re-audit-2026-09-01 · expert-panel-deep-analysis-2026-08-31 |
+| docs/deep-weakness-audit-2026-08-22/08-tests-gates-ci-build.md | 2026-09/deep-weakness-audit-2026-08-22/08-tests-gates-ci-build.md | 08-22 完成态只读审计,测试/门禁/CI/构建弱点;行号/结论已被 09-01 复审覆盖 | re-audit-2026-09-01 · expert-panel-deep-analysis-2026-08-31 |
+| docs/deep-weakness-audit-2026-08-22/09-summary-priorities.md | 2026-09/deep-weakness-audit-2026-08-22/09-summary-priorities.md | 08-22 完成态只读审计,130 条汇总与 Top-30 优先级;行号/结论已被 09-01 复审覆盖 | re-audit-2026-09-01 · expert-panel-deep-analysis-2026-08-31 |
+| docs/deep-weakness-audit-2026-08-22/10-full-review-reconciliation.md | 2026-09/deep-weakness-audit-2026-08-22/10-full-review-reconciliation.md | 08-22 完成态只读审计,与 full-review 的对账(含 5 处迁移前即已存在的历史断链);行号/结论已被 09-01 复审覆盖 | re-audit-2026-09-01 · expert-panel-deep-analysis-2026-08-31 |
+| docs/deep-weakness-audit-2026-08-22/README.md | 2026-09/deep-weakness-audit-2026-08-22/README.md | 08-22 完成态只读审计,审计簇入口与冻结登记;行号/结论已被 09-01 复审覆盖 | re-audit-2026-09-01 · expert-panel-deep-analysis-2026-08-31 |

@@ -41,7 +41,8 @@
 | 目录 | 职责 |
 |---|---|
 | [`full-review/`](full-review/) | 08-21 起的 dated 审计快照与批次证据（进行中，勿动） |
-| [`deep-weakness-audit-2026-08-22/`](deep-weakness-audit-2026-08-22/) | 08-22 全领域弱审计（130 条发现 + Top-30） |
+
+已归档冻结审计簇：08-22 全领域弱审计（130 条发现 + Top-30）→ [`archive/2026-09/deep-weakness-audit-2026-08-22/`](archive/2026-09/deep-weakness-audit-2026-08-22/)（内容零改写，状态注记仍待 `full-review/` 重开）；08-01 基线簇见 §2。
 
 ### 4. 方案与计划（plans）
 
@@ -68,6 +69,6 @@
 - "系统现在是什么样" → `architecture.md` + `architecture-diagram.md`
 - "数据库现在有哪些版本/迁移" → `migrations.md`
 - "当年 08-01 审计怎么评价这个项目" → `archive/2026-09/baseline-2026-08-01/`
-- "已知弱点清单" → `deep-weakness-audit-2026-08-22/`
+- "已知弱点清单" → `archive/2026-09/deep-weakness-audit-2026-08-22/`
 - "接下来做什么" → `plans/`
 - "某次会话/某轮工作的证据" → `reports/`、`archive/2026-09/compose-reports/`、`archive/INDEX.md`
