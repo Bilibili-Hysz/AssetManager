@@ -1,9 +1,13 @@
 """PathResolver — resolves library-specific paths for data storage."""
 import hashlib
+import logging
 import os
+import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -114,13 +118,74 @@ def root_identity(
     return RootIdentity(Path(normalized), os.path.normcase(normalized))
 
 
+def user_data_root() -> Path:
+    """Return the per-user application data root directory.
+
+    Frozen (single-exe) builds store all writable data under
+    ``%LOCALAPPDATA%\\AssetManager`` so nothing depends on the executable's
+    (often read-only or removable) install directory.  Development runs keep
+    the repository-local layout unchanged for zero-surprise parity.
+    """
+    if getattr(sys, 'frozen', False):
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            return Path(local_app_data) / "AssetManager"
+        # Fallback for Windows sessions without LOCALAPPDATA (rare).  The
+        # conventional per-user location keeps the writable contract intact.
+        return Path.home() / "AppData" / "Local" / "AssetManager"
+    return Path(__file__).resolve().parent.parent.parent
+
+
 def runtime_root() -> Path:
     """Return the application's runtime data root directory."""
-    if getattr(sys, 'frozen', False):
-        # Always use the directory next to the executable for writable data
-        exe_dir = Path(sys.executable).parent
-        return exe_dir / "RuntimeData"
-    return Path(__file__).resolve().parent.parent.parent / "RuntimeData"
+    return user_data_root() / "RuntimeData"
+
+
+def _data_root_migration_looks_complete(legacy: Path, target: Path) -> bool:
+    """Return whether a failed legacy data-root move may be treated as done.
+
+    ``shutil.move`` of a directory can raise a spurious ``OSError`` when a
+    concurrent process already completed the rename (the source vanished) or
+    already delivered the payload.  Both states are idempotently complete:
+    failing startup afterwards would poison a healthy install over a race.
+    """
+    if not target.exists():
+        return False
+    if not legacy.exists():
+        # The source vanished: another process completed the rename.
+        return True
+    # Both directories still exist: accept only when the canonical
+    # coordination payload has arrived at the target.
+    return (target / "Shared").exists() and not (legacy / "Shared").exists()
+
+
+def migrate_data_root() -> None:
+    """Migrate the frozen data root from exe-adjacent to per-user storage.
+
+    No-op in development.  In frozen builds the legacy layout kept
+    ``RuntimeData`` next to the executable; move it under
+    ``%LOCALAPPDATA%\\AssetManager`` on first run so the data root is
+    independent of the install directory.  The move is idempotent (a present
+    target is never clobbered) and fail-closed (a genuinely failed move
+    raises rather than silently starting with an empty data root).
+    """
+    if not getattr(sys, 'frozen', False):
+        return
+    legacy = Path(sys.executable).parent / "RuntimeData"
+    target = runtime_root()
+    if not legacy.exists() or target.exists():
+        # Nothing to migrate, or a previous run already relocated the data.
+        # Never clobber an existing target with a stale legacy tree.
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.move(str(legacy), str(target))
+        _log.info("Migrated data root from %s to %s", legacy, target)
+    except OSError as exc:
+        if not _data_root_migration_looks_complete(legacy, target):
+            raise RuntimeError(
+                f"Data root migration failed: {legacy} -> {target}"
+            ) from exc
 
 
 def shared_dir() -> Path:
@@ -129,6 +194,11 @@ def shared_dir() -> Path:
     d.mkdir(parents=True, exist_ok=True)
     return d
 
+
+# Relocate the frozen data root before any shared-directory consumer runs.
+# ``SHARED_DIR`` (below) materializes the *new* root; migrating first keeps
+# settings, crash, and library data from being re-created next to the exe.
+migrate_data_root()
 
 SHARED_DIR = shared_dir()
 

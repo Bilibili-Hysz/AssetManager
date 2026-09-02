@@ -591,3 +591,147 @@ def test_flush_directory_durable_current_platform(tmp_path):
     # FILE_FLAG_BACKUP_SEMANTICS + FlushFileBuffers. Unsupported filesystems
     # must fail rather than being reported as durable.
     database._flush_directory_durable(tmp_path)
+
+
+# ── M1 data-root independence (single-exe release) ──────────────────────
+# The frozen runtime data root must live under %LOCALAPPDATA%\AssetManager
+# instead of next to the executable, and the first launch must migrate any
+# legacy exe-adjacent RuntimeData there.  Development is a strict no-op.
+
+def test_user_data_root_frozen_uses_local_app_data(monkeypatch, tmp_path):
+    import sys
+
+    from AssetsManager.core import path_resolver
+
+    local_app_data = tmp_path / "LocalAppData"
+    exe = tmp_path / "install" / "AssetManager.exe"
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+
+    assert path_resolver.user_data_root() == local_app_data / "AssetManager"
+
+
+def test_user_data_root_frozen_falls_back_to_home(monkeypatch):
+    import sys
+    from pathlib import Path
+
+    from AssetsManager.core import path_resolver
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+
+    assert path_resolver.user_data_root() == Path.home() / "AppData" / "Local" / "AssetManager"
+
+
+def test_runtime_root_frozen_is_under_user_data_root(monkeypatch, tmp_path):
+    import sys
+
+    from AssetsManager.core import path_resolver
+
+    local_app_data = tmp_path / "LocalAppData"
+    exe = tmp_path / "install" / "AssetManager.exe"
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+
+    assert path_resolver.runtime_root() == local_app_data / "AssetManager" / "RuntimeData"
+
+
+def test_migrate_data_root_is_noop_in_dev():
+    from AssetsManager.core import path_resolver
+
+    # Development (not frozen) must never touch the filesystem.
+    assert path_resolver.migrate_data_root() is None
+
+
+def test_migrate_data_root_moves_legacy_runtime_data(monkeypatch, tmp_path):
+    import sys
+
+    from AssetsManager.core import path_resolver
+
+    local_app_data = tmp_path / "LocalAppData"
+    exe_dir = tmp_path / "install"
+    exe = exe_dir / "AssetManager.exe"
+    legacy = exe_dir / "RuntimeData"
+    (legacy / "Shared").mkdir(parents=True)
+    (legacy / "Shared" / "settings.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+
+    path_resolver.migrate_data_root()
+
+    target = local_app_data / "AssetManager" / "RuntimeData"
+    assert (target / "Shared" / "settings.json").exists()
+    assert not legacy.exists()
+
+
+def test_migrate_data_root_skips_when_target_exists(monkeypatch, tmp_path):
+    import sys
+
+    from AssetsManager.core import path_resolver
+
+    local_app_data = tmp_path / "LocalAppData"
+    exe_dir = tmp_path / "install"
+    exe = exe_dir / "AssetManager.exe"
+    legacy = exe_dir / "RuntimeData"
+    (legacy / "Shared").mkdir(parents=True)
+    (legacy / "Shared" / "settings.json").write_text("legacy", encoding="utf-8")
+    target = local_app_data / "AssetManager" / "RuntimeData"
+    (target / "Shared").mkdir(parents=True)
+    (target / "Shared" / "settings.json").write_text("existing", encoding="utf-8")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+
+    path_resolver.migrate_data_root()
+
+    # Never clobber: the existing target is authoritative and legacy survives.
+    assert (target / "Shared" / "settings.json").read_text(encoding="utf-8") == "existing"
+    assert (legacy / "Shared" / "settings.json").read_text(encoding="utf-8") == "legacy"
+
+
+def test_migrate_data_root_noop_when_no_legacy(monkeypatch, tmp_path):
+    import sys
+
+    from AssetsManager.core import path_resolver
+
+    local_app_data = tmp_path / "LocalAppData"
+    exe = tmp_path / "install" / "AssetManager.exe"
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+
+    path_resolver.migrate_data_root()
+
+    assert not (local_app_data / "AssetManager" / "RuntimeData").exists()
+
+
+def test_migrate_data_root_fails_closed_on_move_failure(monkeypatch, tmp_path):
+    import sys
+
+    import pytest
+
+    from AssetsManager.core import path_resolver
+
+    local_app_data = tmp_path / "LocalAppData"
+    exe_dir = tmp_path / "install"
+    exe = exe_dir / "AssetManager.exe"
+    legacy = exe_dir / "RuntimeData"
+    (legacy / "Shared").mkdir(parents=True)
+    (legacy / "Shared" / "settings.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+
+    def fail_move(*_args, **_kwargs):
+        raise OSError("injected data-root migration failure")
+
+    monkeypatch.setattr(path_resolver.shutil, "move", fail_move)
+
+    with pytest.raises(RuntimeError, match="Data root migration failed"):
+        path_resolver.migrate_data_root()
+
+    # Fail-closed: the legacy data is preserved for a later retry.
+    assert legacy.exists()
