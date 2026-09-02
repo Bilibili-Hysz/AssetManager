@@ -179,11 +179,13 @@ spec `datas`（`AssetManager.spec:75-87`）目标刻意镜像仓库相对层级�
 
 ## 7. 待实施时确认（open questions）
 
-1. PyInstaller 实际版本与 onedir `_internal` 目录布局实测（决定 F1 现存性与 themes 内置源探测顺序）。
-2. onedir 存量用户规模（决定迁移兼容优先级与回滚策略强度）。
-3. 单 exe 目标体积 / 首启时间可接受阈值（决定是否压内置主题/裁剪 Qt）。
-4. `core/plugins/` loader 的 manifest 扫描语义（多源合并复杂度）。
-5. 分发方向 A（纯绿色单文件）还是 B（安装器包一层）——影响 installer/ 去留与卸载清理责任。
+> 2026-09-02 更新：Q1/Q4 已静态核实并给出结论（见下）；Q2/Q3/Q5 为产品决策，待 owner 拍板。
+
+1. **PyInstaller 布局（已核实）**：本机 Python 3.14 已装 **PyInstaller 6.19.0**。onedir 默认 `contents_directory=_internal` → spec `datas` 落 `dist/AssetManager/_internal/`。对照 `themes_dir()`（`path_resolver.py:240-249`）无 `_MEIPASS` 时 fallback **exe 旁** `Assets/Themes` → **F1 现存性成立**（onedir 6.x 下内置主题在此路径找不到）；而其它只读资源（icon `app.py:213`、SPA `pages.py:7`、i18n）均用 `__file__` 相对推导，模块与 datas 同在 `_internal/` 下相对关系保持 → 不受影响。**结论**：themes 内置源探测顺序定为 `_MEIPASS/Assets/Themes`（onefile）→ `exe旁/_internal/Assets/Themes`（onedir 6.x）→ `exe旁/Assets/Themes`（旧布局兼容）；真实产物验证列为 M2 验收第 0 步（§5.2 gate 前）。
+2. onedir 存量用户规模（决定迁移兼容优先级与回滚策略强度）——**待 owner**。
+3. 单 exe 目标体积 / 首启时间可接受阈值（决定是否压内置主题/裁剪 Qt）——**待 owner**。
+4. **plugins loader 语义（已核实）**：`core/plugins/manager.py:200-203` `default_search_paths() = [SHARED_DIR/"plugins", addons_dir()]`；`discover_plugins` 逐目录 `iterdir` 并以 `dict[plugin_id]` 聚合（同名后者覆盖）→ **多源合并复杂度低**：M2 给 frozen 加内置种子源只需在 `default_search_paths` 前插 `_MEIPASS/Plugins`（若存在）。注意点：内置源只读、插件实例化可能写盘（配置/状态）→ 建议内置源仅作"首次运行拷贝到用户层"的种子，而非运行源；此项 M2 细化时敲定。
+5. 分发方向 A（纯绿色单文件）还是 B（安装器包一层）——影响 installer/ 去留与卸载清理责任——**待 owner**。
 
 ## 8. 参考文件
 
