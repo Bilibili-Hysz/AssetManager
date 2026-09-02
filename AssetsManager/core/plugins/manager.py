@@ -198,9 +198,24 @@ class PluginManagerService:
         )
 
     def default_search_paths(self) -> list[Path]:
-        """Default plugin search paths: RuntimeData/Shared/plugins/ and Plugins/Addons/."""
-        from AssetsManager.core.path_resolver import SHARED_DIR, addons_dir
-        return [SHARED_DIR / "plugins", addons_dir()]
+        """Default plugin search paths.
+
+        Writable user locations first (``RuntimeData/Shared/plugins/`` and the
+        per-user ``Plugins/Addons/``), then the read-only bundled seed plugins
+        (``_MEIPASS/Plugins/Addons`` in frozen builds).  Discovery treats an
+        identical plugin id across sources as a conflict (invalidated), so the
+        bundled source is appended last and only participates when present.
+        """
+        from AssetsManager.core.path_resolver import (
+            SHARED_DIR,
+            addons_dir,
+            builtin_plugins_addons_dir,
+        )
+        paths = [SHARED_DIR / "plugins", addons_dir()]
+        builtin = builtin_plugins_addons_dir()
+        if builtin is not None:
+            paths.append(builtin)
+        return paths
 
     def discover_plugins(self, search_paths: Iterable[str | Path] | None = None) -> list[PluginDescriptor]:
         with self._records_lock:

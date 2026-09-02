@@ -287,9 +287,14 @@ def db_path(library_root: str | Path | RootIdentity) -> Path:
 
 
 def plugins_root() -> Path:
-    """Return the Plugins/ directory (sibling of RuntimeData/)."""
+    """Return the writable Plugins/ directory (user extension location).
+
+    Frozen builds keep user plugins under the per-user data root so they are
+    independent of the (often read-only or removable) install directory;
+    development keeps the repository ``Plugins/`` directory unchanged.
+    """
     if getattr(sys, 'frozen', False):
-        return Path(sys.executable).parent / "Plugins"
+        return user_data_root() / "Plugins"
     return Path(__file__).resolve().parent.parent.parent / "Plugins"
 
 
@@ -307,13 +312,59 @@ def plugins_docs_dir() -> Path:
     return d
 
 
+def builtin_plugins_addons_dir() -> Path | None:
+    """Return the bundled read-only seed-plugin Addons directory, if separate.
+
+    Seed plugins are bundled under ``_MEIPASS/Plugins`` (spec datas mirror the
+    repository layout); the plugin manager scans them as an extra read-only
+    source in addition to the writable user extension locations.  Returns None
+    when no separate bundled source exists (development, where the repository
+    ``Plugins/Addons`` is already ``addons_dir()``, or a layout without a
+    bundled Plugins/ tree).
+    """
+    if not getattr(sys, 'frozen', False):
+        return None
+    meipass = getattr(sys, '_MEIPASS', None)
+    if meipass:
+        bundled = Path(meipass) / "Plugins" / "Addons"
+        if bundled.is_dir():
+            return bundled
+    legacy = Path(sys.executable).parent / "Plugins" / "Addons"
+    return legacy if legacy.is_dir() else None
+
+
 def themes_dir() -> Path:
-    """Return the Assets/Themes/ directory (sibling of RuntimeData/)."""
+    """Return the writable user themes directory.
+
+    Frozen builds store user themes under the per-user data root so they
+    survive the executable's (read-only or removable) install directory — in
+    onefile the bundled ``_MEIPASS`` location is a session-scoped temp
+    directory and must never be written to.  Development keeps the repository
+    ``Assets/Themes`` directory (built-in + user themes coexist) unchanged.
+    Built-in read-only themes are resolved separately (builtin_themes_dir()).
+    """
     if getattr(sys, 'frozen', False):
-        meipass = getattr(sys, '_MEIPASS', None)
-        if meipass:
-            bundled = Path(meipass) / "Assets" / "Themes"
-            if bundled.exists():
-                return bundled
-        return Path(sys.executable).parent / "Assets" / "Themes"
+        d = user_data_root() / "Themes"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
     return Path(__file__).resolve().parent.parent.parent / "Assets" / "Themes"
+
+
+def builtin_themes_dir() -> Path | None:
+    """Return the bundled read-only built-in themes directory, if separate.
+
+    In frozen builds the built-in themes are bundled under ``_MEIPASS``
+    (PyInstaller datas mirror the repository layout): onefile extracts to a
+    session-scoped temp directory, onedir (>=6.x) to the ``_internal``
+    directory.  In development built-in and user themes share ``Assets/Themes``,
+    so there is no separate built-in source (returns None).
+    """
+    if not getattr(sys, 'frozen', False):
+        return None
+    meipass = getattr(sys, '_MEIPASS', None)
+    if meipass:
+        bundled = Path(meipass) / "Assets" / "Themes"
+        if bundled.is_dir():
+            return bundled
+    legacy = Path(sys.executable).parent / "Assets" / "Themes"
+    return legacy if legacy.is_dir() else None

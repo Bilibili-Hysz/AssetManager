@@ -372,3 +372,51 @@ def test_parse_theme_invalid(tmp_path):
 def test_parse_theme_nonexistent():
     loader = ThemeLoader()
     assert loader.parse_theme("/nonexistent/theme.json") is None
+
+
+# ── M2 two-layer scan (built-in read-only + user override) ──────────────
+
+def test_scan_directory_merges_builtin_and_user_layers(tmp_path):
+    builtin = tmp_path / "builtin"
+    user = tmp_path / "user"
+    builtin.mkdir()
+    user.mkdir()
+
+    _write_theme(builtin / "D_navy.json", "Navy", dark=True)
+    _write_theme(builtin / "D_slate.json", "Slate", dark=True)
+    _write_theme(user / "U_custom.json", "Custom", dark=True)
+
+    # A user theme that overrides a built-in theme by name (different accent).
+    override_colors = {
+        "base": "#000000", "panel": "#111111", "header": "#222222",
+        "border": "#333333", "heading": "#eeeeee", "body": "#cccccc",
+        "muted": "#666666", "accent": "#ff0000", "success": "#40b870",
+        "warning": "#f5b040", "danger": "#f06060", "favorite": "#f0d060",
+        "recent": "#70b8e0",
+    }
+    (user / "D_slate.json").write_text(
+        json.dumps({"name": "Slate", "dark": True, "colors": override_colors}),
+        encoding="utf-8",
+    )
+
+    loader = ThemeLoader(themes_dir=str(user), builtin_dir=str(builtin))
+    loader.scan_directory()
+
+    assert loader.get_theme("Navy") is not None
+    assert loader.get_theme("Custom") is not None
+    # The user layer wins over the built-in layer for the same theme name.
+    assert loader.get_theme("Slate")["colors"]["accent"] == "#ff0000"
+    # The overridden theme is backed by the user-layer file.
+    assert loader._paths["Slate"] == str(user / "D_slate.json")
+
+
+def test_scan_directory_single_dir_ignores_builtin_layer(tmp_path):
+    # Explicit themes_dir (single-dir callers/tests) must not pick up any
+    # global built-in layer even when one is resolvable at import time.
+    _write_theme(tmp_path / "D_only.json", "Only")
+
+    loader = ThemeLoader(themes_dir=str(tmp_path))
+    loader.scan_directory()
+
+    assert loader._builtin_dir is None
+    assert set(loader._themes) == {"Only"}

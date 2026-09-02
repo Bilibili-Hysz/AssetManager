@@ -735,3 +735,135 @@ def test_migrate_data_root_fails_closed_on_move_failure(monkeypatch, tmp_path):
 
     # Fail-closed: the legacy data is preserved for a later retry.
     assert legacy.exists()
+
+
+# ── M2 plugin/theme two-layer (single-exe release) ──────────────────────
+# Frozen builds relocate the writable extension locations (Plugins, Themes)
+# under the per-user data root and add read-only bundled sources under
+# _MEIPASS so built-in themes and seed plugins stay reachable.
+
+def test_plugins_root_dev_uses_repository():
+    from pathlib import Path
+
+    from AssetsManager.core import path_resolver
+
+    repo = Path(path_resolver.__file__).resolve().parent.parent.parent
+    assert path_resolver.plugins_root() == repo / "Plugins"
+
+
+def test_plugins_root_frozen_uses_user_data_root(monkeypatch, tmp_path):
+    import sys
+
+    from AssetsManager.core import path_resolver
+
+    local_app_data = tmp_path / "LocalAppData"
+    exe = tmp_path / "install" / "AssetManager.exe"
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+
+    assert path_resolver.plugins_root() == local_app_data / "AssetManager" / "Plugins"
+
+
+def test_themes_dir_dev_uses_repository():
+    from pathlib import Path
+
+    from AssetsManager.core import path_resolver
+
+    repo = Path(path_resolver.__file__).resolve().parent.parent.parent
+    assert path_resolver.themes_dir() == repo / "Assets" / "Themes"
+
+
+def test_themes_dir_frozen_uses_user_data_root_and_creates(monkeypatch, tmp_path):
+    import sys
+
+    from AssetsManager.core import path_resolver
+
+    local_app_data = tmp_path / "LocalAppData"
+    exe = tmp_path / "install" / "AssetManager.exe"
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+
+    themes = path_resolver.themes_dir()
+    assert themes == local_app_data / "AssetManager" / "Themes"
+    assert themes.is_dir()  # writable user layer is materialized eagerly
+
+
+def test_builtin_themes_dir_none_in_dev():
+    from AssetsManager.core import path_resolver
+
+    assert path_resolver.builtin_themes_dir() is None
+
+
+def test_builtin_themes_dir_frozen_uses_meipass(monkeypatch, tmp_path):
+    import sys
+
+    from AssetsManager.core import path_resolver
+
+    meipass = tmp_path / "bundle"
+    (meipass / "Assets" / "Themes").mkdir(parents=True)
+    exe = tmp_path / "install" / "AssetManager.exe"
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+    monkeypatch.setattr(sys, "_MEIPASS", str(meipass), raising=False)
+
+    assert path_resolver.builtin_themes_dir() == meipass / "Assets" / "Themes"
+
+
+def test_builtin_themes_dir_frozen_falls_back_to_exe_side(monkeypatch, tmp_path):
+    import sys
+
+    from AssetsManager.core import path_resolver
+
+    exe_dir = tmp_path / "install"
+    (exe_dir / "Assets" / "Themes").mkdir(parents=True)
+    exe = exe_dir / "AssetManager.exe"
+    meipass = tmp_path / "bundle"  # _MEIPASS present but without a theme tree
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+    monkeypatch.setattr(sys, "_MEIPASS", str(meipass), raising=False)
+
+    assert path_resolver.builtin_themes_dir() == exe_dir / "Assets" / "Themes"
+
+
+def test_builtin_plugins_addons_dir_none_in_dev():
+    from AssetsManager.core import path_resolver
+
+    assert path_resolver.builtin_plugins_addons_dir() is None
+
+
+def test_builtin_plugins_addons_dir_frozen_uses_meipass(monkeypatch, tmp_path):
+    import sys
+
+    from AssetsManager.core import path_resolver
+
+    meipass = tmp_path / "bundle"
+    (meipass / "Plugins" / "Addons").mkdir(parents=True)
+    exe = tmp_path / "install" / "AssetManager.exe"
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+    monkeypatch.setattr(sys, "_MEIPASS", str(meipass), raising=False)
+
+    assert path_resolver.builtin_plugins_addons_dir() == meipass / "Plugins" / "Addons"
+
+
+def test_default_search_paths_includes_builtin_when_frozen(monkeypatch, tmp_path):
+    import sys
+
+    from AssetsManager.core.path_resolver import builtin_plugins_addons_dir
+    from AssetsManager.core.plugins.manager import PluginManagerService
+
+    meipass = tmp_path / "bundle"
+    (meipass / "Plugins" / "Addons").mkdir(parents=True)
+    local_app_data = tmp_path / "LocalAppData"
+    exe = tmp_path / "install" / "AssetManager.exe"
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+    monkeypatch.setattr(sys, "_MEIPASS", str(meipass), raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+
+    manager = PluginManagerService.__new__(PluginManagerService)
+    paths = manager.default_search_paths()
+
+    assert builtin_plugins_addons_dir() in paths

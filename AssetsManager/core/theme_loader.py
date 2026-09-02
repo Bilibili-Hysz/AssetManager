@@ -31,19 +31,44 @@ _PREFIX_GROUPS = {
 
 
 def _default_themes_dir() -> str:
-    """Resolve the bundled themes directory (PyInstaller or dev)."""
+    """Resolve the writable user themes directory (PyInstaller or dev)."""
     from AssetsManager.core.path_resolver import themes_dir
     return str(themes_dir())
 
 
+def _default_builtin_themes_dir() -> str | None:
+    """Resolve the read-only built-in themes directory, if separate."""
+    from AssetsManager.core.path_resolver import builtin_themes_dir
+    d = builtin_themes_dir()
+    return str(d) if d is not None else None
+
+
 class ThemeLoader(QObject):
-    """Loads and monitors theme JSON files from a directory."""
+    """Loads and monitors theme JSON files from a user + built-in layer."""
 
     themes_changed = Signal()
 
-    def __init__(self, themes_dir: str | None = None, parent: QObject | None = None):
+    def __init__(
+        self,
+        themes_dir: str | None = None,
+        builtin_dir: str | None = None,
+        parent: QObject | None = None,
+    ):
         super().__init__(parent)
-        self._themes_dir = themes_dir or _default_themes_dir()
+        if themes_dir is None:
+            # Default construction: resolve both the writable user layer and
+            # the read-only built-in layer (separate only in frozen builds).
+            self._themes_dir = _default_themes_dir()
+            self._builtin_dir = (
+                builtin_dir
+                if builtin_dir is not None
+                else _default_builtin_themes_dir()
+            )
+        else:
+            # Explicit directory (single-dir callers and tests): scan that one
+            # directory only, unless a built-in layer is also provided.
+            self._themes_dir = themes_dir
+            self._builtin_dir = builtin_dir
         self._themes: dict[str, dict] = {}
         self._paths: dict[str, str] = {}
         self._watcher = None
@@ -53,25 +78,32 @@ class ThemeLoader(QObject):
         return self._themes_dir
 
     def scan_directory(self) -> None:
-        """Scan the themes directory and load all valid JSON files."""
+        """Scan built-in then user theme directories; user layer overrides."""
         self._themes.clear()
         self._paths.clear()
 
-        themes_dir = self._themes_dir
-        if not os.path.isdir(themes_dir):
-            return
+        seen: set[str] = set()
+        for directory in (self._builtin_dir, self._themes_dir):
+            if not directory:
+                continue
+            key = os.path.normcase(os.path.abspath(directory))
+            if key in seen:
+                continue
+            seen.add(key)
+            if not os.path.isdir(directory):
+                continue
 
-        for filename in sorted(os.listdir(themes_dir)):
-            if not filename.endswith(".json") or filename.startswith("."):
-                continue
-            filepath = os.path.join(themes_dir, filename)
-            if not os.path.isfile(filepath):
-                continue
-            data = self.parse_theme(filepath)
-            if data is not None:
-                name = data["name"]
-                self._themes[name] = data
-                self._paths[name] = filepath
+            for filename in sorted(os.listdir(directory)):
+                if not filename.endswith(".json") or filename.startswith("."):
+                    continue
+                filepath = os.path.join(directory, filename)
+                if not os.path.isfile(filepath):
+                    continue
+                data = self.parse_theme(filepath)
+                if data is not None:
+                    name = data["name"]
+                    self._themes[name] = data
+                    self._paths[name] = filepath
 
     def parse_theme(self, path: str) -> dict | None:
         """Parse and validate a single theme JSON file.
