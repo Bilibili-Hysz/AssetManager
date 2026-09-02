@@ -2,7 +2,7 @@
 
 > 状态:**LIVING(导航)** · updated: 2026-09-02 · 本目录两层定位:① 分模块审查底稿(2026-08-10~11 P0/P1 轮,已蒸馏为 [`module-audit-distilled-2026-09-02.md`](module-audit-distilled-2026-09-02.md),原件归档至 `archive/2026-09/module-audits-superseded/`);② 08-29 起各会话产出报告的归流地。原 08-10~08-15 细扫描系列 12 份已于 2026-09-02 移入 `archive/2026-09/reports-superseded/`(结论被 08-29~09-02 评审取代)。报告正文内容零改写(2026-09-02 梳理轮仅追加状态头元数据)。全库功能分类导航见 [`docs/README.md`](../README.md),证据账本见 [`docs/compose/README.md`](../compose/README.md)。
 
-## 文件清单(15 顶层 + 1 子目录)
+## 文件清单(11 顶层,0 子目录)
 
 ### module-* 系列(已蒸馏为 1 份,2026-09-02 收敛轮)
 
@@ -42,11 +42,11 @@
 
 ### 子目录
 
-- `deepseek-archive-2026-08-25/`(8 份)— DeepSeek Docs 选择性迁移的逐字副本,自带 INDEX 登记,勿改写链接。原目录已于 2026-09-02 整体迁至 `docs/baseline-2026-08-01/`。
+- ~~`deepseek-archive-2026-08-25/`(8 份)~~ — 2026-09-02 收敛轮随 08-01 基线同批迁出本目录,现位于 [`docs/archive/2026-09/deepseek-archive-2026-08-25/`](../archive/2026-09/deepseek-archive-2026-08-25/)(DeepSeek Docs 选择性迁移的逐字副本,自带 INDEX 登记;内部指向基线的 21 处链接已随迁移同步重写)。
 
 ## 与相邻证据的关系
 
 - **查询状态请走**:`docs/full-review/**`(dated 快照 + manifest,进行中任务,勿动)。
 - **查询会话证据请走**:`docs/archive/2026-09/compose-reports/`(98 份)。
-- **08-01 基线审计走**:`docs/baseline-2026-08-01/`(原 DeepSeek Docs)。
+- **08-01 基线审计走**:`docs/archive/2026-09/baseline-2026-08-01/`(原 DeepSeek Docs,2026-09-02 收敛轮迁入 archive)。
 - 本目录定位:08-11 module-* 审查底稿 + 08-29 起会话报告归流地;底稿多数发现已由后续批次关闭或登记。

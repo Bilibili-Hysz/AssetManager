@@ -205,7 +205,7 @@
 | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.test.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.test.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
 | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
 
-## 2026-09(docs 精简轮,134 份;第二轮分析系列蒸馏并入;第三轮 module-audits 蒸馏并入 11 份;收敛轮已完结报告归档 3 份;收敛轮 plans 范围决策并入 1 份)
+## 2026-09(docs 精简轮,190 份;第二轮分析系列蒸馏并入;第三轮 module-audits 蒸馏并入 11 份;收敛轮已完结报告归档 3 份;收敛轮 plans 范围决策并入 1 份;第四轮 08-01 冻结基线簇迁入 48 份 + deepseek 逐字副本 8 份)
 
 > 2026-09-02 结构归档:活跃区从 185 份降至 70 份。compose/reports 整体(98 份)、reports/ 被取代细扫描(12 份)、plans/ 完结方案(3 份)。内容零改写;指向它们的活跃链接已同步重写。
 
@@ -377,3 +377,73 @@
 | docs/reports/module-maintenance.md | 2026-09/module-audits-superseded/module-maintenance.md | 08-10 P0 轮,18 项已修 | module-audit-distilled §模块汇总 |
 | docs/reports/module-repositories-p1.md | 2026-09/module-audits-superseded/module-repositories-p1.md | 08-11 P1 轮,行号已失效,发现项已关闭 | module-audit-distilled §模块汇总 |
 | docs/reports/module-runtime.md | 2026-09/module-audits-superseded/module-runtime.md | 08-10 P0 轮,25 项已修 | module-audit-distilled §模块汇总 |
+
+### baseline-2026-08-01(48 份,FROZEN 冻结基线·2026-09-02 收敛轮迁入)
+
+归档原因:原仓库根 `DeepSeek Docs/`(2026-09-02 先迁入 `docs/`,同日收敛轮再迁入 archive),2026-08-01 冻结基线快照;内容**零改写**(FROZEN 纪律),其中数字断言均为历史快照,不得当作当前结果 · 取代者:`docs/architecture.md` + `docs/overview-2026-08-27.md`(语料考古才回溯本簇)
+
+| 原路径 | 新路径 | 归档原因 | 取代者 |
+|---|---|---|---|
+| docs/baseline-2026-08-01/01-项目总览与架构.md | 2026-09/baseline-2026-08-01/01-项目总览与架构.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/02-入口与启动链路.md | 2026-09/baseline-2026-08-01/02-入口与启动链路.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/03-应用服务层.md | 2026-09/baseline-2026-08-01/03-应用服务层.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/04-核心基础设施层.md | 2026-09/baseline-2026-08-01/04-核心基础设施层.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/05-领域层与数据访问层.md | 2026-09/baseline-2026-08-01/05-领域层与数据访问层.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/06-LAN服务器层.md | 2026-09/baseline-2026-08-01/06-LAN服务器层.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/07-桌面UI层.md | 2026-09/baseline-2026-08-01/07-桌面UI层.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/08-WebUI与插件系统.md | 2026-09/baseline-2026-08-01/08-WebUI与插件系统.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/09-端到端数据流.md | 2026-09/baseline-2026-08-01/09-端到端数据流.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/10-风险与改进建议.md | 2026-09/baseline-2026-08-01/10-风险与改进建议.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/README.md | 2026-09/baseline-2026-08-01/README.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/交接文档-2026-08-13-第二轮.md | 2026-09/baseline-2026-08-01/交接文档-2026-08-13-第二轮.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/交接文档-2026-08-13.md | 2026-09/baseline-2026-08-01/交接文档-2026-08-13.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/交接文档-2026-08-15.md | 2026-09/baseline-2026-08-01/交接文档-2026-08-15.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/前后端分离改造计划/01-方案利弊分析.md | 2026-09/baseline-2026-08-01/前后端分离改造计划/01-方案利弊分析.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/前后端分离改造计划/02-推荐实施计划.md | 2026-09/baseline-2026-08-01/前后端分离改造计划/02-推荐实施计划.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/前后端分离改造计划/03-验收标准与风险预案.md | 2026-09/baseline-2026-08-01/前后端分离改造计划/03-验收标准与风险预案.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/前后端分离改造计划/README.md | 2026-09/baseline-2026-08-01/前后端分离改造计划/README.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/功能缺口分析/01-桌面端-浏览与编辑.md | 2026-09/baseline-2026-08-01/功能缺口分析/01-桌面端-浏览与编辑.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/功能缺口分析/02-桌面端-管理功能.md | 2026-09/baseline-2026-08-01/功能缺口分析/02-桌面端-管理功能.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/功能缺口分析/03-应用服务与数据层.md | 2026-09/baseline-2026-08-01/功能缺口分析/03-应用服务与数据层.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/功能缺口分析/04-LAN服务器.md | 2026-09/baseline-2026-08-01/功能缺口分析/04-LAN服务器.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/功能缺口分析/05-WebUI.md | 2026-09/baseline-2026-08-01/功能缺口分析/05-WebUI.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/功能缺口分析/06-安全与可靠性.md | 2026-09/baseline-2026-08-01/功能缺口分析/06-安全与可靠性.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/功能缺口分析/07-优先级路线图.md | 2026-09/baseline-2026-08-01/功能缺口分析/07-优先级路线图.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/功能缺口分析/README.md | 2026-09/baseline-2026-08-01/功能缺口分析/README.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/插件API设计规划/01-现状审计与问题清单.md | 2026-09/baseline-2026-08-01/插件API设计规划/01-现状审计与问题清单.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/插件API设计规划/02-Blender插件API设计启示.md | 2026-09/baseline-2026-08-01/插件API设计规划/02-Blender插件API设计启示.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/插件API设计规划/03-目标API规范.md | 2026-09/baseline-2026-08-01/插件API设计规划/03-目标API规范.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/插件API设计规划/04-兼容与迁移方案.md | 2026-09/baseline-2026-08-01/插件API设计规划/04-兼容与迁移方案.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/插件API设计规划/05-验收标准.md | 2026-09/baseline-2026-08-01/插件API设计规划/05-验收标准.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/插件API设计规划/README.md | 2026-09/baseline-2026-08-01/插件API设计规划/README.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/施行路线图.md | 2026-09/baseline-2026-08-01/施行路线图.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/未来方向/01-个人数字资产店铺.md | 2026-09/baseline-2026-08-01/未来方向/01-个人数字资产店铺.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/未来方向/02-商业化分层与免费版策略.md | 2026-09/baseline-2026-08-01/未来方向/02-商业化分层与免费版策略.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/未来方向/03-橱窗化双端UI设计.md | 2026-09/baseline-2026-08-01/未来方向/03-橱窗化双端UI设计.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/未来方向/04-DeviantArt式橱窗前端UI形态设计.md | 2026-09/baseline-2026-08-01/未来方向/04-DeviantArt式橱窗前端UI形态设计.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/未来方向/05-桌面端UI视觉改进规划.md | 2026-09/baseline-2026-08-01/未来方向/05-桌面端UI视觉改进规划.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/未来方向/06-现代化界面技术路线评估.md | 2026-09/baseline-2026-08-01/未来方向/06-现代化界面技术路线评估.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/未来方向/07-桌面端性能优化计划.md | 2026-09/baseline-2026-08-01/未来方向/07-桌面端性能优化计划.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/未来方向/README.md | 2026-09/baseline-2026-08-01/未来方向/README.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/架构与设计评价/01-前端架构评价.md | 2026-09/baseline-2026-08-01/架构与设计评价/01-前端架构评价.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/架构与设计评价/02-后端架构评价.md | 2026-09/baseline-2026-08-01/架构与设计评价/02-后端架构评价.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/架构与设计评价/03-UI与UX设计评价.md | 2026-09/baseline-2026-08-01/架构与设计评价/03-UI与UX设计评价.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/架构与设计评价/04-工程实践与代码质量.md | 2026-09/baseline-2026-08-01/架构与设计评价/04-工程实践与代码质量.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/架构与设计评价/05-可扩展性与演进方向.md | 2026-09/baseline-2026-08-01/架构与设计评价/05-可扩展性与演进方向.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/架构与设计评价/06-前后端分离深度分析.md | 2026-09/baseline-2026-08-01/架构与设计评价/06-前后端分离深度分析.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+| docs/baseline-2026-08-01/架构与设计评价/README.md | 2026-09/baseline-2026-08-01/架构与设计评价/README.md | 08-01 冻结基线快照,数字/行号已失效,仅考古用 | docs/architecture.md · docs/overview-2026-08-27.md |
+
+### deepseek-archive-2026-08-25(8 份,DeepSeek Docs 选择性迁移逐字副本)
+
+归档原因:2026-08-25 选择性迁移的逐字副本,与 `baseline-2026-08-01/` 子集内容重复;2026-09-02 收敛轮随基线同批迁出 `docs/reports/` 以保持相对几何;内部指向基线的 21 处相对链接已同步重写(内容正文未改) · 取代者:`2026-09/baseline-2026-08-01/` 对应子集
+
+| 原路径 | 新路径 | 归档原因 | 取代者 |
+|---|---|---|---|
+| docs/reports/deepseek-archive-2026-08-25/INDEX.md | 2026-09/deepseek-archive-2026-08-25/INDEX.md | 与 baseline 子集重复的逐字副本 | 2026-09/baseline-2026-08-01/ 同名子集 |
+| docs/reports/deepseek-archive-2026-08-25/功能缺口分析/07-优先级路线图.md | 2026-09/deepseek-archive-2026-08-25/功能缺口分析/07-优先级路线图.md | 与 baseline 子集重复的逐字副本 | 2026-09/baseline-2026-08-01/ 同名子集 |
+| docs/reports/deepseek-archive-2026-08-25/功能缺口分析/README.md | 2026-09/deepseek-archive-2026-08-25/功能缺口分析/README.md | 与 baseline 子集重复的逐字副本 | 2026-09/baseline-2026-08-01/ 同名子集 |
+| docs/reports/deepseek-archive-2026-08-25/未来方向/01-个人数字资产店铺.md | 2026-09/deepseek-archive-2026-08-25/未来方向/01-个人数字资产店铺.md | 与 baseline 子集重复的逐字副本 | 2026-09/baseline-2026-08-01/ 同名子集 |
+| docs/reports/deepseek-archive-2026-08-25/未来方向/03-橱窗化双端UI设计.md | 2026-09/deepseek-archive-2026-08-25/未来方向/03-橱窗化双端UI设计.md | 与 baseline 子集重复的逐字副本 | 2026-09/baseline-2026-08-01/ 同名子集 |
+| docs/reports/deepseek-archive-2026-08-25/未来方向/README.md | 2026-09/deepseek-archive-2026-08-25/未来方向/README.md | 与 baseline 子集重复的逐字副本 | 2026-09/baseline-2026-08-01/ 同名子集 |
+| docs/reports/deepseek-archive-2026-08-25/架构与设计评价/06-前后端分离深度分析.md | 2026-09/deepseek-archive-2026-08-25/架构与设计评价/06-前后端分离深度分析.md | 与 baseline 子集重复的逐字副本 | 2026-09/baseline-2026-08-01/ 同名子集 |
+| docs/reports/deepseek-archive-2026-08-25/架构与设计评价/README.md | 2026-09/deepseek-archive-2026-08-25/架构与设计评价/README.md | 与 baseline 子集重复的逐字副本 | 2026-09/baseline-2026-08-01/ 同名子集 |

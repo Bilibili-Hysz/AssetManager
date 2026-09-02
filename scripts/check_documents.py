@@ -9,7 +9,10 @@ Enforces the LIVING / FROZEN / ARCHIVED classification introduced by the
     2. Every file under ``docs/archive/`` (except the INDEX itself) has a
        registration row inside ``docs/archive/INDEX.md``.
     3. FROZEN clusters carry a ``FROZEN`` marker in their entry README/head
-       (docs/baseline-2026-08-01 (ex-DeepSeek Docs), deep-weakness-audit, Plugins/Docs manuals).
+       (docs/archive/2026-09/baseline-2026-08-01 (ex-DeepSeek Docs),
+       docs/archive/2026-09/deep-weakness-audit-2026-08-22, Plugins/Docs manuals).
+       FROZEN clusters keep their content immutable regardless of location;
+       on 2026-09-02 the two docs-side clusters moved under docs/archive/.
     4. Pre-2026-07-21 ``docs/compose/`` specs/plans (and the two undated plans)
        carry the ``ARCHIVED`` header line added by that batch.
     5. The navigation entries shared by README/overview point at existing files.
@@ -45,7 +48,7 @@ LIVING = [
 UPDATED_RE = re.compile(r"updated:\s*(\d{4}-\d{2}-\d{2})")
 
 FROZEN_MARKERS = [
-    "docs/baseline-2026-08-01/README.md",
+    "docs/archive/2026-09/baseline-2026-08-01/README.md",
     "docs/deep-weakness-audit-2026-08-22/README.md",
     "Plugins/Docs/API.md",
     "Plugins/Docs/MODULE_INTERFACES.md",

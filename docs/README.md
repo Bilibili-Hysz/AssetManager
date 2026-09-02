@@ -19,22 +19,22 @@
 | [`adr/`](adr/) | 架构决策记录（0001~0005） |
 | [`overview-2026-08-27.md`](overview-2026-08-27.md) | 全库结构地图（DATED SNAPSHOT，08-27 实测，语料考古入口） |
 
-### 2. 08-01 基线审计与规划（FROZEN）
+### 2. 08-01 基线审计与规划（FROZEN · 2026-09-02 收敛轮迁入 archive）
 
-[`baseline-2026-08-01/`](baseline-2026-08-01/README.md)（原仓库根 `DeepSeek Docs/`，2026-09-02 整体迁入，内容零改写）：
+[`archive/2026-09/baseline-2026-08-01/`](archive/2026-09/baseline-2026-08-01/README.md)（原仓库根 `DeepSeek Docs/`，2026-09-02 迁入 docs 后再迁 archive，内容零改写）：
 
 | 子集 | 功能 |
 |---|---|
 | `01~10-*.md` | 10 章逐层架构走查（总览/启动链/应用服务/基础设施/领域与数据/LAN/桌面 UI/WebUI 与插件/端到端数据流/风险建议） |
 | `交接文档-2026-08-13*.md` | 会话交接（dated） |
 | `施行路线图.md` | 08-01 时点路线图 |
-| [`架构与设计评价/`](baseline-2026-08-01/架构与设计评价/README.md) | 前端/后端/UI·UX/工程质量/可扩展性/前后端分离评价 |
-| [`功能缺口分析/`](baseline-2026-08-01/功能缺口分析/README.md) | 桌面/服务与数据/LAN/WebUI/安全缺口 + 优先级路线图 |
-| [`前后端分离改造计划/`](baseline-2026-08-01/前后端分离改造计划/README.md) | 方案利弊、推荐实施计划、验收标准与风险预案 |
-| [`插件API设计规划/`](baseline-2026-08-01/插件API设计规划/README.md) | 现状审计、Blender 启示、目标 API 规范、兼容迁移、验收 |
-| [`未来方向/`](baseline-2026-08-01/未来方向/README.md) | 店铺/商业化/橱窗 UI/桌面视觉/技术路线/性能优化方向 |
+| [`架构与设计评价/`](archive/2026-09/baseline-2026-08-01/架构与设计评价/README.md) | 前端/后端/UI·UX/工程质量/可扩展性/前后端分离评价 |
+| [`功能缺口分析/`](archive/2026-09/baseline-2026-08-01/功能缺口分析/README.md) | 桌面/服务与数据/LAN/WebUI/安全缺口 + 优先级路线图 |
+| [`前后端分离改造计划/`](archive/2026-09/baseline-2026-08-01/前后端分离改造计划/README.md) | 方案利弊、推荐实施计划、验收标准与风险预案 |
+| [`插件API设计规划/`](archive/2026-09/baseline-2026-08-01/插件API设计规划/README.md) | 现状审计、Blender 启示、目标 API 规范、兼容迁移、验收 |
+| [`未来方向/`](archive/2026-09/baseline-2026-08-01/未来方向/README.md) | 店铺/商业化/橱窗 UI/桌面视觉/技术路线/性能优化方向 |
 
-红线：内容不改写；数字断言均为 08-01 历史快照。
+红线：内容不改写；数字断言均为 08-01 历史快照。其选择性迁移逐字副本（8 份）见 `archive/2026-09/deepseek-archive-2026-08-25/`，内部链接已随本轮迁移同步重写至新基线路径。
 
 ### 3. 审计与评审（FROZEN / dated）
 
@@ -53,7 +53,7 @@
 
 ### 6. 报告归流（reports）
 
-[`reports/`](reports/) —— 会话产出报告的归流地（08-29 起评审/专家分析系列 + module-* 分模块审查底稿，如 `cleanup-and-git-repair-2026-09-01.md`、`expert-panel-deep-analysis-2026-08-31.md`、`deepseek-archive-2026-08-25/`）。已被 08-29~09-02 评审取代的 12 份 08-10~08-15 细扫描于 2026-09-02 移入 [`archive/2026-09/reports-superseded/`](archive/2026-09/reports-superseded/)。
+[`reports/`](reports/) —— 会话产出报告的归流地（08-29 起评审/专家分析系列 + 蒸馏产物，如 `cleanup-and-git-repair-2026-09-01.md`、`expert-panel-deep-analysis-2026-08-31.md`、`module-audit-distilled-2026-09-02.md`）。已被 08-29~09-02 评审取代的 12 份 08-10~08-15 细扫描于 2026-09-02 移入 [`archive/2026-09/reports-superseded/`](archive/2026-09/reports-superseded/)。
 
 ### 7. 图示（diagrams）
 
@@ -67,7 +67,7 @@
 
 - "系统现在是什么样" → `architecture.md` + `architecture-diagram.md`
 - "数据库现在有哪些版本/迁移" → `migrations.md`
-- "当年 08-01 审计怎么评价这个项目" → `baseline-2026-08-01/`
+- "当年 08-01 审计怎么评价这个项目" → `archive/2026-09/baseline-2026-08-01/`
 - "已知弱点清单" → `deep-weakness-audit-2026-08-22/`
 - "接下来做什么" → `plans/`
 - "某次会话/某轮工作的证据" → `reports/`、`archive/2026-09/compose-reports/`、`archive/INDEX.md`

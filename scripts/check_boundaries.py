@@ -1,7 +1,7 @@
 """Static boundary checks for the front/back separation acceptance gates.
 
 Verifies the static-scan acceptance criteria from
-``docs/baseline-2026-08-01/前后端分离改造计划/03-验收标准与风险预案.md``:
+``docs/archive/2026-09/baseline-2026-08-01/前后端分离改造计划/03-验收标准与风险预案.md``:
 
     1. ``application/`` emits no ``/api/`` transport URLs.
     2. ``panels/`` and ``widgets/`` construct no ``Repository(...)``.
