@@ -4,13 +4,13 @@ type: plan
 status: LIVING
 date: 2026-09-02
 area: packaging / release
-owner: agent（M1/M2 已实施，M3 部分实施）
+owner: agent（M1/M2/M3 全部已实施）
 supersedes: none
 ---
 
 # 单 exe 发布架构方案（2026-09-02）
 
-> 长期架构任务。给出从 onedir+安装器 迁移到"单 exe 分发"的完整路径、代码级改动清单与风险边界。**M1（数据根独立化）、M2（插件/主题双层）、M3 前半（spec 单文件化 + build.py 单文件适配）已实施合入**；M3 剩余为流水线适配（check_package_contents 退役 / installer B / CI 同步）。
+> 长期架构任务。给出从 onedir+安装器 迁移到"单 exe 分发"的完整路径、代码级改动清单与风险边界。**M1（数据根独立化）、M2（插件/主题双层）、M3（spec 单文件化 + build.py 单文件适配 + 流水线适配）已全部实施合入**；仅剩 §7 的产品决策（Q2 存量用户规模、Q3 体积阈值）待 owner 拍板。
 
 ## 1. 背景与目标
 
@@ -141,15 +141,15 @@ spec `datas`（`AssetManager.spec:75-87`）目标刻意镜像仓库相对层级�
 
 ### 4.5 M3 · 构建流水线（P2）
 
-> **状态：build.py 两行已实施（`6c3c385`）；check_package_contents / installer / CI 三行待实施。**
+> **状态：已全部实施（`6c3c385` spec 单文件化 + build.py；`8a486d3` check_package_contents / installer B / CI 同步）。**
 
 | 位置 | 改动 | 状态 |
 |---|---|---|
-| `build.py:51-77` `optimize()` | 删除（针对 `_internal/` 的 Qt 清理在单文件下失效） | ✅ 已实施 |
-| `build.py` 产物 | `dist/AssetManager/` → `dist/AssetManager.exe` | ✅ 已实施 |
-| `scripts/check_package_contents.py` | 适配单文件：校验内容从"目录树"改为"spec datas/hiddenimports 一致性"或退役 | ⏳ 待实施 |
-| `scripts/build_installer.py` + `installer/assetmanager.iss` | 二选一：**A 纯绿色分发**（installer 退役，release 只传 exe+sha256）；**B 安装器包一层**（iss 打包单 exe 至 `{localappdata}\Programs\AssetManager`，卸载清 `%LOCALAPPDATA%\AssetManager`） | ⏳ 待实施（Q5 已定 B） |
-| `.github/workflows/release.yml:57-102` | 产物路径/artifact 名同步 | ⏳ 待实施 |
+| `build.py:51-77` `optimize()` | 删除（针对 `_internal/` 的 Qt 清理在单文件下失效） | ✅ 已实施（`6c3c385`） |
+| `build.py` 产物 | `dist/AssetManager/` → `dist/AssetManager.exe` | ✅ 已实施（`6c3c385`） |
+| `scripts/check_package_contents.py` | 适配单文件：校验从"目录树"改为「PE 魔数 + 体积下限 + 嵌入 CArchive TOC 资源校验 + spec 静态漂移检查（datas 源存在 / `AssetsManager.*` hiddenimports 解析）」 | ✅ 已实施（`8a486d3`） |
+| `scripts/build_installer.py` + `installer/assetmanager.iss` | **B 安装器包一层**：iss `[Files] Source: "..\dist\AssetManager.exe"` 打包单 exe 至 `{localappdata}\Programs\AssetManager`；`build_installer.py` 增单 exe 前置存在检查 | ✅ 已实施（`8a486d3`，Q5 已定 B） |
+| `.github/workflows/release.yml` + `ci.yml` | 产物路径/artifact 名同步（`dist\AssetManager` → `dist\AssetManager.exe`；smoke 以 `$distPath` 为工作目录） | ✅ 已实施（`8a486d3`） |
 
 ### 4.6 M3 · 版本 / 升级 / 回滚（P2）
 
@@ -184,19 +184,19 @@ spec `datas`（`AssetManager.spec:75-87`）目标刻意镜像仓库相对层级�
 |---|---|---|
 | M1 | 数据根独立化 + 首启迁移（§4.1） | ✅ 已实施（`967b896`） |
 | M2 | 插件双层 + 主题双层（§4.2/4.3） | ✅ 已实施（`2591463`）；修 F2/F3，F1 实证不成立 |
-| M3 | spec 单文件 + build.py 适配（§4.4/4.5） | ✅ 已实施（`6c3c385`）；流水线适配（check_package_contents/installer/CI）待实施 |
+| M3 | spec 单文件 + build.py 适配 + 流水线适配（§4.4/4.5） | ✅ 已实施（`6c3c385` + `8a486d3`） |
 
 每里程碑独立提交 + 双门禁 + 单测 + 手工冒烟。
 
 ## 7. 待实施时确认（open questions）
 
-> 2026-09-02 更新：Q1/Q4 已静态核实并给出结论（见下）；Q2/Q3/Q5 为产品决策，待 owner 拍板。
+> 2026-09-02 更新：Q1/Q4 已静态核实并给出结论（见下）；Q5 已定 B（安装器包一层）并实施；Q2/Q3 为产品决策，待 owner 拍板。
 
 1. **PyInstaller 布局（已实证）**：本机 Python 3.14 已装 **PyInstaller 6.19.0**；onedir 默认 `contents_directory=_internal` → spec `datas` 落 `dist/AssetManager/_internal/`。2026-09-02 真实 onedir 探针证实 `sys._MEIPASS` 恒指向 `dist/<name>/_internal`，故 `themes_dir()` 主分支 `_MEIPASS/Assets/Themes` 直接命中内置主题——**原 F1「内置主题丢失」不成立**；其它只读资源（icon `app.py:213`、SPA `pages.py:7`、i18n）用 `__file__` 相对推导亦不受影响。**结论**：内置主题源仅 `_MEIPASS/Assets/Themes` 一处（onefile/onedir 通吃），M2 已按此实现（`builtin_themes_dir()`）。
 2. onedir 存量用户规模（决定迁移兼容优先级与回滚策略强度）——**待 owner**。
 3. 单 exe 目标体积 / 首启时间可接受阈值（决定是否压内置主题/裁剪 Qt）——**待 owner**。
 4. **plugins loader 语义（已核实）**：`core/plugins/manager.py:200-203` `default_search_paths() = [SHARED_DIR/"plugins", addons_dir()]`；`discover_plugins` 逐目录 `iterdir` 并以 `dict[plugin_id]` 聚合（同名后者覆盖）→ **多源合并复杂度低**：M2 给 frozen 加内置种子源只需在 `default_search_paths` 前插 `_MEIPASS/Plugins`（若存在）。注意点：内置源只读、插件实例化可能写盘（配置/状态）→ 建议内置源仅作"首次运行拷贝到用户层"的种子，而非运行源；此项 M2 细化时敲定。
-5. 分发方向 A（纯绿色单文件）还是 B（安装器包一层）——影响 installer/ 去留与卸载清理责任——**待 owner**。
+5. 分发方向 A（纯绿色单文件）还是 B（安装器包一层）——影响 installer/ 去留与卸载清理责任——**已定 B**（安装器包一层单 exe，`installer/assetmanager.iss` `[Files] Source: "..\dist\AssetManager.exe"`，已实施于 `8a486d3`）。
 
 ## 8. 参考文件
 
