@@ -205,3 +205,31 @@ D:\~Vibe-Coding\Projects\_TRASH_venv-wsl_2026-09-01\   (5653 文件完整, 确�
 | 剩余大头 | mirror/ 19.7 MB（保守保留）、docs 5.2 MB、RuntimeData 5.0 MB（用户数据） |
 | git | fsck 0 / 566 提交 / status 67 行（并行会话 WIP，非垃圾） |
 | 未动项 | artifacts 4 个 ACL 空壳（WSL 内删）；25 个未跟踪 docs/outputs（是否入库待定）；mirror/ 保留 |
+
+---
+
+## 7. 第三轮收尾（2026-09-01 21:40）
+
+| 事项 | 结果 |
+|---|---|
+| artifacts/ 4 个 ACL 空壳 | 用户已手动删除（本轮核验：目录已不存在） |
+| mirror/ 5 个 bundle（19.7MB） | 已走回收站（SHFileOperationW rc=0，可还原） |
+| 25 个未跟踪 docs/outputs 文档 | 已入库：commit `4aef9bc`，49 文件 / 10752 行 |
+
+入库范围细节：47 个 docs + 2 个 outputs，含 `docs/archive/2026-08/recovered-grid-zoom-interpolation/`（git 修复期间恢复的 25 个历史文件快照）。**刻意排除**：并行会话的 WIP 代码改动、4 个在途修改的已跟踪 docs（`docs/architecture.md` 等，未暂存，留给对应会话）。
+
+### 项目整理任务至此全部完成
+
+- 工作区：73.5MB → **41.0MB**，另移出 720.9MB venv-wsl、19.7MB mirror
+- `.git`：34MB → 7.7MB，fsck 0 / 566 提交完整
+- 工作树：仅剩并行会话 WIP（属正常工作状态，非垃圾）
+
+---
+
+## 8. 第四轮（23:49，应用户要求处理 .venv 与临时文件）
+
+- `.venv`：上轮移出后于 19:53 被重建为空壳（0 字节），直接移除（gitignore 已覆盖）。
+- 清理 16 个目录 / 3.5MB：13 个 `__pycache__` + `.pytest_cache` + `.ruff_cache` + `.venv` 空壳，全部进回收站。
+- 注意：清理时 3 分钟前仍有 pytest/ruff 缓存写入（并行会话测试收尾中）——所清目标均为可再生缓存，无破坏性。
+- `webui/node_modules/**/yarn.lock` 为包管理文件，非锁残留，未动。
+- 终验：pycache 0 / fsck 0 / status 45 行（WIP 不变）/ 工作区 21.4MB（不含 node_modules/.git）。

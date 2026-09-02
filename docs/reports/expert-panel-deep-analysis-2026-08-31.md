@@ -2,7 +2,7 @@
 
 > 生成日期：2026-08-31
 > 评审形式：五位专家并行源码级走查（架构 / 工程质量 / 安全威胁建模 / UX 双端一致性 / 性能与数据），主评审对全部 load-bearing 结论做源码抽查交叉验证。
-> 关联文档：`docs/archive/2026-09/analysis-superseded/project-analysis-2026-08-31.md`（第一轮总体评审）、`docs/archive/2026-09/analysis-superseded/functional-analysis-and-serpent-comparison-2026-08-31.md`（功能对照 Serpent）。
+> 关联文档：`docs/reports/project-analysis-2026-08-31.md`（第一轮总体评审）、`docs/reports/functional-analysis-and-serpent-comparison-2026-08-31.md`（功能对照 Serpent）。
 
 ---
 
@@ -365,7 +365,7 @@ enqueue ──bind──> pending/enqueued ──claim──> running
 
 2026-09-01 的后续实现补齐了显式运维重试：只有已绑定 durable task 的 `dead_letter`/`cancelled` manifest 能由 generation CAS 重新打开；旧 task id 会写入一个有界 retired 集合，延迟 listener/startup transition 对该 id 只作幂等 no-op。服务入口会先从刷新后的 queue snapshot 补写可能丢失的 terminal 回调，再调用常规 recovery 调度；调度失败保留可见的 `pending` 和错误，不将 enqueue 伪装为完成。终态、取消态、丢回调、enqueue 失败和双连接 CAS 竞争已由 32 项 manifest store 单元测试覆盖。
 
-仍未完成且不能作为 H1 退出证据的项目：跨进程精确 transition 日志、持久化 outbox（当前 backlog 仍为有界内存 hand-off）、优雅关闭时 live lease 的接管策略，以及完整故障注入。恢复进程门禁仍有 3 个旧测试将“enqueue acceptance”断言为 completed，另有 clean-import 旧断言在重启 2 秒窗口内期待 completed；这些应改为显式 worker durable success ACK 或明确等待 lease/worker，不应回退 ACK-gated 状态机。
+上述“仍未完成”是 v44 前的审查快照；后续已落地持久 outbox、delivery-token lease 和 ACK-gated consumer。剩余 H1 退出条件是 retention 告警/容量策略、ACK snapshot 成本，以及优雅关闭时 live lease 的产品策略；旧测试若将“enqueue acceptance”断言为 completed，必须改为显式 worker durable success ACK 或明确等待 lease/worker，不应回退 ACK-gated 状态机。
 
 ### 9.1 v44-v46 持久 outbox 追加复核（2026-09-01）
 
@@ -377,11 +377,15 @@ v45 已关闭 poison head 的永久阻塞：`reconciliation_transition_outbox_de
 
 v46 将暂态投递失败与 poison 隔离保持分离：canonical durable consumer 的异常、`RETRY` 或非法 disposition 后，`next_delivery_at` 由 delivery-token CAS 原子写入。通用 observer 在 ACK 后执行，其异常仅进入本地 advisory backlog，不能触发 durable retry。退避从 15 秒指数增长到 300 秒上限，并以 `library_root + event_id + delivery_attempts` 的稳定 hash 加 0–20% 正向 jitter；jitter 后的最终值仍封顶为 300 秒。claim 仍只读取最早 pending id，未到 deadline 的 head 会阻塞后续 event，不能用“后行已到期”越序。ACK 清除 deadline；v45/第三方旧表缺列时保留即时 retry。外部损坏的 retry 或 active delivery lease deadline 会走 v45 隔离而不是永久阻塞。SQLite store 现以 delivery-token CAS 在慢 callback 期间每约三分之一租约续期；默认 300 秒 callback age 到期后停止续租，迟到 callback 不 ACK，最后一个租约窗口后允许另一连接重放。v45 表存在时，普通 durable delivery 默认第八次失败会在同一 token-CAS transaction 复制到 dead-letter 并删除 source row；v44 保持 retry，避免无证删除。迁移、token CAS、严格顺序、旧 schema fallback、损坏 lease/deadline、canonical consumer / observer 契约、callback heartbeat 和 delivery exhaustion 的定向 H1 回归为 `224 passed`，`pyright`、`ruff check` 通过。
 
+新增真实子进程 crash-replay 门禁把此前缺失的核心窗口变成可复现证据：子进程先持久化 `succeeded` transition 对应 manifest 的 `completed` CAS，再阻塞在 outbox ACK 前；父进程终止该子进程后，第二个 SQLite 连接等待短 delivery lease 到期，重放同一 event。consumer 此时返回 `STALE`，event 的 delivery attempts 从 1 变为 2 并成功 ACK，而 manifest generation 与 attempts 均不再变化。第二、三个场景让两个 manifest 共享同一 terminal 或 evicted task，分别在首个 `dead_letter` CAS 或首个解绑 CAS 后崩溃；重放保持首项的 generation/attempts 不变，只持久化未处理的兄弟项再 ACK。新增长 callback 场景：子进程在 `succeeded` consumer 内阻塞，callback-age 到期后停止 heartbeat，第二进程接管过期 lease 并完成 manifest。该进程文件定向重跑为 `7 passed`。
+
+retention 已接入同一 runtime-owned sweeper：每 10 秒的 lifecycle pass 仍负责 retry/drain 与 lease recovery，每小时另以 bounded `prune_transition_outbox()` 删除默认 7 天前的 ACK 和 30 天前的 dead-letter（每类最多 1000 条）。prune 失败不会阻断投递或 lease 回收，并会在下一次 10 秒 pass 重试；pending/leased 行仍由 store 层拒绝删除。新增频率/cutoff/limit 和故障重试门禁后，reconciliation service 定向集合为 `22 passed`。
+
 这仍不是 H1 退出。专家复核确认以下边界：
 
-- v45 dead-letter 表已处理损坏 immutable payload/delivery metadata 与默认第八次普通 delivery failure；v46 已压低普通投递失败的重复频率。应用层现已补齐 fail-closed dead-letter 列表、event-id/CAS 人工 replay、ACK/dead-letter bounded retention/prune 与 pending/ACK/dead-letter/lease/attempt/age 指标；仍需把 retention 接入正式调度，并评估 ACK 后完整 JSON snapshot 的长期存储成本。
+- v45 dead-letter 表已处理损坏 immutable payload/delivery metadata 与默认第八次普通 delivery failure；v46 已压低普通投递失败的重复频率。应用层现已补齐 fail-closed dead-letter 列表、event-id/CAS 人工 replay、ACK/dead-letter bounded retention/prune 与 pending/ACK/dead-letter/lease/attempt/age 指标；runtime 已正式调度有界 retention，仍需定义告警阈值、容量预算和可配置保留窗口，并评估 ACK 后完整 JSON snapshot 的长期存储成本。
 - 已收敛为唯一 `import_manifest_recovery` canonical durable consumer：它必须显式返回 `APPLIED`、`STALE` 或 `RETRY`，通用 listener 的 `None` 不再是 durable 接受，且 observer 不参与 `delivered_at`。当前没有第二个生产 durable consumer，因此不提前增加 v47。产品将来引入第二个独立 projection 时，必须先增加 `(event_id, consumer_id)` receipt/inbox、持久 registry、历史起点与 retention 语义，不能复用单一全局 ACK。
-- decoder 的 identity/scope 校验已由 v45 收紧；SQLite delivery lease 已有有界 renew 与 callback age。它不能强制终止业务 callback，因此 deadline 后以停止续租和拒绝迟到 ACK 来保证可接管，幂等重放仍是契约前提；完整的独立进程 crash/replay 注入尚未覆盖。
-- 已有双进程 manifest claim winner 和 token lease 覆盖，但没有完整验证 worker durable success、outbox delivery、manifest CAS、ACK 前崩溃及另一进程重放的整条链，也缺 terminal/eviction 合并 task 的多进程故障注入。
+- decoder 的 identity/scope 校验已由 v45 收紧；SQLite delivery lease 已有有界 renew 与 callback age。它不能强制终止业务 callback，因此 deadline 后以停止续租和拒绝迟到 ACK 来保证可接管，幂等重放仍是契约前提；manifest CAS 后、ACK 前的独立进程 crash/replay，以及长运行 callback age 到期后的第二进程 lease 接管均已覆盖。
+- 双进程 manifest claim winner、token lease，以及 worker durable success、outbox delivery、manifest CAS、ACK 前崩溃和另一进程 `STALE` 重放的完整链路均已验证；合并 terminal 与 eviction event 的首项 CAS 后崩溃、长 callback age 到期后的接管也已覆盖。
 
-建议顺序：保持当前单 canonical consumer 契约；delivery dead-letter 的人工 replay/retention 和指标已有实现，下一步补完整跨进程 worker→manifest crash/replay 与 terminal/eviction 合并 task 的进程级故障注入门禁，并把 retention 接入正式调度。只有产品出现第二个独立 durable projection 时，再先做 per-consumer receipt/inbox 设计。
+建议顺序：保持当前单 canonical consumer 契约；delivery dead-letter 的人工 replay/retention 和指标、核心 crash-replay 门禁已有实现，下一步补 retention 告警阈值、容量预算、可配置保留窗口和优雅关闭时 live lease 策略。只有产品出现第二个独立 durable projection 时，再先做 per-consumer receipt/inbox 设计。

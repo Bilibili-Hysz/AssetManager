@@ -45,7 +45,7 @@ Static gates are enforced by `scripts/check_boundaries.py` (gates 1/2/3/5), `scr
 | `PluginService` | `plugin_service.py` | Plugin discovery, load, enable, disable | `app.py` (startup) | — | 7 |
 | `ProjectService` | `project_service.py` | Project listing/detail/tree/home, depth rules (clamped 1-32), preview metadata | — | `/api/projects`, `/api/tree`, `/api/home` | 10+ |
 | `AssetIndexService` | `asset_index_service.py` | Populate and query `assets` table; revision CAS publish state machine | FileOperationService | indirect (search index) | 9+ |
-| `AssetIndexReconciliationService` + `ReconciliationQueue` | `asset_index_reconciliation_service.py` / `reconciliation_queue*.py` | Background rescan worker; cross-process persistent task queue (lease + generation CAS) | runtime lifecycle adapter | — | integration suite |
+| `AssetIndexReconciliationService` + `ReconciliationQueue` | `asset_index_reconciliation_service.py` / `reconciliation_queue*.py` | Background rescan worker; cross-process persistent task queue plus immutable transition outbox (lease/token CAS, bounded callback-age lease heartbeat, strict ordered delivery, corrupt-row isolation, durable retry deadlines, default eight-attempt dead-letter). `import_manifest_recovery` is the sole canonical durable consumer; generic listeners are post-ACK observers. | runtime lifecycle adapter | — | integration suite |
 | `AuthService` | `auth_service.py` | Users, tokens, and invite codes bound to one Runtime/session | Desktop/runtime-owned | `/api/auth/*`, `/api/users/*`, `/api/invites/*` | service + LAN route tests |
 | `ShareService` | `share_service.py` | Share-link lifecycle, password strength + brute-force lockout, validation, access tokens | Desktop `ShareCreationTask` | `/api/shares/*`, `/s/*` | service + LAN route tests |
 | `UndoService` | `undo_service.py` | Undo/redo stack for file operations; delete backups + projection snapshots | `_actions.py` | — | 8+ |
@@ -120,7 +120,7 @@ Undo/redo stack management delegates to `UndoService` (`application/undo_service
 
 ## Database Migrations
 
-Per-library SQLite databases are migration-aware through `AssetsManager.core.db_migrations` (`CURRENT_SCHEMA_VERSION = 34`)。**逐版本明细不再在此维护**:权威为 `docs/migrations.md`(v1-v34 各版本 DDL 与要点),机制说明与全表速览见 `docs/overview-2026-08-27.md` §15。要点:迁移在 SAVEPOINT 内执行(保留调用方事务);历史冻结校验(`MigrationHistoryError`/未来版本 `UnsupportedSchemaVersion`,名称不可变);每版本结果形状经 `_versioned_schema_contract` 契约回溯校验(按 version 剪列,如 v<17 `reconciliation_tasks` 无 lease_token);`assets` 表由服务层惰性填充,非迁移本身。未来 schema 变更必须显式迁移 + 测试。
+Per-library SQLite databases are migration-aware through `AssetsManager.core.db_migrations` (`CURRENT_SCHEMA_VERSION = 46`)。**逐版本明细不再在此维护**:权威为 `docs/migrations.md`(v1-v46 各版本 DDL 与要点),机制说明与全表速览见 `docs/overview-2026-08-27.md` §15（该快照的版本数字已过时）。要点:迁移在 SAVEPOINT 内执行(保留调用方事务);历史冻结校验(`MigrationHistoryError`/未来版本 `UnsupportedSchemaVersion`,名称不可变);每版本结果形状经 `_versioned_schema_contract` 契约回溯校验(按 version 剪列,如 v<17 `reconciliation_tasks` 无 lease_token、v<45 无 transition outbox dead-letter、v<46 无 outbox delivery deadline/index);`assets` 表由服务层惰性填充,非迁移本身。未来 schema 变更必须显式迁移 + 测试。
 
 ## Plugin System
 

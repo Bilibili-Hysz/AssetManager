@@ -440,7 +440,7 @@ T9 大目录优化  →  T10 只读连接池（最高风险，最后做）
 **T0 止血系列进度**：T0-1 / T0-2 / T0-3 已实施并通过测试（T0-3 相关 99 passed），提交在 master 未推送；T0-4（v39 FTS 接线或删表）与 T0-5（ShareReceivePage 访客链路）未开始。
 
 **缓办（证据驱动，非搁置）**：
-- **T9**：前提已过时——桌面 file_list 不消费 `asset_service.list`（自带 scandir + 本地过滤）；Web 主列表传 `summaries:false`（useProjects.ts:42），昂贵路径只剩有界按需 hydrate（`files.py:145`）。消费者审计详见 `outputs/task-package-research-2026-08-30.md`。
+- **T9**：前提已过时——桌面 file_list 不消费 `asset_service.list`（自带 scandir + 本地过滤）；Web 主列表传 `summaries:false`（useProjects.ts:42），昂贵路径只剩有界按需 hydrate（`files.py:145`）。消费者审计详见 `docs/reports/task-package-research-2026-08-30.md`。
 - **T10**：任务包自评最高风险；且 `docs/perf-baseline-2026-08-29.md` D3 实测网格帧成本与 DB 并发度无关，收益预期需重估。建议单独立项 + 真机 NAS 场景验证后再做。
 - **T8**：前提部分满足——批量删除已有确认弹窗（清单+计数），T6 落了执行日志；剩余缺口的幂等存储建议独立设计（当前无脚本化重放场景）。
 
