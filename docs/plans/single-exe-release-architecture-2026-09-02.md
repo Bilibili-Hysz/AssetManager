@@ -4,13 +4,13 @@ type: plan
 status: LIVING
 date: 2026-09-02
 area: packaging / release
-owner: agent (提案，未实现)
+owner: agent（M1/M2 已实施，M3 提案）
 supersedes: none
 ---
 
 # 单 exe 发布架构方案（2026-09-02）
 
-> 长期架构任务。本文是**提案**：给出从 onedir+安装器 迁移到"单 exe 分发"的完整路径、代码级改动清单与风险边界。按项目纪律只出方案不动代码；并行会话未提交 WIP 全程避让。
+> 长期架构任务。给出从 onedir+安装器 迁移到"单 exe 分发"的完整路径、代码级改动清单与风险边界。**M1（数据根独立化）与 M2（插件/主题双层）已实施合入**，M3（spec 单文件化）仍为提案。
 
 ## 1. 背景与目标
 
@@ -67,9 +67,9 @@ spec `datas`（`AssetManager.spec:75-87`）目标刻意镜像仓库相对层级�
 
 ### 2.4 现存裂缝（方案必须先修，与单 exe 无关）
 
-- **F1（疑似现存）**：PyInstaller 6.x 默认 `contents-directory=_internal`，onedir 下 spec datas 落在 `dist/AssetManager/_internal/Assets/Themes`；而 `themes_dir()` frozen 分支在无 `_MEIPASS` 时 fallback **`exe旁/Assets/Themes`**（`path_resolver.py:248`）——该路径在 `_internal` 布局下可能不存在，内置主题或已丢失。**需在实施时于真实 onedir 产物上验证**。
-- **F2（onefile 必现）**：onefile 下 `_MEIPASS` 存在 → `themes_dir()` 返回临时解压目录（只读、退出即删）。用户保存/导入自定义主题（`dialogs/settings_dialog.py:490` `dest = themes_dir()/...json`）会写进临时目录——写入失败或写后丢失。主题体系是**单一目录扫描**（`core/theme_loader.py:33-67`、`core/themes.py:156-168` 委托 loader），没有"内置只读 + 用户可写"双层概念。
-- **F3**：`plugins_root()` frozen→exe 旁；onedir per-user 安装可写，单 exe 任意放置时不可靠。插件搜索路径为 `[SHARED_DIR/"plugins", addons_dir()]`（`manager.py:201-203`）——前者自动迁移，后者需随 `plugins_root()` 改动。
+- **F1（已实证：不成立）**：原疑"PyInstaller 6.x `_internal` 布局下内置主题丢失"。2026-09-02 真实 onedir 探针（PyInstaller 6.19.0 + 相同 datas/COLLECT 结构）证实：onedir 下 `sys._MEIPASS` **恒指向 `dist/<name>/_internal`**，`themes_dir()` 主分支 `_MEIPASS/Assets/Themes` 命中 24 个内置主题；fallback `exe旁/Assets/Themes` 是死代码（该路径不存在但永不触发）。故 F1 不构成"内置主题丢失"，内置源仅 `_MEIPASS/Assets/Themes` 一处即可（onefile/onedir 通吃）。
+- **F2（onefile 必现，M2 已修）**：onefile 下 `_MEIPASS` 是临时解压目录（只读、退出即删），原 `themes_dir()` 直接返回它 → 保存/导入自定义主题（`settings_dialog.py:490`）写进临时目录丢失。主题体系原为**单一目录扫描**，无"内置只读 + 用户可写"双层。
+- **F3（M2 已修）**：`plugins_root()` frozen→exe 旁；单 exe 任意放置不可靠。且 spec datas `Plugins→Plugins` 在 `_internal` 布局下落 `_MEIPASS/Plugins`，原 `addons_dir()=exe旁/Plugins/Addons` 找不到内置种子插件。
 - **F4（升级残留）**：只要数据在 exe 旁，升级覆盖/目录移动都伴随数据残留或"双份数据"困惑——单 exe 必须消除。
 
 ## 3. 目标运行期布局
@@ -115,14 +115,19 @@ spec `datas`（`AssetManager.spec:75-87`）目标刻意镜像仓库相对层级�
 
 ### 4.2 M2 · 插件双层（P1）
 
+> **状态：已实施（`2591463`，2026-09-02）。** `plugins_root()` frozen→`user_data_root()/"Plugins"`；新增 `builtin_plugins_addons_dir()`（frozen→`_MEIPASS/Plugins/Addons`，dev→None）；`default_search_paths()` 追加内置只读种子源。**决策**：采用「只读搜索源」而非「首启拷贝种子」——插件 enable/disable 状态持久化在 `AppSettings.plugin_disabled_ids`（不回写 manifest，`manager.py:264-278/343-352`），种子插件写状态到 `SHARED_DIR` 而非自身目录，故只读源可行且免去运行时拷贝代码的脆弱性。同名插件 id 跨源冲突仍按既有语义判 INVALID（fail-closed）。
+
 - `plugins_root()` frozen → `user_data_root()/"Plugins"`（可写扩展位）；`addons_dir()`/`plugins_docs_dir()` 自动跟随。
-- 内置种子插件（spec datas `Plugins→Plugins`）若需在单 exe 提供只读基线：`_MEIPASS/Plugins`；实施时核对 `core/plugins/manager.py`/loader 的 manifest 扫描是否需扩展为多源合并（插件搜索路径现为 `[SHARED_DIR/"plugins", addons_dir()]` 双源，天然支持再加内置源）。
+- 内置种子插件（spec datas `Plugins→Plugins`）在 `_internal`/onefile 布局下落 `_MEIPASS/Plugins/Addons`，作为 `default_search_paths()` 的第三源（只读）。
 
-### 4.3 M2 · 主题双层（P1，修 F1/F2）
+### 4.3 M2 · 主题双层（P1，修 F2）
 
-- `themes_dir()` 语义调整：frozen → `user_data_root()/"Themes"`（**可写用户层**）。
-- `core/theme_loader.py` 增加内置只读源探测并合并扫描：候选 `_MEIPASS/Assets/Themes`、`exe旁/_internal/Assets/Themes`、`exe旁/Assets/Themes`（按实际解压布局，顺手修 F1）；`scan_directory` 扩展为多目录扫描（用户层优先、内置兜底、同名去重或用户层覆盖）。
-- 写路径（`settings_dialog.py:490`、导入/导出主题）全部指向用户层——onefile 下不再写临时目录。
+> **状态：已实施（`2591463`，2026-09-02）。** 实证后简化内置源探测：onedir 6.19.0 下 `_MEIPASS` 恒指向 `_internal`，故内置源仅 `_MEIPASS/Assets/Themes` 一处即可（onefile 与 onedir 通吃），无需三层候选。
+
+- `themes_dir()` 语义调整：frozen → `user_data_root()/"Themes"`（**可写用户层**，mkdir）。
+- 新增 `builtin_themes_dir()`：frozen → `_MEIPASS/Assets/Themes`（缺失时 fallback `exe旁/Assets/Themes` 旧布局），dev → None（与用户层同目录，无需分离）。
+- `core/theme_loader.py`：`scan_directory` 扩展为「内置先、用户层同名覆盖」多目录扫描；`ThemeLoader` 默认构造解析双层，显式 `themes_dir`（单目录调用/测试）保持单目录语义。
+- 写路径（`settings_dialog.py:490`、`theme_loader` 的 create/save/delete）全部指向用户层——onefile 下不再写临时目录。
 - dev 态不变（`themes_dir` 维持仓库 `Assets/Themes` 单一语义）。
 
 ### 4.4 M3 · spec 单文件化（P2）
@@ -174,7 +179,7 @@ spec `datas`（`AssetManager.spec:75-87`）目标刻意镜像仓库相对层级�
 | 里程碑 | 内容 | 性质 |
 |---|---|---|
 | M1 | 数据根独立化 + 首启迁移（§4.1） | ✅ 已实施（`967b896`） |
-| M2 | 插件双层 + 主题双层（§4.2/4.3） | 消除 F1/F2/F3 |
+| M2 | 插件双层 + 主题双层（§4.2/4.3） | ✅ 已实施（`2591463`）；修 F2/F3，F1 实证不成立 |
 | M3 | spec 单文件 + 流水线 + 版本策略（§4.4-4.6） | 低风险尾段 |
 
 每里程碑独立提交 + 双门禁 + 单测 + 手工冒烟。
@@ -183,7 +188,7 @@ spec `datas`（`AssetManager.spec:75-87`）目标刻意镜像仓库相对层级�
 
 > 2026-09-02 更新：Q1/Q4 已静态核实并给出结论（见下）；Q2/Q3/Q5 为产品决策，待 owner 拍板。
 
-1. **PyInstaller 布局（已核实）**：本机 Python 3.14 已装 **PyInstaller 6.19.0**。onedir 默认 `contents_directory=_internal` → spec `datas` 落 `dist/AssetManager/_internal/`。对照 `themes_dir()`（`path_resolver.py:240-249`）无 `_MEIPASS` 时 fallback **exe 旁** `Assets/Themes` → **F1 现存性成立**（onedir 6.x 下内置主题在此路径找不到）；而其它只读资源（icon `app.py:213`、SPA `pages.py:7`、i18n）均用 `__file__` 相对推导，模块与 datas 同在 `_internal/` 下相对关系保持 → 不受影响。**结论**：themes 内置源探测顺序定为 `_MEIPASS/Assets/Themes`（onefile）→ `exe旁/_internal/Assets/Themes`（onedir 6.x）→ `exe旁/Assets/Themes`（旧布局兼容）；真实产物验证列为 M2 验收第 0 步（§5.2 gate 前）。
+1. **PyInstaller 布局（已实证）**：本机 Python 3.14 已装 **PyInstaller 6.19.0**；onedir 默认 `contents_directory=_internal` → spec `datas` 落 `dist/AssetManager/_internal/`。2026-09-02 真实 onedir 探针证实 `sys._MEIPASS` 恒指向 `dist/<name>/_internal`，故 `themes_dir()` 主分支 `_MEIPASS/Assets/Themes` 直接命中内置主题——**原 F1「内置主题丢失」不成立**；其它只读资源（icon `app.py:213`、SPA `pages.py:7`、i18n）用 `__file__` 相对推导亦不受影响。**结论**：内置主题源仅 `_MEIPASS/Assets/Themes` 一处（onefile/onedir 通吃），M2 已按此实现（`builtin_themes_dir()`）。
 2. onedir 存量用户规模（决定迁移兼容优先级与回滚策略强度）——**待 owner**。
 3. 单 exe 目标体积 / 首启时间可接受阈值（决定是否压内置主题/裁剪 Qt）——**待 owner**。
 4. **plugins loader 语义（已核实）**：`core/plugins/manager.py:200-203` `default_search_paths() = [SHARED_DIR/"plugins", addons_dir()]`；`discover_plugins` 逐目录 `iterdir` 并以 `dict[plugin_id]` 聚合（同名后者覆盖）→ **多源合并复杂度低**：M2 给 frozen 加内置种子源只需在 `default_search_paths` 前插 `_MEIPASS/Plugins`（若存在）。注意点：内置源只读、插件实例化可能写盘（配置/状态）→ 建议内置源仅作"首次运行拷贝到用户层"的种子，而非运行源；此项 M2 细化时敲定。
