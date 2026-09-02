@@ -205,7 +205,7 @@
 | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.test.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.test.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
 | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.tsx | 2026-08/recovered-grid-zoom-interpolation/webui/src/stores/AuthContext.tsx | git 修复取回的历史快照 | 当前工作树对应文件 |
 
-## 2026-09(docs 精简轮,201 份;第二轮分析系列蒸馏并入;第三轮 module-audits 蒸馏并入 11 份;收敛轮已完结报告归档 3 份;收敛轮 plans 范围决策并入 1 份;第四轮冻结簇迁入:08-01 基线 48 份 + deepseek 逐字副本 8 份 + 08-22 弱审计 11 份)
+## 2026-09(docs 精简轮,210 份;第二轮分析系列蒸馏并入;第三轮 module-audits 蒸馏并入 11 份;收敛轮已完结报告归档 3 份;收敛轮 plans 范围决策并入 1 份;第四轮冻结簇迁入:08-01 基线 48 份 + deepseek 逐字副本 8 份 + 08-22 弱审计 11 份;第五轮 compose 蒸馏并入 9 份)
 
 > 2026-09-02 结构归档:活跃区从 185 份降至 70 份。compose/reports 整体(98 份)、reports/ 被取代细扫描(12 份)、plans/ 完结方案(3 份)。内容零改写;指向它们的活跃链接已同步重写。
 
@@ -465,3 +465,20 @@
 | docs/deep-weakness-audit-2026-08-22/09-summary-priorities.md | 2026-09/deep-weakness-audit-2026-08-22/09-summary-priorities.md | 08-22 完成态只读审计,130 条汇总与 Top-30 优先级;行号/结论已被 09-01 复审覆盖 | re-audit-2026-09-01 · expert-panel-deep-analysis-2026-08-31 |
 | docs/deep-weakness-audit-2026-08-22/10-full-review-reconciliation.md | 2026-09/deep-weakness-audit-2026-08-22/10-full-review-reconciliation.md | 08-22 完成态只读审计,与 full-review 的对账(含 5 处迁移前即已存在的历史断链);行号/结论已被 09-01 复审覆盖 | re-audit-2026-09-01 · expert-panel-deep-analysis-2026-08-31 |
 | docs/deep-weakness-audit-2026-08-22/README.md | 2026-09/deep-weakness-audit-2026-08-22/README.md | 08-22 完成态只读审计,审计簇入口与冻结登记;行号/结论已被 09-01 复审覆盖 | re-audit-2026-09-01 · expert-panel-deep-analysis-2026-08-31 |
+
+### compose-distilled-superseded(9 份,2026-09-02 收敛轮二次蒸馏并入)
+
+归档原因:2026-08-27 从 `docs/archive/2026-08/compose-raw/` 合并生成的 9 份「历史蒸馏(已完结会话摘要)」,于 2026-09-02 收敛轮**二次蒸馏合并**为 `docs/compose/compose-session-decisions-distilled-2026-09-02.md`(按批次的「背景/决策要点/落地状态/仍生效约束」速查表,取代清单见该文档文末);原件**零改写**归档 · 取代者:`docs/compose/compose-session-decisions-distilled-2026-09-02.md`
+
+
+| 原路径 | 新路径 | 归档原因 | 取代者 |
+|---|---|---|---|
+| docs/compose/distilled/2026-06-17-18-architecture-and-theme-system.md | 2026-09/compose-distilled-superseded/2026-06-17-18-architecture-and-theme-system.md | 06-17~18 批:架构重构与主题系统 决策摘要,二次蒸馏并入 | compose-session-decisions-distilled-2026-09-02.md §对应批次 |
+| docs/compose/distilled/2026-06-19-21-ux-performance-sharing-webui.md | 2026-09/compose-distilled-superseded/2026-06-19-21-ux-performance-sharing-webui.md | 06-19~21 批:背景效果/主题 UI/性能/分享/WebUI 视觉 决策摘要,二次蒸馏并入 | compose-session-decisions-distilled-2026-09-02.md §对应批次 |
+| docs/compose/distilled/2026-07-13-webui-react-migration.md | 2026-09/compose-distilled-superseded/2026-07-13-webui-react-migration.md | 07-13 批:WebUI React 迁移与 LAN 安全修复 决策摘要,二次蒸馏并入 | compose-session-decisions-distilled-2026-09-02.md §对应批次 |
+| docs/compose/distilled/2026-07-15-delivery-fileops-reliability-batches.md | 2026-09/compose-distilled-superseded/2026-07-15-delivery-fileops-reliability-batches.md | 07-15 批:投递安全/文件操作一致/LAN-WebUI 可靠/作用域服务 决策摘要,二次蒸馏并入 | compose-session-decisions-distilled-2026-09-02.md §对应批次 |
+| docs/compose/distilled/2026-07-17-rendering-metadata-batch.md | 2026-09/compose-distilled-superseded/2026-07-17-rendering-metadata-batch.md | 07-17 批:渲染/元数据/主题稳定性 + 早期审计 决策摘要,二次蒸馏并入 | compose-session-decisions-distilled-2026-09-02.md §对应批次 |
+| docs/compose/distilled/2026-07-21-architecture-recalibration.md | 2026-09/compose-distilled-superseded/2026-07-21-architecture-recalibration.md | 07-21 架构重定标批:Desktop-LAN-WebUI 分层与运行时 决策摘要,二次蒸馏并入 | compose-session-decisions-distilled-2026-09-02.md §对应批次 |
+| docs/compose/distilled/2026-07-21-feature-gates-batch.md | 2026-09/compose-distilled-superseded/2026-07-21-feature-gates-batch.md | 07-21 功能/门禁子批 决策摘要,二次蒸馏并入 | compose-session-decisions-distilled-2026-09-02.md §对应批次 |
+| docs/compose/distilled/2026-07-24-webui-cleanup-filelist.md | 2026-09/compose-distilled-superseded/2026-07-24-webui-cleanup-filelist.md | 07-24 批:WebUI 遗留清理与文件列表项目交互 决策摘要,二次蒸馏并入 | compose-session-decisions-distilled-2026-09-02.md §对应批次 |
+| docs/compose/distilled/2026-08-03-04-session-summaries.md | 2026-09/compose-distilled-superseded/2026-08-03-04-session-summaries.md | 08-03~04 会话交接摘要(webui-02/desktop-ui-03/mainline-04) 决策摘要,二次蒸馏并入 | compose-session-decisions-distilled-2026-09-02.md §对应批次 |

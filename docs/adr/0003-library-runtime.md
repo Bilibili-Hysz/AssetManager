@@ -12,7 +12,7 @@ report and recalibration report are authoritative:
 - [`desktop-lan-webui-architecture-recalibration.md`](../archive/2026-09/compose-reports/desktop-lan-webui-architecture-recalibration.md)
 - [`a3-service-assembly-2026-08-02.md`](../archive/2026-09/compose-reports/a3-service-assembly-2026-08-02.md)
 - [`b1-runtime-sharing-2026-08-03.md`](../archive/2026-09/compose-reports/b1-runtime-sharing-2026-08-03.md)
-- [`2026-07-21-desktop-lan-webui-architecture-recalibration.md`](../compose/distilled/2026-07-21-architecture-recalibration.md)(原 compose/plans 副本已归档,见 archive INDEX)
+- [`2026-07-21 架构重定标批(Desktop-LAN-WebUI 分层与运行时)`](../compose/compose-session-decisions-distilled-2026-09-02.md)(原 `compose/distilled/2026-07-21-architecture-recalibration.md` 已二次蒸馏合并,见 `docs/archive/2026-09/compose-distilled-superseded/`)
 
 ## Decision
 
