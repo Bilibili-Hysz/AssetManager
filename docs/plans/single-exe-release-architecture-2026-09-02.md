@@ -10,25 +10,27 @@ supersedes: none
 
 # 单 exe 发布架构方案（2026-09-02）
 
-> 长期架构任务。给出从 onedir+安装器 迁移到"单 exe 分发"的完整路径、代码级改动清单与风险边界。**M1（数据根独立化）、M2（插件/主题双层）、M3（spec 单文件化 + build.py 单文件适配 + 流水线适配）已全部实施合入**；仅剩 §7 的产品决策（Q2 存量用户规模、Q3 体积阈值）待 owner 拍板。
+> 长期架构任务。给出从 onedir+安装器 迁移到"单 exe 分发"的完整路径、代码级改动清单与风险边界。**M1（数据根便携化）、M2（插件/主题双层）、M3（spec 双形态 + build.py 双构建 + 校验器/installer/CI/release 双产物适配）已全部实施合入**；仅剩 §7 的产品决策（Q2 存量用户规模、Q3 体积阈值）待 owner 拍板。
+
+> **⚠️ 2026-09-02 设计反转（重要）**：早期方案（§3 / §4.1 原始稿）曾设计「frozen 数据根落 `%LOCALAPPDATA%\AssetManager` + 首启 `migrate_data_root()`」。实机验证后 **反转**：数据根改为 **exe 旁便携式**，并 **删除全部迁移逻辑**；打包形态由「仅 onefile」扩展为 **onefile + onedir 双形态都产出**。正文各处已标注最终态；历史 `LOCALAPPDATA` 表述仅作演进记录保留。
 
 ## 1. 背景与目标
 
 ### 1.1 现状（已核实）
 
-- 打包形态：PyInstaller **onedir**（`AssetManager.spec:356-368` `COLLECT` → `dist/AssetManager/`），再经 Inno Setup per-user 安装器分发（`installer/assetmanager.iss`、`scripts/build_installer.py`，CI 链见 `.github/workflows/release.yml:57-102`）。
+- 打包形态（最终态）：PyInstaller **双形态** —— onefile（`dist/AssetManager.exe`）与 onedir（`dist/AssetManager/`，exe 旁 `_internal/`）。单一 `AssetManager.spec` 经 `AM_BUNDLE_MODE` 环境变量选形态（`AssetManager.spec:25-29`、`344-371`），`build.py --mode onefile|onedir|both` 连跑（`build.py:55-70`）；再经 Inno Setup per-user 安装器把 **onefile exe** 包一层分发（`installer/assetmanager.iss`、`scripts/build_installer.py`，CI 链见 `.github/workflows/ci.yml:124-190`、`.github/workflows/release.yml:55-132`）。
 - 数据模型：应用把**所有可写数据**放在"exe 旁 `RuntimeData/`"（`path_resolver.py:117-123`），前提是 per-user 安装目录可写（`installer/assetmanager.iss` 头注：`PrivilegesRequired=lowest` + "writes NEXT TO the executable"）。
 - 库根（用户素材目录）由用户选定、不含于 RuntimeData；RuntimeData 内存库 DB、缩略图、收藏、锁、identity 标记、settings、crash 日志、cloudflared 下载缓存。
 
 ### 1.2 目标形态
 
-- 分发物 = **单个 `AssetManager.exe`**（双击即用，可放任意目录；升级 = 覆盖替换）。
-- 运行期数据不再跟 exe 走，落到用户数据目录（`%LOCALAPPDATA%\AssetManager\`）。
-- 对存量 onedir 安装用户：升级后数据**无损迁移**，可回滚（单向降级风险需声明）。
+- 分发物（最终态）= 双形态各一份：**单个 `AssetManager.exe`**（onefile，双击即用，可放任意目录）＋ **`AssetManager/` 便携目录**（onedir，exe 旁 `_internal/`）。
+- 运行期数据**跟随 exe**（便携式）：frozen 下 `user_data_root()` = `Path(sys.executable).parent`，RuntimeData/Plugins/Themes 均落 exe 旁（onefile 为 exe 所在目录、onedir 为 `dist/AssetManager/`）。移动 exe 即移动数据；**无首启迁移**。
+- 升级 = 覆盖替换 exe（onefile）或整个便携目录（onedir）；数据与程序同目录，无 `%LOCALAPPDATA%` 分离带来的残留困惑。
 
 ### 1.3 关键认知（一句话）
 
-> 单 exe 只改变"运行期布局"，不改变"仓库布局"。而运行期可写物几乎全部挂在一个函数（`runtime_root()`）下——**数据根独立化是唯一真正断点，先做它；spec 单文件化反而是低风险尾段**。
+> 单 exe 只改变"运行期布局"，不改变"仓库布局"。而运行期可写物几乎全部挂在一个函数（`runtime_root()`）下——**数据根语义（便携式 exe 旁）是唯一真正断点，先做它；spec 双形态化反而是低风险尾段**。
 
 ## 2. 现状路径体系全景（证据锚点）
 
@@ -70,48 +72,43 @@ spec `datas`（`AssetManager.spec:75-87`）目标刻意镜像仓库相对层级�
 - **F1（已实证：不成立）**：原疑"PyInstaller 6.x `_internal` 布局下内置主题丢失"。2026-09-02 真实 onedir 探针（PyInstaller 6.19.0 + 相同 datas/COLLECT 结构）证实：onedir 下 `sys._MEIPASS` **恒指向 `dist/<name>/_internal`**，`themes_dir()` 主分支 `_MEIPASS/Assets/Themes` 命中 24 个内置主题；fallback `exe旁/Assets/Themes` 是死代码（该路径不存在但永不触发）。故 F1 不构成"内置主题丢失"，内置源仅 `_MEIPASS/Assets/Themes` 一处即可（onefile/onedir 通吃）。
 - **F2（onefile 必现，M2 已修）**：onefile 下 `_MEIPASS` 是临时解压目录（只读、退出即删），原 `themes_dir()` 直接返回它 → 保存/导入自定义主题（`settings_dialog.py:490`）写进临时目录丢失。主题体系原为**单一目录扫描**，无"内置只读 + 用户可写"双层。
 - **F3（M2 已修）**：`plugins_root()` frozen→exe 旁；单 exe 任意放置不可靠。且 spec datas `Plugins→Plugins` 在 `_internal` 布局下落 `_MEIPASS/Plugins`，原 `addons_dir()=exe旁/Plugins/Addons` 找不到内置种子插件。
-- **F4（升级残留）**：只要数据在 exe 旁，升级覆盖/目录移动都伴随数据残留或"双份数据"困惑——单 exe 必须消除。
+- **F4（升级残留，已被便携式决策覆盖）**：原以为"只要数据在 exe 旁，升级覆盖/目录移动就伴随数据残留或双份数据困惑"。最终决策反向采纳便携式：数据随 exe 同目录，升级 = 整体覆盖（onefile 覆盖 exe、onedir 覆盖目录），"双份数据"由用户显式移动目录解决，而非程序静默迁移。此裂缝在便携式语义下**不构成缺陷**。
 
-## 3. 目标运行期布局
+## 3. 目标运行期布局（最终态：便携式）
 
 ```
-%LOCALAPPDATA%\AssetManager\            ← 新数据根（frozen 态唯一可写区）
-├─ RuntimeData\                         ← 原 RuntimeData 整体迁入（内部结构零改动）
+<exe 所在目录>\                        ← 数据根 = Path(sys.executable).parent（frozen 态唯一可写区）
+├─ AssetManager.exe                     ← onefile 时即 exe 本身；onedir 时位于 dist/AssetManager/ 内
+├─ RuntimeData\                         ← 与仓库开发态同构（内部结构零改动）
 │  ├─ Shared\  (settings.json, crash.log, crash.pending, cloudflared 缓存, plugins/)
 │  └─ <lib>_<hash>…\  (assetmanager.db, .thumbnails, favorites.json, recent.json, 锁/identity)
-├─ Plugins\Addons\                      ← 用户扩展可写位（原 exe旁/Plugins/Addons 迁入）
-└─ Themes\                              ← 用户自定义主题（新建；内置主题仍读 _MEIPASS，见 §4.3）
+├─ Plugins\Addons\                      ← 用户扩展可写位（frozen 下 = exe旁/Plugins）
+└─ Themes\                              ← 用户自定义主题（内置主题仍读 _MEIPASS，见 §4.3）
 ```
 
-**数据根选址论证（LOCALAPPDATA 而非 APPDATA / exe 旁）**：
+**数据根选址论证（最终：exe 旁便携式，推翻早前 LOCALAPPDATA 方案）**：
 
 | 候选 | 评估 |
 |---|---|
-| `exe 旁`（现状） | 单 exe 可任意放置 → 不可靠；升级残留 |
+| `exe 旁`（最终采纳） | ✅ 全便携、移动即随行、升级=覆盖替换、无隐藏数据目录；代价：需安装目录可写（安装器装到 `{localappdata}\Programs` 已满足，见 `path_resolver.py:127-130` 说明） |
 | `%APPDATA%\AssetManager` | 默认 roaming，素材库数据大且无需漫游同步 |
-| `%LOCALAPPDATA%\AssetManager` | ✅ per-user 无 UAC、同机可写、不同步；与安装器 `{localappdata}\Programs` 同基座便于卸载清理 |
+| `%LOCALAPPDATA%\AssetManager`（早前方案，已废弃） | 曾选定；后被便携式推翻——首启迁移引入失败面（跨卷/并发/回滚分叉），而便携式"数据随 exe"更贴合素材库"库随目录走"的心智 |
 
-**开发态不变**：非 frozen 时 `runtime_root()` 保持 `仓库根/RuntimeData` 推导（`path_resolver.py:123`），使仓库开发、CI、全部单测（`tests/core/test_path_resolver.py` 等以 monkeypatch `runtime_root` 注入 tmp 路径）**零改动、零影响**。
+**开发态不变**：非 frozen 时 `runtime_root()` 保持 `仓库根/RuntimeData` 推导（`path_resolver.py:134`），使仓库开发、CI、全部单测（`tests/core/test_path_resolver.py` 等以 monkeypatch `runtime_root` 注入 tmp 路径）**零改动、零影响**。
 
 ## 4. 改动设计（按里程碑分层）
 
 ### 4.1 M1 · 数据根独立化（P0，与单 exe 解耦，先行合入）
 
-> **状态：已实施（`967b896`，2026-09-02）。** 相对下文的实现差异：① 幂等采用「目标已存在即跳过」，未另写 `.data_root_migrated` 标记（效果等价、更简单）；② 迁移用 `shutil.move` 单步完成（跨卷时其内部自动 copy+delete），未单列 `copytree` 分支；③ 并发竞争用 `_data_root_migration_looks_complete()`（仿 `database.py` 既有 `_legacy_migration_looks_complete`）判「已完成」，而非 `.migrating` 锁；④ 迁移以 `move` 语义执行（源目录移除），避免 §4.6 R6 的数据分叉。单测 8 例覆盖 user_data_root/runtime_root/迁移的 move/skip/noop/fail-closed。
+> **状态：已实施并反转（2026-09-02）。** 早期实现按本节原始稿「frozen 数据根 → `%LOCALAPPDATA%\AssetManager` + 首启迁移 `migrate_data_root()`」。实机验证后 **反转**（见 §1 顶部设计反转说明）：**frozen 数据根改为 exe 旁便携式，且删除全部迁移逻辑**。最终实现如下：
 
-1. **新增 `user_data_root()`**（`path_resolver.py`）：frozen → `Path(os.environ["LOCALAPPDATA"])/"AssetManager"`；dev → 保持现状推导（`Path(__file__)...parent.parent.parent`）。`runtime_root()` frozen 分支改为 `user_data_root()/"RuntimeData"`（保持内部名字，迁移零结构改动）。
-2. **首启迁移 `migrate_data_root()`**（frozen 且目标不存在而来源存在时执行）：
-   - 来源候选：① `exe旁/RuntimeData`（旧 frozen 布局）。开发仓库 RuntimeData **不迁**。
-   - 目标：`%LOCALAPPDATA%\AssetManager\RuntimeData`。
-   - 时机：`run.py` → `AssetsManager.app.main` 最前、任何 QApplication/AppSettings 实例化之前（settings 模块级即消费 `SHARED_DIR`，见 `settings.py:127` 与 `path_resolver.py:133` 的 import 时序——迁移必须先行）。
-   - 幂等：成功后在旧位置写 `.data_root_migrated` 标记；新位置已有数据（非空 Shared/或存在 db）则视为已迁，跳过。
-   - 策略：优先 `shutil.move`（同卷原子）；`OSError`（跨卷）→ `copytree` + 校验 + 删除旧目录；失败 **fail-closed**（弹启动错误，不静默继续）。
-   - 并发：双开竞争 → 目标 `Shared/` 下 `.migrating` 锁标记 + 重试一次。
-3. 迁移后**不自动删除** exe 旁旧 RuntimeData（保守，卸载器/用户处置）；onedir 安装器卸载脚本同步清 `%LOCALAPPDATA%\AssetManager`。
+- **`user_data_root()`（`path_resolver.py:117-134`）**：frozen → `Path(sys.executable).resolve().parent`（onefile 为 exe 所在目录、onedir 为 `dist/AssetManager/`）；dev → `Path(__file__).resolve().parent.parent.parent`（仓库根）。`runtime_root()` frozen 分支随之 = `user_data_root()/"RuntimeData"`（`path_resolver.py:137-139`）。
+- **删除迁移逻辑**：`migrate_data_root()`、`_data_root_migration_looks_complete()`、模块级 `migrate_data_root()` 调用、`shutil`/`logging` 导入全部删除。便携式语义下 exe 目录即数据根，**无「首启迁移」概念**（不存在旧布局到新布局的跨目录搬运）。
+- **代价声明**：便携式要求安装目录可写（`path_resolver.py:127-130` docstring 已注明）。安装器把 onefile exe 装到 `{localappdata}\Programs\AssetManager`（用户可写），故成立；若用户把便携版放到只读位置（如 Program Files），程序按设计**不静默迁移到隐藏目录**，而是启动失败——此为有意取舍。
 
-**自动跟随（零改动）**：settings（127）、crash（27-32）、cloudflared 缓存（tunnel 154-162）、库 slot（136-216）、用户插件 `SHARED_DIR/plugins`（manager 201-203）。
+**自动跟随（零改动，逻辑不变）**：settings（`settings.py:127`）、crash（`crash_handler.py:27-32`）、cloudflared 缓存（`lan/tunnel.py:154-162`）、库 slot（`path_resolver.py`）、用户插件 `SHARED_DIR/plugins`（`manager.py:201-203`）——全部挂 `runtime_root()/SHARED_DIR`，便携化只改 frozen 分支这一处即全项目跟随。
 
-**验证**：真机 onedir 安装 → 造数据 → 换新版本（新布局）首启 → 数据完整、旧位有标记；`--package-smoke`（`run.py:27-46`）通过。
+**验证**：`tests/core/test_path_resolver.py` 便携式断言（frozen→exe旁，onefile/onedir 各一）36 例通过；`--package-smoke`（`run.py`）exit 0。
 
 ### 4.2 M2 · 插件双层（P1）
 
@@ -132,30 +129,31 @@ spec `datas`（`AssetManager.spec:75-87`）目标刻意镜像仓库相对层级�
 
 ### 4.4 M3 · spec 单文件化（P2）
 
-> **状态：已实施（`6c3c385`，2026-09-02）。** 相对下文的实现差异：① 实证发现当前 spec 的 `EXE` 本就无 `exclude_binaries=True`（已是 onefile 形态），只是额外挂了 `COLLECT` 把同样 binaries/datas 再拷一份到 `_internal`（重复打包）——故修复 = 删 `COLLECT` + 去掉死参数 `a.zipfiles`/`a.zipped_data`（PyInstaller 6.x 恒为空，`build_main.py:728-730`），而非"并入"；② spec `excludes` 移除 `distutils`（Python 3.12+ 下由 setuptools vendored，PyInstaller 别名 hook 与显式 exclude 冲突致构建 `ValueError`）；③ 清理 24 个过时 hiddenimports（shop/order/quota/seller 功能已从代码库删除，首次真实构建暴露其 "Hidden import not found" ERROR）。真实产物 `dist/AssetManager.exe` ≈72MB，`--package-smoke` exit 0，构建日志零 ERROR。
+> **状态：已实施（双形态分支，2026-09-02）。** 相对下文的实现差异：① 实证发现当前 spec 的 `EXE` 本就无 `exclude_binaries=True`（已是 onefile 形态），只是额外挂了 `COLLECT` 把同样 binaries/datas 再拷一份到 `_internal`（重复打包）——故修复 = 删旧 `COLLECT` + 去掉死参数 `a.zipfiles`/`a.zipped_data`（PyInstaller 6.x 恒为空）；② spec `excludes` 移除 `distutils`（Python 3.12+ 由 setuptools vendored，冲突致 `ValueError`）；③ 清理 24 个过时 hiddenimports（shop/order/quota/seller 已从代码库删除）。**最终态扩展为双形态**：单一 spec 用 `AM_BUNDLE_MODE` 选择形态，`Analysis`/datas/hiddenimports 完全共享，不重复。
 
-- `AssetManager.spec`：删除 `COLLECT`（356-368），将 `a.binaries/a.zipfiles/a.datas` 并入 `EXE`（332-354）；`console=False`、icon、version 保持。
-- `datas` 目标层级**不改**（§2.3 已证只读资源在 onefile 下全兼容）。
-- 决策点：`runtime_tmpdir`（默认 `%TEMP%\_MEIxxxx` 即可，除非需防 AV/清理策略）。
-- 预期：单文件体积 ≈ onedir 净体积（PyInstaller 对 DLL 不做压缩），首启解压 3–15s（视磁盘/AV），`%TEMP%` 需 ≥1× 单文件体积的空闲。
+- `AssetManager.spec:25-29` 读 `AM_BUNDLE_MODE`（`onefile` 默认 / `onedir`），非法值 `raise SystemExit`。
+- `AssetManager.spec:344-371` 分支：`onedir` → `EXE(pyz, a.scripts, [], exclude_binaries=True, **_exe_kwargs)` + `COLLECT(exe, a.binaries, a.datas, name='AssetManager')`（exe 旁 `_internal/`）；`onefile` → `EXE(pyz, a.scripts, a.binaries, a.datas, [], **_exe_kwargs)`。
+- `datas` 目标层级**不改**（§2.3 已证只读资源在 onefile/onedir 下全兼容；注意 onedir 下 Windows 大小写不敏感文件系统会把 `assets/icons` 与 `Assets/Themes` 合并，校验器按 `case_insensitive=True` 处理）。
+- 预期：onefile ≈ 71MB；onedir 为同体积目录树（exe 旁 `_internal/`）。首启解压 3–15s（仅 onefile）。
 
 ### 4.5 M3 · 构建流水线（P2）
 
 > **状态：已全部实施（`6c3c385` spec 单文件化 + build.py；`8a486d3` check_package_contents / installer B / CI 同步）。**
 
-| 位置 | 改动 | 状态 |
+| 位置 | 改动（最终态：双形态） | 状态 |
 |---|---|---|
-| `build.py:51-77` `optimize()` | 删除（针对 `_internal/` 的 Qt 清理在单文件下失效） | ✅ 已实施（`6c3c385`） |
-| `build.py` 产物 | `dist/AssetManager/` → `dist/AssetManager.exe` | ✅ 已实施（`6c3c385`） |
-| `scripts/check_package_contents.py` | 适配单文件：校验从"目录树"改为「PE 魔数 + 体积下限 + 嵌入 CArchive TOC 资源校验 + spec 静态漂移检查（datas 源存在 / `AssetsManager.*` hiddenimports 解析）」 | ✅ 已实施（`8a486d3`） |
-| `scripts/build_installer.py` + `installer/assetmanager.iss` | **B 安装器包一层**：iss `[Files] Source: "..\dist\AssetManager.exe"` 打包单 exe 至 `{localappdata}\Programs\AssetManager`；`build_installer.py` 增单 exe 前置存在检查 | ✅ 已实施（`8a486d3`，Q5 已定 B） |
-| `.github/workflows/release.yml` + `ci.yml` | 产物路径/artifact 名同步（`dist\AssetManager` → `dist\AssetManager.exe`；smoke 以 `$distPath` 为工作目录） | ✅ 已实施（`8a486d3`） |
+| `build.py` | `--mode onefile\|onedir\|both`（默认 both）连跑 PyInstaller 各一次；`_run_pyinstaller()` 注入 `AM_BUNDLE_MODE` 环境变量；`report()` 双产物报告；`ONEFILE_EXE`/`ONEDIR_EXE` 常量 | ✅ 已实施 |
+| `AssetManager.spec` | `AM_BUNDLE_MODE` 分支（§4.4）；`Analysis`/datas/hiddenimports 共享 | ✅ 已实施 |
+| `scripts/check_package_contents.py` | 三层校验：`check_exe`（onefile：PE 魔数 + 体积下限 + CArchive TOC）、`check_onedir`（`_internal` 树 walk，`case_insensitive=True`）、`check_spec`（datas 源存在 + `AssetsManager.*` hiddenimports 解析）；`check_bundle` 按 path 类型分派（file→exe，dir→onedir） | ✅ 已实施 |
+| `scripts/build_installer.py` + `installer/assetmanager.iss` | **B 安装器包一层（onefile exe）**：iss `[Files] Source: "..\dist\AssetManager.exe"` → `{localappdata}\Programs\AssetManager`；注释同步便携式语义（RuntimeData 在 exe 旁 = 在 `{app}` 内） | ✅ 已实施（Q5 已定 B） |
+| `.github/workflows/ci.yml` `package-smoke` | 显式双形态构建（`AM_BUNDLE_MODE` 循环）+ 分别 `check_package_contents.py` 校验 + 分别 `--package-smoke`/运行时 smoke | ✅ 已实施 |
+| `.github/workflows/release.yml` | 产出三类 artifact：onefile zip（`AssetManager-<tag>-win64.zip`）+ onedir portable zip（`AssetManager-<tag>-win64-portable.zip`，顶层 `AssetManager/`）+ installer；`publish-release` 校验/上传 6 文件 | ✅ 已实施 |
 
 ### 4.6 M3 · 版本 / 升级 / 回滚（P2）
 
-- `APP_VERSION` 单一源（constants.py）不变；spec 镜像机制（`AssetManager.spec:21-25`）不变。
-- 数据根独立化需要**新大版本**发布（行为变更），版本号提示用户。
-- 回滚声明：旧版（onedir、写 exe 旁）启动时会看到新位置数据但**不迁移回** → 数据分叉风险。策略：新版本发布说明标注"不建议降级"；旧版若检测到 `%LOCALAPPDATA%\AssetManager` 存在可弹一次性提示（可选增强）。
+- `APP_VERSION` 单一源（constants.py）不变；spec 镜像机制（`AssetManager.spec:31-42`）不变。
+- 便携式数据根下，升级 = 覆盖替换 exe（onefile）或整个便携目录（onedir）；**无跨目录迁移**，故回滚/降级无数据分叉风险（数据始终与程序同目录）。
+- 安装器路径：升级即重装到同 `{localappdata}\Programs\AssetManager`，Inno `ignoreversion` 覆盖 exe；`[UninstallDelete]` 保持空（便携式下 RuntimeData 在 `{app}` 内，卸载器移除 exe 但保留其从未创建的 RuntimeData，不丢用户数据）。
 
 ## 5. 风险与验收
 
@@ -163,28 +161,29 @@ spec `datas`（`AssetManager.spec:75-87`）目标刻意镜像仓库相对层级�
 
 | # | 风险 | 缓解 |
 |---|---|---|
-| R1 | 并行会话 42–53 份未提交 WIP 全程在改 `AssetsManager/` 源码 | 本方案只落 `docs/plans/`，不落码；实施窗口须在并行会话提交后 |
-| R2 | 迁移跨卷失败 / 半途中断 | 复制校验 + fail-closed + 旧位保留可重试 |
-| R3 | 双开迁移竞争 | `.migrating` 锁 + 重试 |
-| R4 | 内置主题在 onedir `_internal` 布局下是否已丢失（F1） | M2 实施时先在真实产物验证 |
+| R1 | 并行会话未提交 WIP 全程在改 `AssetsManager/` 源码 | 本方案只落 `docs/plans/`，不落码；实施窗口须在并行会话提交后 |
+| R2 | ~~迁移跨卷失败 / 半途中断~~（已消除：便携式无迁移） | 删除迁移逻辑 |
+| R3 | ~~双开迁移竞争~~（已消除） | 删除迁移逻辑 |
+| R4 | 内置主题在 onedir `_internal` 布局下是否已丢失（F1） | M2 实证不成立（§2.4） |
 | R5 | 单文件被 AV 误报、启动慢 | 代码签名 + 发布说明；`runtime_tmpdir` 备选 |
-| R6 | 旧版回滚数据分叉 | §4.6 版本策略声明 |
-| R7 | 测试面 | 全部单测走 monkeypatch `runtime_root`（`tests/conftest.py:232+`、`test_path_resolver.py` 全程 patch）→ 实现细节改动不破坏；新增迁移单测 |
+| R6 | ~~旧版回滚数据分叉~~（已消除：数据随 exe 同目录） | §4.6 便携式升级策略 |
+| R7 | 测试面 | 全部单测走 monkeypatch `runtime_root`（`tests/conftest.py:232+`、`test_path_resolver.py` 全程 patch）→ 实现细节改动不破坏；新增便携式 onedir/onefile 断言 |
+| R8 | 便携式数据根要求 exe 目录可写 | 安装器装到 `{localappdata}\Programs`；只读目录按设计 fail（不静默迁移），docstring 已声明 |
 
 ### 5.2 验收（每里程碑 gate）
 
 1. 门禁：`scripts/check_documents.py`、`scripts/check_boundaries.py` exit 0。
-2. 单测：pytest 全绿（重点 `tests/core/test_path_resolver.py`、`test_themes.py`）。
-3. frozen 冒烟：`AssetManager.exe --package-smoke`（`run.py:27-46`）exit 0。
-4. 手工升级路径：干净机安装（onedir 旧版）→ 建库/加收藏/换主题/存 settings → 覆盖为新布局 → 首启迁移 → 数据与偏好完整、主题可保存、LAN 页面可达（SPA 自 `_MEIPASS/webui/dist` serve）。
+2. 单测：pytest 全绿（重点 `tests/core/test_path_resolver.py`、`test_themes.py`、`test_package_contents.py`、`test_packaging_entrypoints.py`）。
+3. frozen 冒烟：onefile `AssetManager.exe --package-smoke` 与 onedir `dist/AssetManager/AssetManager.exe --package-smoke` 均 exit 0（`run.py`）。
+4. 手工验证：干净机分别跑 onefile 与 onedir 产物 → 建库/加收藏/换主题/存 settings → 覆盖替换升级 → 数据与偏好完整（数据随 exe 同目录）、主题可保存、LAN 页面可达（SPA 自 `_MEIPASS/webui/dist` serve）。
 
 ## 6. 实施顺序摘要
 
 | 里程碑 | 内容 | 性质 |
 |---|---|---|
-| M1 | 数据根独立化 + 首启迁移（§4.1） | ✅ 已实施（`967b896`） |
-| M2 | 插件双层 + 主题双层（§4.2/4.3） | ✅ 已实施（`2591463`）；修 F2/F3，F1 实证不成立 |
-| M3 | spec 单文件 + build.py 适配 + 流水线适配（§4.4/4.5） | ✅ 已实施（`6c3c385` + `8a486d3`） |
+| M1 | 数据根便携化（exe 旁）——§4.1（原「LOCALAPPDATA+迁移」已反转） | ✅ 已实施 |
+| M2 | 插件双层 + 主题双层（§4.2/4.3） | ✅ 已实施；修 F2/F3，F1 实证不成立 |
+| M3 | spec 双形态 + build.py 双构建 + 校验器/installer/CI/release 双产物（§4.4/4.5） | ✅ 已实施 |
 
 每里程碑独立提交 + 双门禁 + 单测 + 手工冒烟。
 
@@ -200,14 +199,14 @@ spec `datas`（`AssetManager.spec:75-87`）目标刻意镜像仓库相对层级�
 
 ## 8. 参考文件
 
-- `AssetsManager/core/path_resolver.py`（117-123/126-133/219-223/240-249）
+- `AssetsManager/core/path_resolver.py`（117-134 user_data_root、137-139 runtime_root、235-243 plugins_root、282-315 themes_dir）
 - `AssetsManager/core/settings.py`（127/244）、`crash_handler.py`（27-32）
 - `AssetsManager/core/plugins/manager.py`（201-203）
 - `AssetsManager/core/theme_loader.py`（33-67）、`core/themes.py`（156-168）
 - `AssetsManager/dialogs/settings_dialog.py`（490）
 - `AssetsManager/lan/routes/pages.py`（7）、`lan/tunnel.py`（131-168）、`lan/api.py`（373-374）
 - `AssetsManager/app.py`（213）、`run.py`、`main.py`
-- `AssetManager.spec`（21-25/75-87/332-368）、`build.py`（9-11/51-77）
+- `AssetManager.spec`（25-29 AM_BUNDLE_MODE、31-42 version、88-321 Analysis、344-371 双形态分支）、`build.py`（55-70 _run_pyinstaller/build）
 - `installer/assetmanager.iss`、`scripts/build_installer.py`、`scripts/check_package_contents.py`
-- `.github/workflows/release.yml`（44-102）
+- `.github/workflows/ci.yml`（124-190 package-smoke）、`.github/workflows/release.yml`（55-132 build-windows）
 - `tests/conftest.py`（232+）、`tests/core/test_path_resolver.py`
