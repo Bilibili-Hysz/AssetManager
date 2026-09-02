@@ -20,7 +20,11 @@ from AssetsManager.core.schema_defs import (
     ASSET_INDEX_STATE_SCHEMA,
     RECONCILIATION_QUEUE_STATE_SCHEMA,
     RECONCILIATION_TASKS_SCHEMA,
+    RECONCILIATION_TRANSITION_OUTBOX_SCHEMA_V44,
+    RECONCILIATION_TRANSITION_OUTBOX_DEAD_LETTERS_SCHEMA_V45,
+    RECONCILIATION_TRANSITION_OUTBOX_DELIVERY_BACKOFF_SCHEMA_V46,
     IMPORT_MANIFESTS_SCHEMA_V31,
+    IMPORT_MANIFEST_ITEMS_SCHEMA_V43,
     COMMERCE_SCHEMAS,
     COMMERCE_SCHEMAS_V8,
     FREE_DOWNLOAD_QUOTA_SCHEMA,
@@ -47,7 +51,7 @@ from AssetsManager.core.schema_defs import (
 )
 
 
-CURRENT_SCHEMA_VERSION = 42
+CURRENT_SCHEMA_VERSION = 46
 _BASELINE_SCHEMA_CONTRACT = {
     "file_tags": {
         "columns": ("file_path", "tag"),
@@ -295,6 +299,28 @@ def _versioned_schema_contract(table: str, version: int) -> SchemaObjectContract
             check
             for check in contract.get("checks", ())
             if "status" not in check
+        )
+
+    if table == "reconciliation_transition_outbox" and version < 46:
+        contract["columns"] = tuple(
+            column
+            for column in contract["columns"]
+            if column != "next_delivery_at"
+        )
+        column_contracts = dict(
+            cast(dict[str, Any], contract.get("column_contracts", {}))
+        )
+        column_contracts.pop("next_delivery_at", None)
+        contract["column_contracts"] = column_contracts
+        contract["indexes"] = {
+            name: columns
+            for name, columns in contract.get("indexes", {}).items()
+            if name != "idx_reconciliation_transition_outbox_head"
+        }
+        contract["checks"] = tuple(
+            check
+            for check in contract.get("checks", ())
+            if check != "next_delivery_at >= 0"
         )
 
     if table == "shop_cart_checkouts":
@@ -1091,6 +1117,64 @@ def _add_import_manifest_recovery_lease_schema_v34(conn: sqlite3.Connection) -> 
     validate_schema_object(conn, table, SCHEMA_OBJECT_CONTRACT[table])
 
 
+def _add_import_manifest_items_schema_v43(conn: sqlite3.Connection) -> None:
+    """Add the row-oriented storage used by large import manifests.
+
+    This migration is append-only: existing v1/v2 JSON payloads stay in the
+    parent table and are never rewritten during upgrade.
+    """
+    for statement in IMPORT_MANIFEST_ITEMS_SCHEMA_V43.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    validate_schema_object(conn, "import_manifest_items", SCHEMA_OBJECT_CONTRACT["import_manifest_items"])
+
+
+def _add_reconciliation_transition_outbox_schema_v44(
+    conn: sqlite3.Connection,
+) -> None:
+    """Add the durable hand-off log for committed queue transitions."""
+    for statement in RECONCILIATION_TRANSITION_OUTBOX_SCHEMA_V44.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    validate_schema_object(
+        conn,
+        "reconciliation_transition_outbox",
+        _versioned_schema_contract("reconciliation_transition_outbox", 44),
+    )
+
+
+def _add_reconciliation_transition_outbox_dead_letters_schema_v45(
+    conn: sqlite3.Connection,
+) -> None:
+    """Add durable isolation for corrupt transition-delivery records."""
+    for statement in RECONCILIATION_TRANSITION_OUTBOX_DEAD_LETTERS_SCHEMA_V45.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    validate_schema_object(
+        conn,
+        "reconciliation_transition_outbox_dead_letters",
+        SCHEMA_OBJECT_CONTRACT["reconciliation_transition_outbox_dead_letters"],
+    )
+
+
+def _add_reconciliation_transition_outbox_delivery_backoff_schema_v46(
+    conn: sqlite3.Connection,
+) -> None:
+    """Persist not-before retry deadlines for failed transition deliveries."""
+    table = "reconciliation_transition_outbox"
+    columns = {str(row[1]) for row in conn.execute(f"PRAGMA table_info('{table}')")}
+    if "next_delivery_at" not in columns:
+        conn.execute(
+            "ALTER TABLE reconciliation_transition_outbox ADD COLUMN "
+            "next_delivery_at REAL NOT NULL DEFAULT 0 "
+            "CHECK (next_delivery_at >= 0)"
+        )
+    for statement in RECONCILIATION_TRANSITION_OUTBOX_DELIVERY_BACKOFF_SCHEMA_V46.split(";"):
+        if sql := statement.strip():
+            conn.execute(sql)
+    validate_schema_object(conn, table, SCHEMA_OBJECT_CONTRACT[table])
+
+
 def _add_file_count_mtime_schema_v35(conn: sqlite3.Connection) -> None:
     """Add the mtime companion that lets cached file counts expire.
 
@@ -1447,6 +1531,22 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(40, "asset_search_trigram", _rebuild_asset_search_fts_trigram_v40),
     Migration(41, "asset_derivative_lifecycle", _add_asset_derivative_lifecycle_schema_v41),
     Migration(42, "command_executions", _add_command_executions_schema_v42),
+    Migration(43, "import_manifest_items", _add_import_manifest_items_schema_v43),
+    Migration(
+        44,
+        "reconciliation_transition_outbox",
+        _add_reconciliation_transition_outbox_schema_v44,
+    ),
+    Migration(
+        45,
+        "reconciliation_transition_outbox_dead_letters",
+        _add_reconciliation_transition_outbox_dead_letters_schema_v45,
+    ),
+    Migration(
+        46,
+        "reconciliation_transition_outbox_delivery_backoff",
+        _add_reconciliation_transition_outbox_delivery_backoff_schema_v46,
+    ),
 )
 
 
@@ -1531,6 +1631,14 @@ def _migrate_once(conn: sqlite3.Connection) -> int:
             required_objects += ("asset_search",)
         if version >= 41:
             required_objects += ("asset_derivatives",)
+        if version >= 42:
+            required_objects += ("command_executions",)
+        if version >= 43:
+            required_objects += ("import_manifest_items",)
+        if version >= 44:
+            required_objects += ("reconciliation_transition_outbox",)
+        if version >= 45:
+            required_objects += ("reconciliation_transition_outbox_dead_letters",)
         if version < 17 and "reconciliation_tasks" in required_objects:
             required_objects = tuple(
                 table for table in required_objects if table != "reconciliation_tasks"

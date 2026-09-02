@@ -1002,5 +1002,12 @@
   "settings.relink_done": "已重新挂接 {count} 对。",
   "settings.relink_truncated": "目录预算耗尽，结果可能不完整。",
   "settings.relink_capped": "仅显示前 {limit} 行。",
-  "filelist.dedup_skipped": "已跳过：同一批删除刚刚执行过。"
+  "filelist.dedup_skipped": "已跳过：同一批删除刚刚执行过。",
+  "sharing.configuration.mcp": "只读 Agent 接口（MCP）",
+  "sharing.configuration.mcp_desc": "在局域网服务器上暴露只读 MCP 端点，供外部 AI 智能体查询。默认关闭；生成令牌后启用。",
+  "sharing.mcp.status_armed": "MCP 已启用 — 令牌前缀 {prefix}…",
+  "sharing.mcp.status_disabled": "MCP 已关闭（未生成令牌）",
+  "sharing.mcp.generate": "生成令牌",
+  "sharing.mcp.revoke": "吊销令牌",
+  "sharing.mcp.helper": "只读：智能体可搜索、读取元数据、查看合集与活动记录，永不暴露写入能力。"
 }

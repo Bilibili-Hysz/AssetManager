@@ -161,6 +161,34 @@ CREATE TABLE IF NOT EXISTS reconciliation_queue_state (
 );
 """
 
+# v44 records queue transitions in the same transaction as the task mutation.
+# It is deliberately independent of ``reconciliation_tasks``: an eviction
+# must retain the exact prior task snapshot long enough for dependent durable
+# records (notably import manifests) to reconcile it.
+RECONCILIATION_TRANSITION_OUTBOX_SCHEMA_V44 = """
+CREATE TABLE IF NOT EXISTS reconciliation_transition_outbox (
+    id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+    library_root              TEXT NOT NULL,
+    queue_generation          INTEGER NOT NULL CHECK (queue_generation >= 0),
+    task_id                   TEXT NOT NULL,
+    reason                    TEXT NOT NULL,
+    previous_task             TEXT,
+    current_task              TEXT,
+    operation_ids             TEXT NOT NULL DEFAULT '[]',
+    created_at                REAL NOT NULL,
+    delivery_token            TEXT,
+    delivery_lease_expires_at REAL,
+    delivery_attempts         INTEGER NOT NULL DEFAULT 0 CHECK (delivery_attempts >= 0),
+    delivered_at              REAL,
+    last_error_type           TEXT,
+    last_error                TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_reconciliation_transition_outbox_pending
+    ON reconciliation_transition_outbox(
+        library_root, delivered_at, delivery_lease_expires_at, id
+    );
+"""
+
 IMPORT_MANIFESTS_SCHEMA_V31 = """
 CREATE TABLE IF NOT EXISTS import_manifests (
     operation_id TEXT PRIMARY KEY NOT NULL,
@@ -205,6 +233,31 @@ CREATE INDEX IF NOT EXISTS idx_import_manifests_recovery
     ON import_manifests(library_root, state, updated_at);
 CREATE INDEX IF NOT EXISTS idx_import_manifests_recovery_lease
     ON import_manifests(library_root, state, recovery_lease_expires_at, updated_at);
+"""
+
+# v43 stores large import intents as one bounded header row plus individually
+# addressable item rows.  The legacy v1/v2 JSON payload remains untouched; the
+# new table is append-only and is deliberately keyed by library root so two
+# libraries can use the same operation id without colliding.
+IMPORT_MANIFEST_ITEMS_SCHEMA_V43 = """
+CREATE TABLE IF NOT EXISTS import_manifest_items (
+    operation_id TEXT NOT NULL,
+    library_root TEXT NOT NULL,
+    item_index INTEGER NOT NULL CHECK (item_index >= 0),
+    source TEXT NOT NULL,
+    relative TEXT NOT NULL,
+    target TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('pending', 'copied', 'failed', 'skipped')),
+    error TEXT,
+    copy_id TEXT NOT NULL,
+    source_fingerprint TEXT,
+    row_bytes INTEGER NOT NULL CHECK (row_bytes >= 0),
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    PRIMARY KEY (operation_id, library_root, item_index)
+);
+CREATE INDEX IF NOT EXISTS idx_import_manifest_items_state
+    ON import_manifest_items(library_root, operation_id, state, item_index);
 """
 
 # Ordinary/free-download quota state is deliberately separate from the
@@ -363,6 +416,41 @@ CREATE TABLE IF NOT EXISTS gallery_home (
     saved_at   REAL NOT NULL,
     projection TEXT NOT NULL
 );
+"""
+
+# v45 isolates corrupt immutable transition rows without silently dropping
+# their diagnostic payload or allowing a poisoned head row to block later
+# valid deliveries forever.  The source outbox ``id`` is globally unique due
+# to AUTOINCREMENT, so it remains the durable dead-letter identity after the
+# live row is removed.
+RECONCILIATION_TRANSITION_OUTBOX_DEAD_LETTERS_SCHEMA_V45 = """
+CREATE TABLE IF NOT EXISTS reconciliation_transition_outbox_dead_letters (
+    event_id                  INTEGER PRIMARY KEY NOT NULL,
+    library_root              TEXT NOT NULL,
+    queue_generation          INTEGER NOT NULL CHECK (queue_generation >= 0),
+    task_id                   TEXT NOT NULL,
+    reason                    TEXT NOT NULL,
+    previous_task             TEXT,
+    current_task              TEXT,
+    operation_ids             TEXT NOT NULL,
+    created_at                REAL NOT NULL,
+    delivery_attempts         INTEGER NOT NULL CHECK (delivery_attempts >= 0),
+    dead_lettered_at          REAL NOT NULL,
+    error_type                TEXT NOT NULL,
+    error                     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reconciliation_transition_outbox_dead_letters_library_created
+    ON reconciliation_transition_outbox_dead_letters(
+        library_root, dead_lettered_at, event_id
+    );
+"""
+
+# v46 adds a durable not-before deadline for transient consumer failures.  It
+# intentionally lives on the delivery record rather than the immutable task
+# snapshot, so old entries can adopt retry pacing without a payload rewrite.
+RECONCILIATION_TRANSITION_OUTBOX_DELIVERY_BACKOFF_SCHEMA_V46 = """
+CREATE INDEX IF NOT EXISTS idx_reconciliation_transition_outbox_head
+    ON reconciliation_transition_outbox(library_root, delivered_at, id);
 """
 
 
@@ -905,6 +993,77 @@ SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {
         },
         "checks": ("generation >= 0",),
     },
+    "reconciliation_transition_outbox": {
+        "columns": (
+            "id", "library_root", "queue_generation", "task_id", "reason",
+            "previous_task", "current_task", "operation_ids", "created_at",
+            "delivery_token", "delivery_lease_expires_at", "delivery_attempts",
+            "delivered_at", "last_error_type", "last_error", "next_delivery_at",
+        ),
+        "primary_key": ("id",),
+        "unique_constraints": (),
+        "indexes": {
+            "idx_reconciliation_transition_outbox_pending": (
+                "library_root", "delivered_at", "delivery_lease_expires_at", "id",
+            ),
+            "idx_reconciliation_transition_outbox_head": (
+                "library_root", "delivered_at", "id",
+            ),
+        },
+        "column_contracts": {
+            "id": {"type": "INTEGER", "not_null": False},
+            "library_root": {"type": "TEXT", "not_null": True},
+            "queue_generation": {"type": "INTEGER", "not_null": True},
+            "task_id": {"type": "TEXT", "not_null": True},
+            "reason": {"type": "TEXT", "not_null": True},
+            "previous_task": {"type": "TEXT", "not_null": False},
+            "current_task": {"type": "TEXT", "not_null": False},
+            "operation_ids": {"type": "TEXT", "not_null": True},
+            "created_at": {"type": "REAL", "not_null": True},
+            "delivery_token": {"type": "TEXT", "not_null": False},
+            "delivery_lease_expires_at": {"type": "REAL", "not_null": False},
+            "delivery_attempts": {"type": "INTEGER", "not_null": True},
+            "delivered_at": {"type": "REAL", "not_null": False},
+            "last_error_type": {"type": "TEXT", "not_null": False},
+            "last_error": {"type": "TEXT", "not_null": False},
+            "next_delivery_at": {"type": "REAL", "not_null": True},
+        },
+        "checks": (
+            "queue_generation >= 0",
+            "delivery_attempts >= 0",
+            "next_delivery_at >= 0",
+        ),
+    },
+    "reconciliation_transition_outbox_dead_letters": {
+        "columns": (
+            "event_id", "library_root", "queue_generation", "task_id", "reason",
+            "previous_task", "current_task", "operation_ids", "created_at",
+            "delivery_attempts", "dead_lettered_at", "error_type", "error",
+        ),
+        "primary_key": ("event_id",),
+        "unique_constraints": (),
+        "indexes": {
+            "idx_reconciliation_transition_outbox_dead_letters_library_created": (
+                "library_root", "dead_lettered_at", "event_id",
+            ),
+        },
+        "column_contracts": {
+            "event_id": {"type": "INTEGER", "not_null": False},
+            "library_root": {"type": "TEXT", "not_null": True},
+            "queue_generation": {"type": "INTEGER", "not_null": True},
+            "task_id": {"type": "TEXT", "not_null": True},
+            "reason": {"type": "TEXT", "not_null": True},
+            "previous_task": {"type": "TEXT", "not_null": False},
+            "current_task": {"type": "TEXT", "not_null": False},
+            "operation_ids": {"type": "TEXT", "not_null": True},
+            "created_at": {"type": "REAL", "not_null": True},
+            "delivery_attempts": {"type": "INTEGER", "not_null": True},
+            "dead_lettered_at": {"type": "REAL", "not_null": True},
+            "error_type": {"type": "TEXT", "not_null": True},
+            "error": {"type": "TEXT", "not_null": True},
+        },
+        "checks": ("queue_generation >= 0", "delivery_attempts >= 0"),
+    },
     "import_manifests": {
         "columns": (
             "operation_id", "library_root", "destination", "state", "payload",
@@ -937,6 +1096,40 @@ SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {
             "state IN ('prepared', 'running', 'completed', 'degraded', 'cancelled', 'recovery_pending')",
             "generation >= 0",
             "attempts >= 0",
+        ),
+    },
+    "import_manifest_items": {
+        "columns": (
+            "operation_id", "library_root", "item_index", "source", "relative",
+            "target", "state", "error", "copy_id", "source_fingerprint",
+            "row_bytes", "created_at", "updated_at",
+        ),
+        "primary_key": ("operation_id", "library_root", "item_index"),
+        "unique_constraints": (),
+        "indexes": {
+            "idx_import_manifest_items_state": (
+                "library_root", "operation_id", "state", "item_index",
+            ),
+        },
+        "column_contracts": {
+            "operation_id": {"type": "TEXT", "not_null": True},
+            "library_root": {"type": "TEXT", "not_null": True},
+            "item_index": {"type": "INTEGER", "not_null": True},
+            "source": {"type": "TEXT", "not_null": True},
+            "relative": {"type": "TEXT", "not_null": True},
+            "target": {"type": "TEXT", "not_null": True},
+            "state": {"type": "TEXT", "not_null": True},
+            "error": {"type": "TEXT", "not_null": False},
+            "copy_id": {"type": "TEXT", "not_null": True},
+            "source_fingerprint": {"type": "TEXT", "not_null": False},
+            "row_bytes": {"type": "INTEGER", "not_null": True},
+            "created_at": {"type": "REAL", "not_null": True},
+            "updated_at": {"type": "REAL", "not_null": True},
+        },
+        "checks": (
+            "item_index >= 0",
+            "state IN ('pending', 'copied', 'failed', 'skipped')",
+            "row_bytes >= 0",
         ),
     },
     "free_download_quota_windows": {

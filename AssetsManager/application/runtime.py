@@ -25,6 +25,11 @@ class LibraryRuntime:
         self._condition = threading.Condition(threading.Lock())
         self._state = "open"
         self._cleanup_in_progress = False
+        # Set while the router has stopped admission but still has an
+        # external callback in flight.  A second close caller must not block
+        # forever on a stalled callback; the deferred cleanup is the single
+        # owner that will finish once the callback returns.
+        self._cleanup_pending = False
         self._adapters_stopped = False
         self._adapter_cleanup_in_progress = False
         self._adapter_cleanup_thread_id: int | None = None
@@ -81,18 +86,31 @@ class LibraryRuntime:
             ]
 
     def next_revision(self) -> int:
+        # An event callback admitted before close must be allowed to finish
+        # publishing its revision.  New callbacks are rejected by the router
+        # before they reach this method, so this exception does not reopen the
+        # runtime for new work.
+        callback_active = self.event_router.callback_active_on_current_thread()
         with self._condition:
-            if self._state != "open":
+            if self._state != "open" and not (
+                self._state == "closing" and callback_active
+            ):
                 raise RuntimeError("Cannot advance a closing or closed LibraryRuntime")
             self.revision += 1
             return self.revision
 
-    def mark_closing(self) -> None:
-        """Close the event router before rejecting new runtime revisions."""
-        self.event_router.close()
+    def mark_closing(self) -> bool:
+        """Reject new runtime work, then begin bounded event-router drain.
+
+        The state transition is the admission linearization point.  Existing
+        callbacks are still allowed to finish, while callers can observe a
+        ``False`` result when the bounded drain is pending and must defer
+        resource teardown until a later retry/callback completion.
+        """
         with self._condition:
-            if self._state == "open":
+            if self._state in {"open", "failed"}:
                 self._state = "closing"
+        return self.event_router.close()
 
     def close_adapters(self) -> None:
         """Stop external adapters while the owning session is still usable."""
@@ -129,33 +147,46 @@ class LibraryRuntime:
             self._adapter_cleanup_thread_id = None
             self._condition.notify_all()
 
-    def close(self) -> None:
+    def close(self) -> bool:
         """Release runtime-owned adapters, without closing the session/DB."""
         callback_thread = self.event_router.callback_active_on_current_thread()
         with self._condition:
             while self._cleanup_in_progress:
-                if callback_thread:
-                    return
+                if callback_thread or self._cleanup_pending:
+                    return False
                 self._condition.wait()
             if self._state == "closed":
-                return
+                return True
+            # Linearize admission before touching the router.  A callback
+            # already counted by the router may still finish, but no new
+            # caller can advance a revision or register an adapter.
+            if self._state == "open":
+                self._state = "closing"
             self._cleanup_in_progress = True
         try:
-            self.event_router.close()
+            drained = self.event_router.close()
         except BaseException:
             # The router close is not part of adapter cleanup; keep the
             # guard releasable so later close() calls are not permanently
             # blocked waiting on a flag that never resets.
             with self._condition:
                 self._cleanup_in_progress = False
+                self._cleanup_pending = False
                 self._condition.notify_all()
             raise
-        if self.event_router.callback_active_on_current_thread():
+        if not drained:
+            with self._condition:
+                if self._cleanup_pending:
+                    return False
+                self._cleanup_pending = True
             self.event_router.defer_after_drain(self._cleanup_adapters)
-            return
+            return False
         self._cleanup_adapters()
+        return True
 
     def _cleanup_adapters(self) -> None:
+        with self._condition:
+            self._cleanup_pending = False
         try:
             self.close_adapters()
             self.services.undo_service.cleanup()
@@ -167,6 +198,7 @@ class LibraryRuntime:
             with self._condition:
                 self._state = "failed"
                 self._cleanup_in_progress = False
+                self._cleanup_pending = False
                 self._adapters_stopped = False
                 self._condition.notify_all()
             raise
@@ -175,4 +207,5 @@ class LibraryRuntime:
             self._adapters_stopped = False
             self._state = "closed"
             self._cleanup_in_progress = False
+            self._cleanup_pending = False
             self._condition.notify_all()

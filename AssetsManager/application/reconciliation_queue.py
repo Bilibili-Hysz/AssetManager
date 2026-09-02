@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
 from enum import Enum
+from functools import wraps
 from math import isfinite
 import json
 import logging
@@ -18,10 +19,26 @@ from pathlib import Path
 import tempfile
 import threading
 import time
-from typing import Callable, Mapping, Protocol
+from typing import Callable, Mapping, Protocol, cast
 from uuid import uuid4
 
 _log = logging.getLogger(__name__)
+
+IMPORT_MANIFEST_RECOVERY_CONSUMER_ID = "import_manifest_recovery"
+_TRANSITION_OUTBOX_CALLBACK_MAX_AGE_SECONDS = 300.0
+
+
+def _same_listener(
+    left: Callable[["ReconciliationTaskTransition"], object],
+    right: Callable[["ReconciliationTaskTransition"], object],
+) -> bool:
+    """Compare callbacks without duplicating freshly-created bound methods."""
+    if left is right:
+        return True
+    try:
+        return bool(left == right)
+    except Exception:
+        return False
 
 
 class ReconciliationKind(str, Enum):
@@ -151,6 +168,25 @@ class ReconciliationState(str, Enum):
     CANCELLED = "cancelled"
 
 
+class ReconciliationTransitionDisposition(str, Enum):
+    """A durable transition consumer's acknowledgement decision.
+
+    ``APPLIED`` means the dependent durable state was written.  ``STALE``
+    means the consumer proved that the event is irrelevant or already covered
+    by a newer durable state.  Only those two dispositions permit the shared
+    outbox record to be acknowledged.  ``RETRY`` retains it for at-least-once
+    redelivery.
+    """
+
+    APPLIED = "applied"
+    STALE = "stale"
+    RETRY = "retry"
+
+
+class _ReconciliationTransitionRetryRequested(RuntimeError):
+    """Internal signal used to return a leased outbox event to pending."""
+
+
 class ReconciliationQueueFull(RuntimeError):
     """Raised when a bounded queue has no completed task available to evict."""
 
@@ -267,6 +303,10 @@ class ReconciliationQueueClaimResult:
 
     snapshot: ReconciliationQueueSnapshot
     claimed: ReconciliationTask | None
+    # Expired running rows may be moved to retryable/terminal as part of the
+    # same claim transaction.  Returning them lets the queue listener observe
+    # those transitions instead of waiting for a best-effort sweeper pass.
+    recovered: tuple[ReconciliationTask, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,6 +323,160 @@ class ReconciliationQueueMutationResult:
 
     snapshot: ReconciliationQueueSnapshot
     task: ReconciliationTask
+    # Tasks removed while inserting/replacing a row are returned explicitly so
+    # observers can reconcile durable side effects (for example an import
+    # manifest bound to an evicted task).  The field is optional for backwards
+    # compatible persistence adapters that predate eviction reporting.
+    evicted: tuple[ReconciliationTask, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ReconciliationTaskTransition:
+    """One committed queue transition delivered to an optional listener.
+
+    ``current`` is ``None`` for an eviction/removal.  ``operation_ids`` is
+    copied into the event rather than inferred by consumers so a task that has
+    already disappeared still carries the audit references needed to repair
+    dependent records.  Listeners are invoked only after the queue mutation
+    commits and after its lock is released.
+    """
+
+    previous: ReconciliationTask | None
+    current: ReconciliationTask | None
+    reason: str
+    operation_ids: tuple[str, ...] = ()
+
+    @property
+    def task_id(self) -> str:
+        task = self.current or self.previous
+        return "" if task is None else task.task_id
+
+
+@dataclass(frozen=True, slots=True)
+class ReconciliationTransitionOutboxEntry:
+    """One leased durable transition awaiting listener acknowledgement."""
+
+    event_id: int
+    transition: ReconciliationTaskTransition
+    delivery_token: str
+    delivery_attempts: int
+
+
+@dataclass(frozen=True, slots=True)
+class ReconciliationTransitionOutboxDeadLetter:
+    """One immutable transition delivery retained after dead-lettering.
+
+    The original event id and transition snapshots remain stable across an
+    explicit replay.  Keeping this record separate from the live outbox row
+    gives operators an audit anchor even after a replay is acknowledged.
+    """
+
+    event_id: int
+    transition: ReconciliationTaskTransition
+    created_at: float
+    delivery_attempts: int
+    dead_lettered_at: float
+    error_type: str
+    error: str
+
+
+@dataclass(frozen=True, slots=True)
+class ReconciliationTransitionOutboxMetrics:
+    """Bounded point-in-time delivery metrics for one library outbox."""
+
+    pending_count: int = 0
+    acknowledged_count: int = 0
+    dead_letter_count: int = 0
+    leased_count: int = 0
+    expired_lease_count: int = 0
+    delivery_attempts_total: int = 0
+    max_delivery_attempts: int = 0
+    oldest_pending_age_seconds: float | None = None
+    oldest_dead_letter_age_seconds: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReconciliationTransitionOutboxPruneResult:
+    """Rows removed by one explicit outbox retention pass."""
+
+    acknowledged_deleted: int = 0
+    dead_letters_deleted: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class _TransitionBacklogEntry:
+    """One failed transition delivery and the listeners that still need it."""
+
+    transition: ReconciliationTaskTransition
+    # ``None`` means that no listener was available and any future listener may
+    # consume the event.  A tuple records only callbacks that failed; callbacks
+    # which already accepted the event are not replayed.
+    listeners: tuple[Callable[[ReconciliationTaskTransition], object], ...] | None = None
+
+
+def _notify_task_transitions(reason: str):
+    """Decorate queue mutations with post-commit transition notifications."""
+
+    def decorator(method):
+        @wraps(method)
+        def wrapped(self, *args, **kwargs):
+            # Serialize the before/mutation/after window per queue instance.
+            # The queue methods use their own state lock, but taking snapshots
+            # outside a mutation-wide lock would let a concurrent local
+            # mutation be attributed to the wrong reason.
+            durable_outbox = self._uses_durable_transition_outbox()
+            events: tuple[ReconciliationTaskTransition, ...] = ()
+            with self._transition_mutation_lock:
+                self._clear_transition_metadata()
+                if durable_outbox:
+                    # The SQLite store appends exact before/current snapshots
+                    # inside its task transaction. Deliver only from that log
+                    # so a process crash cannot lose the queue-to-manifest
+                    # hand-off.
+                    result = method(self, *args, **kwargs)
+                    self._take_transition_metadata()
+                else:
+                    before = self._snapshot_for_transition()
+                    result = method(self, *args, **kwargs)
+                    after = self._snapshot_for_transition()
+                    # Store-backed mutations can evict a finished row that was not
+                    # in this process's last snapshot. Include the explicit result
+                    # metadata in addition to the before/after diff so the
+                    # dependent manifest can always observe the removal.
+                    metadata = self._take_transition_metadata()
+                    evicted = tuple(
+                        getattr(result, "evicted", ()) or ()
+                    ) + tuple(metadata.get("evicted", ()) or ())
+                    recovered = tuple(
+                        getattr(result, "recovered", ()) or ()
+                    ) + tuple(metadata.get("recovered", ()) or ())
+                    events = self._transition_events(
+                        before,
+                        after,
+                        reason,
+                        evicted=evicted,
+                        recovered=recovered,
+                    )
+            if durable_outbox:
+                self.drain_transition_outbox()
+            elif events:
+                self._dispatch_transitions(events)
+            return result
+
+        return wrapped
+
+    return decorator
+
+
+def _serialize_transition_mutation(method):
+    """Serialize a queue mutation that intentionally emits no event."""
+
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        with self._transition_mutation_lock:
+            return method(self, *args, **kwargs)
+
+    return wrapped
 
 
 class ReconciliationQueueStore(Protocol):
@@ -402,6 +596,80 @@ class ReconciliationQueueStore(Protocol):
         """Cancel a task with state/lease CAS."""
         ...
 
+    def claim_transition_outbox(
+        self,
+        *,
+        limit: int,
+        lease_seconds: float,
+    ) -> tuple[ReconciliationTransitionOutboxEntry, ...]:
+        """Lease committed transition records for at-least-once delivery."""
+        ...
+
+    def renew_transition_outbox_lease(
+        self,
+        event_id: int,
+        *,
+        delivery_token: str,
+        lease_seconds: float,
+    ) -> bool:
+        """Extend one active transition-delivery lease with token CAS."""
+        ...
+
+    def acknowledge_transition_outbox(
+        self,
+        event_id: int,
+        *,
+        delivery_token: str,
+    ) -> bool:
+        """Mark a successfully delivered transition durable."""
+        ...
+
+    def fail_transition_outbox(
+        self,
+        event_id: int,
+        *,
+        delivery_token: str,
+        error: BaseException,
+    ) -> bool:
+        """Persist a failed delivery retry or terminal dead-letter decision."""
+        ...
+
+    def list_transition_outbox_dead_letters(
+        self,
+        *,
+        limit: int = 100,
+        before_event_id: int | None = None,
+    ) -> tuple[ReconciliationTransitionOutboxDeadLetter, ...]:
+        """List immutable dead-letter records newest first."""
+        ...
+
+    def replay_transition_outbox_dead_letter(
+        self,
+        event_id: int,
+        *,
+        expected_dead_lettered_at: float | None = None,
+    ) -> bool:
+        """Restore one dead-letter event to the live outbox with CAS semantics."""
+        ...
+
+    def transition_outbox_metrics(
+        self,
+        *,
+        now: float | None = None,
+    ) -> ReconciliationTransitionOutboxMetrics:
+        """Return queue age, lease, attempt and dead-letter observations."""
+        ...
+
+    def prune_transition_outbox(
+        self,
+        *,
+        acknowledged_before: float | None = None,
+        dead_letter_before: float | None = None,
+        limit: int = 1000,
+    ) -> ReconciliationTransitionOutboxPruneResult:
+        """Apply explicit bounded retention to ACKed and dead-letter rows."""
+        ...
+
 
 class ReconciliationQueue:
     """Thread-safe bounded queue with pluggable durable persistence.
@@ -425,6 +693,7 @@ class ReconciliationQueue:
         clock: Callable[[], float] = time.monotonic,
         wall_clock: Callable[[], float] = time.time,
         cross_process_poll_interval: float = 0.5,
+        transition_listener: Callable[[ReconciliationTaskTransition], object] | None = None,
     ) -> None:
         if max_tasks < 1:
             raise ValueError("max_tasks must be positive")
@@ -451,17 +720,41 @@ class ReconciliationQueue:
         self.cross_process_poll_interval = float(cross_process_poll_interval)
         self._lock = threading.RLock()
         self._condition = threading.Condition(self._lock)
+        self._transition_mutation_lock = threading.RLock()
+        # A global ``delivered_at`` represents only the canonical
+        # import-manifest consumer.  Generic callbacks remain observers so
+        # dynamic registration cannot redefine durable completion.
+        self._durable_transition_consumer_id: str | None = None
+        self._durable_transition_consumer: (
+            Callable[[ReconciliationTaskTransition], object] | None
+        ) = None
+        self._transition_listener = transition_listener
+        self._transition_listeners: list[
+            Callable[[ReconciliationTaskTransition], object]
+        ] = []
         # A stop/wake signal must not depend on acquiring the queue lock,
         # because store-backed mutations may hold it across bounded DB I/O.
         self._wake_event = threading.Event()
         self._tasks: dict[tuple[str, str, ReconciliationKind], ReconciliationTask] = {}
         self._generation = 0
+        self._transition_local = threading.local()
+        # A listener is normally registered after bootstrap constructs the
+        # manifest recovery service.  Keep a bounded hand-off buffer so lease
+        # recovery performed during queue construction is not silently lost.
+        self._transition_backlog: list[_TransitionBacklogEntry] = []
+        self._transition_backlog_limit = 1024
+        self._transition_backlog_overflow_count = 0
+        self._transition_dispatch_lock = threading.RLock()
         self._load()
+        startup_recovered: tuple[ReconciliationTask, ...] = ()
+        durable_outbox = self._uses_durable_transition_outbox()
         with self._lock:
-            recovered = self._recover_expired_running_unlocked(self._clock())
-            if recovered:
+            if durable_outbox:
                 try:
-                    self._persist_and_notify_unlocked()
+                    assert self._store is not None
+                    result = self._store.recover_expired_running(now=self._clock())
+                    self._set_store_snapshot_unlocked(result.snapshot)
+                    startup_recovered = tuple(result.recovered)
                 except ReconciliationQueuePersistenceConflict as conflict:
                     # Another process took over the durable generation while
                     # this process was recovering expired leases.  Degrade to
@@ -473,16 +766,235 @@ class ReconciliationQueue:
                         snapshot = self._store.load_snapshot()
                         self._set_store_snapshot_unlocked(snapshot)
                     except Exception:
-                        # ``_persist_unlocked`` already refreshed the
-                        # in-memory snapshot when the conflict was raised; a
-                        # failed reload keeps the newest state this queue has
-                        # seen rather than failing startup.
+                        # A failed reload keeps the newest state this queue
+                        # has seen rather than failing startup.
                         pass
                     _log.warning(
                         "Reconciliation queue startup recovery lost a cross-process "
                         "generation race; continuing with the newer durable snapshot: %s",
                         conflict,
                     )
+                    # The transitions computed from the losing snapshot are
+                    # no longer authoritative.  Do not dispatch a stale
+                    # lease-expiry event after another process has published
+                    # the winner; its current snapshot (and a later recovery
+                    # pass) is the only safe source for dependent bookkeeping.
+                    startup_recovered = ()
+            else:
+                recovered = self._recover_expired_running_unlocked(self._clock())
+                startup_recovered = tuple(recovered)
+                if recovered:
+                    try:
+                        self._persist_and_notify_unlocked()
+                    except ReconciliationQueuePersistenceConflict as conflict:
+                        # Another process took over the durable generation while
+                        # this process was recovering expired leases.  Degrade to
+                        # a read-only load of the newer durable snapshot instead
+                        # of failing the library open; the owning process applies
+                        # whatever recovery is still required.
+                        try:
+                            assert self._store is not None
+                            snapshot = self._store.load_snapshot()
+                            self._set_store_snapshot_unlocked(snapshot)
+                        except Exception:
+                            # ``_persist_unlocked`` already refreshed the
+                            # in-memory snapshot when the conflict was raised; a
+                            # failed reload keeps the newest state this queue has
+                            # seen rather than failing startup.
+                            pass
+                        _log.warning(
+                            "Reconciliation queue startup recovery lost a cross-process "
+                            "generation race; continuing with the newer durable snapshot: %s",
+                            conflict,
+                        )
+                        # The transitions computed from the losing snapshot are
+                        # no longer authoritative. Do not dispatch a stale
+                        # lease-expiry event after another process has published
+                        # the winner; its current snapshot (and a later recovery
+                        # pass) is the only safe source for dependent bookkeeping.
+                        startup_recovered = ()
+        # Queue construction can recover an expired lease before the manifest
+        # recovery service exists.  Buffer the transition (or deliver it to a
+        # constructor-supplied listener) only after releasing the queue lock.
+        if durable_outbox:
+            self.drain_transition_outbox()
+        elif startup_recovered:
+            self._dispatch_transitions(
+                tuple(
+                    self._transition(
+                        None,
+                        task,
+                        "lease_expired",
+                        operation_ids=task.operation_ids,
+                    )
+                    for task in startup_recovered
+                )
+            )
+
+    def add_transition_listener(
+        self,
+        listener: Callable[[ReconciliationTaskTransition], object],
+    ) -> None:
+        """Register a best-effort observer for committed task transitions.
+
+        With the SQLite durable outbox, observers run only after the one
+        durable consumer has ACKed a transition.  Their return values and
+        failures never change the durable ACK condition.  Memory-backed queues
+        retain their historical advisory listener behavior.
+        """
+        if not callable(listener):
+            raise TypeError("transition listener must be callable")
+        with self._lock:
+            if all(
+                not _same_listener(existing, listener)
+                for existing in self._transition_listeners
+            ):
+                self._transition_listeners.append(listener)
+        if not self._uses_durable_transition_outbox():
+            self.retry_transition_backlog()
+
+    def set_durable_transition_consumer(
+        self,
+        consumer_id: str,
+        listener: Callable[[ReconciliationTaskTransition], object],
+    ) -> None:
+        """Set the sole consumer whose disposition may acknowledge outbox rows.
+
+        The physical outbox has one ``delivered_at`` marker, so its consumer
+        identity is fixed to import-manifest recovery.  Re-registering the
+        same bound callback is idempotent; a different callback or consumer id
+        is rejected rather than making pending history registration-dependent.
+        """
+        if consumer_id != IMPORT_MANIFEST_RECOVERY_CONSUMER_ID:
+            raise ValueError(
+                "the reconciliation transition outbox only supports "
+                f"{IMPORT_MANIFEST_RECOVERY_CONSUMER_ID!r}"
+            )
+        if not callable(listener):
+            raise TypeError("durable transition consumer must be callable")
+        with self._lock:
+            current = self._durable_transition_consumer
+            if (
+                current is not None
+                and (
+                    self._durable_transition_consumer_id != consumer_id
+                    or not _same_listener(current, listener)
+                )
+            ):
+                raise ValueError("a durable transition consumer is already registered")
+            self._durable_transition_consumer_id = consumer_id
+            self._durable_transition_consumer = listener
+        if self._uses_durable_transition_outbox():
+            self.drain_transition_outbox()
+        else:
+            self.retry_transition_backlog()
+
+    def remove_transition_listener(
+        self,
+        listener: Callable[[ReconciliationTaskTransition], object],
+    ) -> None:
+        """Remove a transition callback if it is currently registered."""
+        with self._lock:
+            self._transition_listeners = [
+                existing
+                for existing in self._transition_listeners
+                if not _same_listener(existing, listener)
+            ]
+
+    def _snapshot_for_transition(self) -> tuple[ReconciliationTask, ...]:
+        """Take a local snapshot without forcing a cross-process refresh."""
+        with self._lock:
+            return tuple(sorted(self._tasks.values(), key=lambda task: task.task_id))
+
+    def _clear_transition_metadata(self) -> None:
+        self._transition_local.metadata = {}
+
+    def _remember_transition_metadata(
+        self,
+        *,
+        evicted: tuple[ReconciliationTask, ...] = (),
+        recovered: tuple[ReconciliationTask, ...] = (),
+    ) -> None:
+        metadata = getattr(self._transition_local, "metadata", None)
+        if not isinstance(metadata, dict):
+            metadata = {}
+        if evicted:
+            metadata["evicted"] = tuple(evicted)
+        if recovered:
+            metadata["recovered"] = tuple(recovered)
+        self._transition_local.metadata = metadata
+
+    def _take_transition_metadata(self) -> dict[str, tuple[ReconciliationTask, ...]]:
+        metadata = getattr(self._transition_local, "metadata", {})
+        self._transition_local.metadata = {}
+        return metadata if isinstance(metadata, dict) else {}
+
+    @staticmethod
+    def _transition_events(
+        before: tuple[ReconciliationTask, ...],
+        after: tuple[ReconciliationTask, ...],
+        reason: str,
+        *,
+        evicted: tuple[ReconciliationTask, ...] = (),
+        recovered: tuple[ReconciliationTask, ...] = (),
+    ) -> tuple[ReconciliationTaskTransition, ...]:
+        """Build deterministic events for one committed queue mutation."""
+        before_by_id = {task.task_id: task for task in before}
+        after_by_id = {task.task_id: task for task in after}
+        events: list[ReconciliationTaskTransition] = []
+        seen: set[tuple[str, str]] = set()
+        explicit_ids = {
+            task.task_id for task in (*evicted, *recovered)
+        }
+
+        def add(
+            previous: ReconciliationTask | None,
+            current: ReconciliationTask | None,
+            event_reason: str,
+        ) -> None:
+            task = current or previous
+            if task is None:
+                return
+            ids = tuple(
+                dict.fromkeys(
+                    tuple(getattr(previous, "operation_ids", ()) or ())
+                    + tuple(getattr(current, "operation_ids", ()) or ())
+                )
+            )
+            key = (task.task_id, event_reason)
+            if key in seen:
+                return
+            seen.add(key)
+            events.append(
+                ReconciliationTaskTransition(
+                    previous=previous,
+                    current=current,
+                    reason=event_reason,
+                    operation_ids=ids,
+                )
+            )
+
+        for task in evicted:
+            add(before_by_id.get(task.task_id) or task, None, "evicted")
+        for task in recovered:
+            add(before_by_id.get(task.task_id), after_by_id.get(task.task_id) or task, "lease_expired")
+        for task_id in sorted(set(before_by_id) | set(after_by_id)):
+            previous = before_by_id.get(task_id)
+            current = after_by_id.get(task_id)
+            if previous != current and task_id not in explicit_ids:
+                add(previous, current, reason)
+        return tuple(events)
+
+    def _emit_transition_events(
+        self,
+        before: tuple[ReconciliationTask, ...],
+        after: tuple[ReconciliationTask, ...],
+        reason: str,
+    ) -> None:
+        """Dispatch changed task identities after a public mutation commits."""
+        events = self._transition_events(before, after, reason)
+        if events:
+            self._dispatch_transitions(events)
 
     @property
     def persistence_path(self) -> Path | None:
@@ -493,6 +1005,555 @@ class ReconciliationQueue:
         """Return the durable snapshot generation known by this queue."""
         with self._lock:
             return self._generation
+
+    def set_transition_listener(
+        self,
+        listener: Callable[[ReconciliationTaskTransition], object] | None,
+    ) -> None:
+        """Set the legacy primary observer for committed transitions.
+
+        It cannot acknowledge a SQLite outbox row.  Durable integrations must
+        register the canonical import-manifest consumer explicitly through
+        :meth:`set_durable_transition_consumer`.
+        """
+        if listener is not None and not callable(listener):
+            raise TypeError("transition listener must be callable")
+        with self._lock:
+            self._transition_listener = listener
+        if listener is not None:
+            self.retry_transition_backlog()
+
+    def _uses_durable_transition_outbox(self) -> bool:
+        """Whether this store owns durable transition delivery for this queue."""
+        return bool(
+            self._store is not None
+            and getattr(self._store, "transition_outbox_enabled", False)
+            and callable(getattr(self._store, "claim_transition_outbox", None))
+            and callable(getattr(self._store, "acknowledge_transition_outbox", None))
+            and callable(getattr(self._store, "fail_transition_outbox", None))
+        )
+
+    @property
+    def durable_transition_outbox_enabled(self) -> bool:
+        """Expose whether committed transitions use the durable delivery path."""
+        return self._uses_durable_transition_outbox()
+
+    @staticmethod
+    def _deliver_transition_to_listener(
+        listener: Callable[[ReconciliationTaskTransition], object],
+        transition: ReconciliationTaskTransition,
+    ) -> None:
+        """Invoke an advisory observer and preserve its local retry signal."""
+        disposition = listener(transition)
+        # ``None`` preserves the original observer contract.  A ``RETRY`` is
+        # retained only in the bounded local observer backlog; it never updates
+        # the durable outbox's retry state.
+        if disposition is None or disposition in {
+            ReconciliationTransitionDisposition.APPLIED,
+            ReconciliationTransitionDisposition.STALE,
+        }:
+            return
+        if disposition is ReconciliationTransitionDisposition.RETRY:
+            raise _ReconciliationTransitionRetryRequested(
+                f"transition consumer requested retry for task {transition.task_id}"
+            )
+        raise TypeError(
+            "transition listener must return None or a "
+            "ReconciliationTransitionDisposition"
+        )
+
+    @staticmethod
+    def _deliver_durable_transition_to_consumer(
+        consumer: Callable[[ReconciliationTaskTransition], object],
+        transition: ReconciliationTaskTransition,
+    ) -> None:
+        """Invoke the canonical consumer and require an explicit disposition."""
+        disposition = consumer(transition)
+        if disposition in {
+            ReconciliationTransitionDisposition.APPLIED,
+            ReconciliationTransitionDisposition.STALE,
+        }:
+            return
+        if disposition is ReconciliationTransitionDisposition.RETRY:
+            raise _ReconciliationTransitionRetryRequested(
+                f"transition consumer requested retry for task {transition.task_id}"
+            )
+        raise TypeError(
+            "durable transition consumer must return a "
+            "ReconciliationTransitionDisposition"
+        )
+
+    def _run_transition_outbox_lease_heartbeat(
+        self,
+        *,
+        event_id: int,
+        delivery_token: str,
+        lease_seconds: float,
+        renew_until: float,
+        stop_event: threading.Event,
+        errors: list[BaseException],
+    ) -> None:
+        """Renew an active delivery lease while a durable callback is running.
+
+        The callback itself cannot be safely interrupted.  Renewal therefore
+        stops at ``renew_until`` so a stuck callback eventually loses
+        ownership and another process can replay the immutable event.
+        """
+        assert self._store is not None
+        renew = getattr(self._store, "renew_transition_outbox_lease", None)
+        if not callable(renew):
+            return
+        interval = max(min(lease_seconds / 3.0, 5.0), 0.01)
+        while not stop_event.wait(interval):
+            if time.monotonic() >= renew_until:
+                return
+            try:
+                renewed = renew(
+                    event_id,
+                    delivery_token=delivery_token,
+                    lease_seconds=lease_seconds,
+                )
+            except BaseException as exc:
+                if not stop_event.is_set():
+                    errors.append(exc)
+                return
+            if stop_event.is_set():
+                return
+            if not renewed:
+                errors.append(
+                    ReconciliationQueuePersistenceConflict(
+                        "Reconciliation transition outbox lease renewal lost ownership",
+                        retryable=True,
+                        operation="transition_outbox_renew",
+                    )
+                )
+                return
+
+    def drain_transition_outbox(
+        self,
+        *,
+        limit: int = 64,
+        lease_seconds: float = 30.0,
+        callback_max_age: float = _TRANSITION_OUTBOX_CALLBACK_MAX_AGE_SECONDS,
+    ) -> int:
+        """Deliver committed SQLite transitions and ACK each accepted event.
+
+        A leased row is retried after process loss or callback failure.  The
+        canonical consumer is renewed while it runs, but renewal is bounded
+        by ``callback_max_age`` so a stuck callback eventually becomes
+        replayable by another process.  Generic observers run only after a
+        successful durable acknowledgement.
+        """
+        if not self._uses_durable_transition_outbox():
+            return self.retry_transition_backlog()
+        if (
+            not isinstance(limit, int)
+            or isinstance(limit, bool)
+            or limit < 1
+        ):
+            raise ValueError("transition outbox drain limit must be a positive integer")
+        if (
+            not isinstance(lease_seconds, (int, float))
+            or isinstance(lease_seconds, bool)
+            or not isfinite(float(lease_seconds))
+            or lease_seconds <= 0
+        ):
+            raise ValueError("transition outbox delivery lease must be finite and positive")
+        if (
+            not isinstance(callback_max_age, (int, float))
+            or isinstance(callback_max_age, bool)
+            or not isfinite(float(callback_max_age))
+            or callback_max_age <= 0
+        ):
+            raise ValueError("transition outbox callback_max_age must be finite and positive")
+        assert self._store is not None
+        with self._transition_dispatch_lock:
+            consumer = self._durable_transition_consumer_snapshot()
+            if consumer is None:
+                return 0
+            delivered = 0
+            for _ in range(limit):
+                try:
+                    claimed = self._store.claim_transition_outbox(
+                        limit=1,
+                        lease_seconds=float(lease_seconds),
+                    )
+                except Exception:
+                    _log.exception("Could not claim reconciliation transition outbox entry")
+                    break
+                if not claimed:
+                    break
+                entry = claimed[0]
+                heartbeat_stop = threading.Event()
+                heartbeat_errors: list[BaseException] = []
+                callback_started_at = time.monotonic()
+                callback_deadline = callback_started_at + float(callback_max_age)
+                heartbeat: threading.Thread | None = None
+                heartbeat_started = False
+                if callable(
+                    getattr(self._store, "renew_transition_outbox_lease", None)
+                ):
+                    heartbeat = threading.Thread(
+                        target=self._run_transition_outbox_lease_heartbeat,
+                        kwargs={
+                            "event_id": entry.event_id,
+                            "delivery_token": entry.delivery_token,
+                            "lease_seconds": float(lease_seconds),
+                            "renew_until": callback_deadline,
+                            "stop_event": heartbeat_stop,
+                            "errors": heartbeat_errors,
+                        },
+                        name=f"reconciliation-transition-outbox-lease-{entry.event_id}",
+                        daemon=True,
+                    )
+                delivery_error: BaseException | None = None
+                try:
+                    if heartbeat is not None:
+                        heartbeat.start()
+                        heartbeat_started = True
+                    self._deliver_durable_transition_to_consumer(consumer, entry.transition)
+                except Exception as exc:
+                    delivery_error = exc
+                finally:
+                    heartbeat_stop.set()
+                    if heartbeat_started and heartbeat is not None:
+                        heartbeat.join()
+                if delivery_error is None and heartbeat_errors:
+                    delivery_error = heartbeat_errors[0]
+                if delivery_error is None and time.monotonic() >= callback_deadline:
+                    delivery_error = TimeoutError(
+                        "Reconciliation transition durable callback exceeded its age budget"
+                    )
+                if delivery_error is not None:
+                    try:
+                        self._store.fail_transition_outbox(
+                            entry.event_id,
+                            delivery_token=entry.delivery_token,
+                            error=delivery_error,
+                        )
+                    except Exception:
+                        _log.exception(
+                            "Could not release failed reconciliation transition outbox entry %s",
+                            entry.event_id,
+                        )
+                    _log.error(
+                        "Reconciliation task transition durable delivery failed for event %s",
+                        entry.event_id,
+                        exc_info=(
+                            type(delivery_error),
+                            delivery_error,
+                            delivery_error.__traceback__,
+                        ),
+                    )
+                    # Do not deliver a later transition while this event is
+                    # pending; its next claim retains the per-library order.
+                    break
+                try:
+                    acknowledged = self._store.acknowledge_transition_outbox(
+                        entry.event_id,
+                        delivery_token=entry.delivery_token,
+                    )
+                except Exception:
+                    _log.exception(
+                        "Could not acknowledge reconciliation transition outbox entry %s",
+                        entry.event_id,
+                    )
+                    break
+                if acknowledged:
+                    delivered += 1
+                    # Generic observers are intentionally post-ACK: their
+                    # lifecycle cannot redefine the manifest consumer's
+                    # durable completion contract.
+                    self._dispatch_transitions((entry.transition,))
+                else:
+                    _log.warning(
+                        "Reconciliation transition outbox lease was lost before acknowledgement: %s",
+                        entry.event_id,
+                    )
+                    break
+        return delivered
+
+    def list_transition_outbox_dead_letters(
+        self,
+        *,
+        limit: int = 100,
+        before_event_id: int | None = None,
+    ) -> tuple[ReconciliationTransitionOutboxDeadLetter, ...]:
+        """Read durable delivery dead letters for an operator-facing view.
+
+        Persistence adapters predating v45 expose no dead-letter table; those
+        adapters return an empty result so the queue remains backwards
+        compatible.
+        """
+        store = self._store
+        method = getattr(store, "list_transition_outbox_dead_letters", None)
+        if store is None or not callable(method):
+            return ()
+        return cast(
+            tuple[ReconciliationTransitionOutboxDeadLetter, ...],
+            method(limit=limit, before_event_id=before_event_id),
+        )
+
+    def replay_transition_outbox_dead_letter(
+        self,
+        event_id: int,
+        *,
+        expected_dead_lettered_at: float | None = None,
+    ) -> bool:
+        """Request one explicit, audited replay of a durable dead letter.
+
+        The store restores the original event id in one SQLite transaction and
+        leaves the dead-letter row untouched.  A successful restore is then
+        eligible for the canonical consumer; a repeated request is a no-op
+        once the live event already exists.
+        """
+        store = self._store
+        method = getattr(store, "replay_transition_outbox_dead_letter", None)
+        if store is None or not callable(method):
+            return False
+        replayed = bool(
+            method(
+                event_id,
+                expected_dead_lettered_at=expected_dead_lettered_at,
+            )
+        )
+        if replayed:
+            self._wake_event.set()
+            # A caller with a registered canonical consumer gets the same
+            # bounded synchronous opportunity as a normal queue mutation.  If
+            # no consumer is registered, the restored row remains durable.
+            self.drain_transition_outbox()
+        return replayed
+
+    def transition_outbox_metrics(
+        self,
+        *,
+        now: float | None = None,
+    ) -> ReconciliationTransitionOutboxMetrics:
+        """Return durable outbox delivery observations when supported."""
+        store = self._store
+        method = getattr(store, "transition_outbox_metrics", None)
+        if store is None or not callable(method):
+            return ReconciliationTransitionOutboxMetrics()
+        return cast(ReconciliationTransitionOutboxMetrics, method(now=now))
+
+    def prune_transition_outbox(
+        self,
+        *,
+        acknowledged_before: float | None = None,
+        dead_letter_before: float | None = None,
+        limit: int = 1000,
+    ) -> ReconciliationTransitionOutboxPruneResult:
+        """Run an explicit bounded retention pass through the persistence store."""
+        store = self._store
+        method = getattr(store, "prune_transition_outbox", None)
+        if store is None or not callable(method):
+            return ReconciliationTransitionOutboxPruneResult()
+        return cast(
+            ReconciliationTransitionOutboxPruneResult,
+            method(
+                acknowledged_before=acknowledged_before,
+                dead_letter_before=dead_letter_before,
+                limit=limit,
+            ),
+        )
+
+    @property
+    def transition_backlog_size(self) -> int:
+        """Return the number of transition deliveries awaiting retry."""
+        with self._lock:
+            return len(self._transition_backlog)
+
+    @property
+    def transition_backlog_overflow_count(self) -> int:
+        """Return the number of hand-off entries lost at the bounded limit."""
+        with self._lock:
+            return self._transition_backlog_overflow_count
+
+    def retry_transition_backlog(self) -> int:
+        """Retry failed transition deliveries once.
+
+        Queue mutations call this implicitly before delivering new events.  A
+        recovery service may call it explicitly after restoring a listener.
+        Failed callbacks remain queued; the durable queue mutation is never
+        rolled back because bookkeeping is advisory.
+        """
+        if self._uses_durable_transition_outbox():
+            delivered = self.drain_transition_outbox()
+            return delivered + self._retry_transition_backlog_once()
+        return self._retry_transition_backlog_once()
+
+    def _retry_transition_backlog_once(self) -> int:
+        """Retry the bounded advisory callback backlog once."""
+        with self._transition_dispatch_lock:
+            with self._lock:
+                if not self._transition_backlog:
+                    return 0
+                backlog = tuple(self._transition_backlog)
+                self._transition_backlog.clear()
+            self._dispatch_backlog_entries(backlog)
+            return len(backlog)
+
+    @property
+    def transition_listener(
+        self,
+    ) -> Callable[[ReconciliationTaskTransition], object] | None:
+        with self._lock:
+            return self._transition_listener
+
+    def _dispatch_transitions(
+        self,
+        transitions: tuple[ReconciliationTaskTransition, ...],
+    ) -> None:
+        """Invoke transition listeners outside the queue lock.
+
+        A callback is advisory bookkeeping: the queue's own durable mutation
+        has already committed.  Failed callbacks are retained in a bounded
+        backlog and retried on the next mutation or explicit recovery pass.
+        """
+        if not transitions:
+            return
+        with self._transition_dispatch_lock:
+            # A previously failed callback gets a chance before the newly
+            # produced event.  This makes recovery progress even when no new
+            # task is generated after the callback comes back online.
+            with self._lock:
+                backlog = tuple(self._transition_backlog)
+                self._transition_backlog.clear()
+            entries = backlog + tuple(
+                _TransitionBacklogEntry(transition)
+                for transition in transitions
+            )
+            self._dispatch_backlog_entries(entries)
+
+    def _listeners_snapshot(
+        self,
+    ) -> tuple[Callable[[ReconciliationTaskTransition], object], ...]:
+        durable_outbox = self._uses_durable_transition_outbox()
+        with self._lock:
+            listeners: list[Callable[[ReconciliationTaskTransition], object]] = []
+            if (
+                not durable_outbox
+                and self._durable_transition_consumer is not None
+            ):
+                listeners.append(self._durable_transition_consumer)
+            if self._transition_listener is not None:
+                listeners.append(self._transition_listener)
+            listeners.extend(self._transition_listeners)
+            return tuple(
+                listener
+                for index, listener in enumerate(listeners)
+                if not any(
+                    _same_listener(listener, prior)
+                    for prior in listeners[:index]
+                )
+            )
+
+    def _durable_transition_consumer_snapshot(
+        self,
+    ) -> Callable[[ReconciliationTaskTransition], object] | None:
+        """Read the one durable consumer without holding it during delivery."""
+        with self._lock:
+            return self._durable_transition_consumer
+
+    @staticmethod
+    def _listener_matches_any(
+        listener: Callable[[ReconciliationTaskTransition], object],
+        candidates: tuple[Callable[[ReconciliationTaskTransition], object], ...],
+    ) -> bool:
+        return any(_same_listener(listener, candidate) for candidate in candidates)
+
+    def _append_transition_backlog(self, entry: _TransitionBacklogEntry) -> None:
+        """Retain a failed delivery while making bounded overflow observable."""
+        with self._lock:
+            # Coalesce repeated notifications for the same task and listener
+            # scope.  Only the latest durable state is needed by an idempotent
+            # bookkeeping consumer.
+            for index, existing in enumerate(self._transition_backlog):
+                if existing.transition.task_id != entry.transition.task_id:
+                    continue
+                old_targets = existing.listeners
+                new_targets = entry.listeners
+                if old_targets is None or new_targets is None:
+                    same_scope = old_targets is None and new_targets is None
+                else:
+                    same_scope = len(old_targets) == len(new_targets) and all(
+                        self._listener_matches_any(listener, new_targets)
+                        for listener in old_targets
+                    )
+                if same_scope:
+                    self._transition_backlog[index] = entry
+                    return
+            if len(self._transition_backlog) >= self._transition_backlog_limit:
+                self._transition_backlog.pop(0)
+                self._transition_backlog_overflow_count += 1
+                _log.error(
+                    "Reconciliation transition backlog overflow; oldest delivery "
+                    "was dropped (task=%s, overflow_count=%d)",
+                    entry.transition.task_id,
+                    self._transition_backlog_overflow_count,
+                )
+            self._transition_backlog.append(entry)
+
+    def _dispatch_backlog_entries(
+        self,
+        entries: tuple[_TransitionBacklogEntry, ...],
+    ) -> None:
+        for entry in entries:
+            listeners = self._listeners_snapshot()
+            if entry.listeners is None:
+                targets = listeners
+            else:
+                targets = tuple(
+                    listener
+                    for listener in listeners
+                    if self._listener_matches_any(listener, entry.listeners)
+                )
+                # A listener may have been replaced after a failure.  Let the
+                # replacement observe the durable event rather than pinning
+                # the entry to a dead callback forever.
+                if not targets and listeners:
+                    targets = listeners
+            if not targets:
+                self._append_transition_backlog(entry)
+                continue
+            failed: list[Callable[[ReconciliationTaskTransition], object]] = []
+            for listener in targets:
+                try:
+                    self._deliver_transition_to_listener(
+                        listener,
+                        entry.transition,
+                    )
+                except Exception:
+                    failed.append(listener)
+                    _log.exception(
+                        "Reconciliation task transition listener failed for %s",
+                        entry.transition.task_id,
+                    )
+            if failed:
+                self._append_transition_backlog(
+                    _TransitionBacklogEntry(entry.transition, tuple(failed))
+                )
+
+    @staticmethod
+    def _transition(
+        previous: ReconciliationTask | None,
+        current: ReconciliationTask | None,
+        reason: str,
+        *,
+        operation_ids: tuple[str, ...] | None = None,
+    ) -> ReconciliationTaskTransition:
+        ids = operation_ids
+        if ids is None:
+            task = current or previous
+            ids = () if task is None else task.operation_ids
+        return ReconciliationTaskTransition(
+            previous=previous,
+            current=current,
+            reason=reason,
+            operation_ids=tuple(ids),
+        )
+
 
     def __len__(self) -> int:
         with self._lock:
@@ -625,6 +1686,7 @@ class ReconciliationQueue:
             ]
             return min(due) if due else None
 
+    @_notify_task_transitions("enqueue")
     def enqueue_or_merge(
         self,
         *,
@@ -676,6 +1738,7 @@ class ReconciliationQueue:
                     raise ReconciliationQueuePersistenceError(
                         "Cannot atomically enqueue reconciliation task in persistence store"
                     ) from exc
+                self._remember_transition_metadata(evicted=tuple(result.evicted))
                 self._condition.notify_all()
                 return result.task
         with self._lock:
@@ -703,9 +1766,11 @@ class ReconciliationQueue:
                 self._persist_and_notify_unlocked()
                 return merged
 
+            evicted: list[ReconciliationTask] = []
             if existing is not None:
                 del self._tasks[key]
-            self._ensure_capacity_unlocked()
+                evicted.append(existing)
+            evicted.extend(self._ensure_capacity_unlocked())
             task = ReconciliationTask(
                 task_id=f"recon-{uuid4().hex}",
                 library_root=self.library_root,
@@ -723,8 +1788,10 @@ class ReconciliationQueue:
             )
             self._tasks[key] = task
             self._persist_and_notify_unlocked()
+            self._remember_transition_metadata(evicted=tuple(evicted))
             return task
 
+    @_notify_task_transitions("claim")
     def claim_next(
         self,
         *,
@@ -754,6 +1821,7 @@ class ReconciliationQueue:
                     ) from exc
                 if result.claimed is not None:
                     self._condition.notify_all()
+                self._remember_transition_metadata(recovered=tuple(result.recovered))
                 return result.claimed
         with self._lock:
             changed = self._recover_expired_running_unlocked(timestamp)
@@ -766,6 +1834,7 @@ class ReconciliationQueue:
             if not candidates:
                 if changed:
                     self._persist_and_notify_unlocked()
+                    self._remember_transition_metadata(recovered=tuple(changed))
                 return None
             current = min(candidates, key=lambda task: (task.next_attempt_at, task.created_at, task.task_id))
             claimed = replace(
@@ -778,8 +1847,10 @@ class ReconciliationQueue:
             )
             self._tasks[current.repair_key] = claimed
             self._persist_and_notify_unlocked()
+            self._remember_transition_metadata(recovered=tuple(changed))
             return claimed
 
+    @_serialize_transition_mutation
     def renew_lease(
         self,
         task_id: str,
@@ -848,6 +1919,7 @@ class ReconciliationQueue:
             self._persist_and_notify_unlocked()
             return renewed
 
+    @_notify_task_transitions("succeeded")
     def mark_succeeded(
         self,
         task_id: str,
@@ -915,6 +1987,7 @@ class ReconciliationQueue:
             self._persist_and_notify_unlocked()
             return completed
 
+    @_notify_task_transitions("retryable")
     def mark_retryable(
         self,
         task_id: str,
@@ -1008,6 +2081,7 @@ class ReconciliationQueue:
             self._persist_and_notify_unlocked()
             return retryable
 
+    @_notify_task_transitions("terminal")
     def mark_terminal(
         self,
         task_id: str,
@@ -1081,6 +2155,7 @@ class ReconciliationQueue:
             self._persist_and_notify_unlocked()
             return terminal
 
+    @_notify_task_transitions("cancelled")
     def cancel(
         self,
         task_id: str,
@@ -1142,6 +2217,7 @@ class ReconciliationQueue:
             self._persist_and_notify_unlocked()
             return cancelled
 
+    @_notify_task_transitions("lease_expired")
     def recover_expired_running(self, *, now: float | None = None) -> tuple[ReconciliationTask, ...]:
         """Make tasks whose worker lease expired eligible for another attempt."""
         timestamp = self._now(now)
@@ -1200,9 +2276,9 @@ class ReconciliationQueue:
             recovered.append(next_task)
         return recovered
 
-    def _ensure_capacity_unlocked(self) -> None:
+    def _ensure_capacity_unlocked(self) -> tuple[ReconciliationTask, ...]:
         if len(self._tasks) < self.max_tasks:
-            return
+            return ()
         evictable = [task for task in self._tasks.values() if task.state in _FINISHED_STATES]
         if not evictable:
             raise ReconciliationQueueFull(
@@ -1210,6 +2286,7 @@ class ReconciliationQueue:
             )
         victim = min(evictable, key=lambda task: (task.updated_at, task.created_at, task.task_id))
         del self._tasks[victim.repair_key]
+        return (victim,)
 
     def _require(self, task_id: str) -> ReconciliationTask:
         task = self.get(task_id)

@@ -473,6 +473,18 @@ class ApplicationBootstrap:
                 if not reject and (cached is None or cached.session is not session):
                     if reconciliation_service is not None:
                         reconciliation_service.start()
+                    # Give startup import recovery a small, bounded window to
+                    # receive the worker's durable ACK.  If the rescan is
+                    # slow or unavailable, the manifest remains
+                    # ``recovery_pending`` and the worker continues
+                    # asynchronously; completion is never inferred from
+                    # enqueue acceptance alone.
+                    startup_recovery = getattr(
+                        services, "import_manifest_recovery", None
+                    )
+                    wait_for_ack = getattr(startup_recovery, "wait_for_ack", None)
+                    if callable(wait_for_ack):
+                        wait_for_ack(timeout=2.0)
                     if (
                         not self.library_service.owns_live_session(session)
                         or session.is_closed
@@ -661,6 +673,7 @@ class ApplicationBootstrap:
                 asset_index_service=asset_index_service,
                 reconciliation_queue=reconciliation_queue,
                 projection_repair_service=projection_repair_service,
+                import_manifest_recovery=import_manifest_recovery,
                 # A runtime worker may recover from a bounded burst of
                 # unexpected infrastructure failures, but it must still
                 # become visibly faulted instead of retrying forever.
@@ -801,7 +814,11 @@ class ApplicationBootstrap:
         with self._runtime_lock:
             runtime = self._runtimes.get(id(session))
         if runtime is not None and runtime.session is session:
-            runtime.mark_closing()
+            if not runtime.mark_closing():
+                raise TimeoutError(
+                    "Runtime event callbacks are still in flight; "
+                    "retry session teardown after they drain"
+                )
             runtime.close_adapters()
 
     def _cleanup_session(self, session: LibrarySession) -> None:

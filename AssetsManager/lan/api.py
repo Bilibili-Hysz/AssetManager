@@ -89,6 +89,7 @@ from AssetsManager.lan.routes.image import handle_image
 from AssetsManager.lan.routes.quicksearch import handle_quicksearch
 from AssetsManager.lan.routes.sequence import handle_sequence_neighbors
 from AssetsManager.lan.routes.system import handle_revision
+from AssetsManager.lan.mcp_server import handle_mcp_post
 
 _log = logging.getLogger(__name__)
 
@@ -248,6 +249,11 @@ def setup_routes(app: web.Application):
     # declare the browse capability, writes reuse the write_tags capability
     # (user metadata writes) — no new capability bit. Rate limits stay on
     # the general tier, matching the frozen golden policy contract.
+    # Read-only MCP surface (H2-d2): registered always, answers 404 while
+    # lan_mcp_token is empty (fail-closed, invisible by default).  Bearer
+    # auth lives in the handler — the LAN session layer sees it as public.
+    _add(app, "POST", "/mcp", handle_mcp_post,
+         policy=RoutePolicy(auth="public", capabilities=_BROWSE))
     _add(app, "GET", "/api/collections", handle_collections, policy=RoutePolicy(capabilities=_BROWSE))
     _add(app, "POST", "/api/collections", handle_create_collection, policy=RoutePolicy(capabilities=_WRITE_TAGS))
     _add(app, "PATCH", "/api/collections/{id}", handle_update_collection, policy=RoutePolicy(capabilities=_WRITE_TAGS))

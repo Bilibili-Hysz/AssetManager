@@ -1002,5 +1002,12 @@
   "settings.relink_done": "{count} 件を再リンクしました。",
   "settings.relink_truncated": "ディレクトリ予算を使い切ったため、結果が不完全な可能性があります。",
   "settings.relink_capped": "先頭 {limit} 行のみ表示しています。",
-  "filelist.dedup_skipped": "スキップ：同じ削除バッチを直前に実行しました。"
+  "filelist.dedup_skipped": "スキップ：同じ削除バッチを直前に実行しました。",
+  "sharing.configuration.mcp": "読み取り専用エージェント接口（MCP）",
+  "sharing.configuration.mcp_desc": "LAN サーバーに読み取り専用 MCP エンドポイントを公開し、外部 AI エージェントからの照会を可能にします。既定はオフで、トークン生成後に有効化されます。",
+  "sharing.mcp.status_armed": "MCP 有効 — トークン接頭辞 {prefix}…",
+  "sharing.mcp.status_disabled": "MCP 無効（トークン未発行）",
+  "sharing.mcp.generate": "トークンを生成",
+  "sharing.mcp.revoke": "トークンを失効",
+  "sharing.mcp.helper": "読み取り専用：エージェントは検索・メタデータ・コレクション・アクティビティを閲覧できます。書き込みは公開されません。"
 }

@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from pathlib import Path
 import time
 from sqlite3 import Connection
 from typing import Callable, Iterable
@@ -48,11 +49,38 @@ def plan_hash(command_id: str, targets: Iterable[str], **params) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def target_identity(path: str | Path) -> dict[str, int | bool]:
+    """Return a best-effort identity snapshot for a destructive target.
+
+    A path can be reused for a different file after a successful operation.
+    Callers that need persisted deduplication should include this snapshot in
+    the plan parameters so a later object at the same path receives a new
+    fingerprint.  Missing/unstatable targets are represented explicitly and
+    never make plan construction itself fail.
+    """
+    try:
+        stat = Path(path).stat()
+    except (OSError, RuntimeError, ValueError):
+        return {"exists": False}
+    return {
+        "exists": True,
+        "device": int(getattr(stat, "st_dev", 0)),
+        "file_id": int(getattr(stat, "st_ino", 0)),
+        "size": int(stat.st_size),
+        "mtime_ns": int(stat.st_mtime_ns),
+    }
+
+
 class CommandExecutionStore:
     """Dedup + journal rows for batch command executions (T8 minimal)."""
 
     def __init__(self, connection_provider: Callable[[], Connection]):
         self._connection_provider = connection_provider
+
+    @staticmethod
+    def plan_hash(command_id: str, targets: Iterable[str], **params) -> str:
+        """Compatibility facade for callers that keep the store object only."""
+        return plan_hash(command_id, targets, **params)
 
     def begin(self, plan_hash_value: str, command_id: str, targets_json: str) -> bool:
         """Open an ``executing`` row; return False when deduped.
@@ -66,32 +94,41 @@ class CommandExecutionStore:
         try:
             conn = self._connection_provider()
             with db_write_lock(conn):
-                existing = conn.execute(
-                    "SELECT status, executed_at FROM command_executions "
-                    "WHERE plan_hash = ?",
-                    (plan_hash_value,),
-                ).fetchone()
-                if existing is not None:
-                    status, executed_at = existing[0], existing[1]
-                    if status == "succeeded":
-                        # Same plan already executed — dedup.
-                        return False
-                    if status == "executing" and (
-                        time.time() - executed_at
-                    ) < _EXECUTING_TTL_SECONDS:
-                        # A run is in flight (double-submit race).
-                        return False
-                    # 'failed' rows and stale 'executing' rows (crash orphans
-                    # past the TTL) fall through and are taken over.
-                conn.execute(
+                outer_transaction = conn.in_transaction
+                # Claim in one SQLite statement.  A preceding SELECT leaves a
+                # cross-process race in which two submitters can both observe
+                # an absent row and then both proceed.  The conditional
+                # UPSERT is evaluated while SQLite holds its write lock, so
+                # only one fresh/stale claimant receives a RETURNING row.
+                now = time.time()
+                claimed = conn.execute(
                     "INSERT INTO command_executions (plan_hash, command_id, "
-                    "targets_json, status, executed_at) "
-                    "VALUES (?, ?, ?, 'executing', ?) "
-                    "ON CONFLICT(plan_hash) DO UPDATE SET status = 'executing'",
-                    (plan_hash_value, command_id, targets_json, time.time()),
-                )
+                    "targets_json, status, executed_at, result_summary) "
+                    "VALUES (?, ?, ?, 'executing', ?, '') "
+                    "ON CONFLICT(plan_hash) DO UPDATE SET "
+                    "command_id = excluded.command_id, "
+                    "targets_json = excluded.targets_json, "
+                    "status = 'executing', "
+                    "executed_at = excluded.executed_at, "
+                    "result_summary = '' "
+                    "WHERE command_executions.status <> 'succeeded' "
+                    "AND (command_executions.status <> 'executing' "
+                    "OR (? - command_executions.executed_at) >= ?) "
+                    "RETURNING plan_hash",
+                    (
+                        plan_hash_value,
+                        command_id,
+                        targets_json,
+                        now,
+                        now,
+                        _EXECUTING_TTL_SECONDS,
+                    ),
+                ).fetchone() is not None
+                if not claimed:
+                    return False
                 self._trim(conn)
-                conn.commit()
+                if not outer_transaction:
+                    conn.commit()
             return True
         except Exception:
             _log.exception(
@@ -103,12 +140,14 @@ class CommandExecutionStore:
         try:
             conn = self._connection_provider()
             with db_write_lock(conn):
+                outer_transaction = conn.in_transaction
                 conn.execute(
                     "UPDATE command_executions SET status = 'succeeded', "
                     "result_summary = ? WHERE plan_hash = ?",
                     (result_summary, plan_hash_value),
                 )
-                conn.commit()
+                if not outer_transaction:
+                    conn.commit()
         except Exception:
             _log.exception("command execution store update failed")
 
@@ -117,11 +156,13 @@ class CommandExecutionStore:
         try:
             conn = self._connection_provider()
             with db_write_lock(conn):
+                outer_transaction = conn.in_transaction
                 conn.execute(
                     "DELETE FROM command_executions WHERE plan_hash = ?",
                     (plan_hash_value,),
                 )
-                conn.commit()
+                if not outer_transaction:
+                    conn.commit()
         except Exception:
             _log.exception("command execution store clear failed")
 

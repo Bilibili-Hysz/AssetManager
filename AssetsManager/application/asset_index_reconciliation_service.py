@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from sqlite3 import OperationalError
 from math import isfinite
-from time import monotonic, sleep
+from time import monotonic, sleep, time
 import threading
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, Protocol
 
 from AssetsManager.application.asset_index_service import (
     AssetIndexPublishResult,
@@ -30,6 +30,12 @@ if TYPE_CHECKING:
 
 class ReconciliationWorkerStopTimeout(RuntimeError):
     """Raised when a worker does not stop within its bounded shutdown window."""
+
+
+class _SweeperStopEvent(Protocol):
+    """Minimum stop signal used by the periodic sweeper."""
+
+    def wait(self, timeout: float | None = None) -> bool: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,7 +74,9 @@ class AssetIndexReconciliationService:
         asset_index_service: AssetIndexService,
         reconciliation_queue: ReconciliationQueue,
         projection_repair_service=None,
+        import_manifest_recovery=None,
         clock: Callable[[], float] = monotonic,
+        wall_clock: Callable[[], float] = time,
         max_consecutive_errors: int = 3,
         max_worker_restarts: int = 0,
         worker_restart_backoff: float = 1.0,
@@ -77,11 +85,19 @@ class AssetIndexReconciliationService:
         stop_timeout: float = 30.0,
         worker_lease_seconds: float = 30.0,
         worker_max_operation_age: float = 300.0,
+        transition_outbox_prune_interval: float = 3600.0,
+        transition_outbox_ack_retention_seconds: float = 7 * 24 * 60 * 60,
+        transition_outbox_dead_letter_retention_seconds: float = 30 * 24 * 60 * 60,
+        transition_outbox_prune_limit: int = 1000,
     ) -> None:
         self.session = session
         self.asset_index_service = asset_index_service
         self.reconciliation_queue = reconciliation_queue
         self.projection_repair_service = projection_repair_service
+        # Optional duck-typed callback.  Keeping this dependency inverted lets
+        # the queue worker acknowledge import manifests without importing the
+        # manifest store (and therefore without creating an application-cycle).
+        self.import_manifest_recovery = import_manifest_recovery
         if (
             not isinstance(max_consecutive_errors, int)
             or isinstance(max_consecutive_errors, bool)
@@ -144,7 +160,39 @@ class AssetIndexReconciliationService:
             or worker_max_operation_age <= 0
         ):
             raise ValueError("worker_max_operation_age must be finite and positive")
+        if (
+            not isinstance(transition_outbox_prune_interval, (int, float))
+            or isinstance(transition_outbox_prune_interval, bool)
+            or not isfinite(float(transition_outbox_prune_interval))
+            or transition_outbox_prune_interval <= 0
+        ):
+            raise ValueError("transition_outbox_prune_interval must be finite and positive")
+        if (
+            not isinstance(transition_outbox_ack_retention_seconds, (int, float))
+            or isinstance(transition_outbox_ack_retention_seconds, bool)
+            or not isfinite(float(transition_outbox_ack_retention_seconds))
+            or transition_outbox_ack_retention_seconds <= 0
+        ):
+            raise ValueError(
+                "transition_outbox_ack_retention_seconds must be finite and positive"
+            )
+        if (
+            not isinstance(transition_outbox_dead_letter_retention_seconds, (int, float))
+            or isinstance(transition_outbox_dead_letter_retention_seconds, bool)
+            or not isfinite(float(transition_outbox_dead_letter_retention_seconds))
+            or transition_outbox_dead_letter_retention_seconds <= 0
+        ):
+            raise ValueError(
+                "transition_outbox_dead_letter_retention_seconds must be finite and positive"
+            )
+        if (
+            not isinstance(transition_outbox_prune_limit, int)
+            or isinstance(transition_outbox_prune_limit, bool)
+            or transition_outbox_prune_limit < 1
+        ):
+            raise ValueError("transition_outbox_prune_limit must be a positive integer")
         self._clock = clock
+        self._wall_clock = wall_clock
         self._max_consecutive_errors = max_consecutive_errors
         self._max_worker_restarts = max_worker_restarts
         self._worker_restart_backoff = worker_restart_backoff
@@ -153,6 +201,16 @@ class AssetIndexReconciliationService:
         self._stop_timeout = stop_timeout
         self._worker_lease_seconds = float(worker_lease_seconds)
         self._worker_max_operation_age = float(worker_max_operation_age)
+        self._transition_outbox_prune_interval = float(
+            transition_outbox_prune_interval
+        )
+        self._transition_outbox_ack_retention_seconds = float(
+            transition_outbox_ack_retention_seconds
+        )
+        self._transition_outbox_dead_letter_retention_seconds = float(
+            transition_outbox_dead_letter_retention_seconds
+        )
+        self._transition_outbox_prune_limit = transition_outbox_prune_limit
         self._lifecycle_lock = threading.RLock()
         self._stop_event: threading.Event | None = None
         self._worker: threading.Thread | None = None
@@ -276,8 +334,8 @@ class AssetIndexReconciliationService:
                 self._worker = None
                 self._stop_event = None
 
-    def _run_sweeper(self, stop_event: threading.Event) -> None:
-        """Periodically reclaim leases whose worker has stopped renewing.
+    def _run_sweeper(self, stop_event: _SweeperStopEvent) -> None:
+        """Periodically reclaim leases and prune expired outbox history.
 
         Heartbeats are capped (see :meth:`_lease_heartbeat`), so a stuck
         worker's lease expires ~lease_seconds after its renewal budget runs
@@ -286,7 +344,52 @@ class AssetIndexReconciliationService:
         flipped back to retryable within one sweep interval.
         """
         sweep_interval = 10.0
+        next_outbox_prune_at = 0.0
         while not stop_event.wait(sweep_interval):
+            try:
+                retry_transitions = getattr(
+                    self.reconciliation_queue,
+                    "retry_transition_backlog",
+                    None,
+                )
+                if callable(retry_transitions):
+                    # v44 transition delivery is independent from whether a
+                    # new reconciliation task becomes due.  Drain it from the
+                    # existing lifecycle-owned sweeper so a failed listener
+                    # replays while the library is otherwise idle.
+                    retry_transitions()
+            except BaseException:
+                # Delivery is at-least-once and the outbox retains its head
+                # event; a transient SQLite/listener failure must not take the
+                # worker supervisor down.
+                pass
+            try:
+                now_wallclock = self._wall_clock()
+                if now_wallclock >= next_outbox_prune_at:
+                    prune = getattr(
+                        self.reconciliation_queue,
+                        "prune_transition_outbox",
+                        None,
+                    )
+                    if callable(prune):
+                        prune(
+                            acknowledged_before=(
+                                now_wallclock
+                                - self._transition_outbox_ack_retention_seconds
+                            ),
+                            dead_letter_before=(
+                                now_wallclock
+                                - self._transition_outbox_dead_letter_retention_seconds
+                            ),
+                            limit=self._transition_outbox_prune_limit,
+                        )
+                    next_outbox_prune_at = (
+                        now_wallclock + self._transition_outbox_prune_interval
+                    )
+            except BaseException:
+                # Prune is strictly retention-only.  Its SQLite failure must
+                # leave pending rows untouched and retry on the next sweep.
+                pass
             try:
                 self.reconciliation_queue.recover_expired_running(
                     now=self._clock()
@@ -417,6 +520,8 @@ class AssetIndexReconciliationService:
         )
         if task is None:
             return None
+
+        self._mark_import_recovery_running(task)
 
         operation_started_at = self._clock()
         if (
@@ -779,6 +884,7 @@ class AssetIndexReconciliationService:
             if stale is not None:
                 return stale
             raise
+        self._acknowledge_import_recovery(completed)
         return ReconciliationAttemptResult(task=completed, state=completed.state)
 
     def _apply_publish_result(
@@ -807,6 +913,7 @@ class AssetIndexReconciliationService:
                         error=stale.error,
                     )
                 raise
+            self._acknowledge_import_recovery(completed)
             return ReconciliationAttemptResult(
                 task=completed,
                 state=completed.state,
@@ -859,6 +966,53 @@ class AssetIndexReconciliationService:
             error_type=next_task.last_error_type,
             error=next_task.last_error,
         )
+
+    def _acknowledge_import_recovery(self, task: ReconciliationTask) -> None:
+        """Notify the manifest store only after queue success is durable."""
+        if self._durable_transition_outbox_owns_manifest_recovery():
+            # The queue's post-commit outbox dispatcher invokes the manifest
+            # listener and receives its explicit acknowledgement disposition.
+            # Bypassing it here could complete a manifest while the durable
+            # transition remains pending.
+            return
+        callback = self.import_manifest_recovery
+        acknowledge = getattr(callback, "acknowledge_task", None)
+        if not callable(acknowledge):
+            return
+        try:
+            acknowledge(task)
+        except Exception:
+            # Queue success is already committed; an ACK write can safely be
+            # retried on the next startup/recovery pass.  Never turn a durable
+            # queue success into a worker failure solely because bookkeeping
+            # notification was temporarily unavailable.
+            pass
+
+    def _mark_import_recovery_running(self, task: ReconciliationTask) -> None:
+        if self._durable_transition_outbox_owns_manifest_recovery():
+            return
+        callback = self.import_manifest_recovery
+        mark_running = getattr(callback, "mark_task_running", None)
+        if not callable(mark_running):
+            return
+        try:
+            mark_running(task)
+        except Exception:
+            # Visibility is advisory; the queue lease/state remains the
+            # authoritative owner and can be reconciled at the next startup.
+            pass
+
+    def _durable_transition_outbox_owns_manifest_recovery(self) -> bool:
+        """Whether queue transitions, rather than worker callbacks, own ACKs."""
+        enabled = getattr(
+            self.reconciliation_queue,
+            "durable_transition_outbox_enabled",
+            False,
+        )
+        try:
+            return bool(enabled() if callable(enabled) else enabled)
+        except Exception:
+            return False
 
     def _retry(
         self,

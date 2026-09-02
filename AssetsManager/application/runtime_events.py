@@ -32,7 +32,8 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 #: Maximum time ``_RouterSubscription.close`` waits for in-flight callbacks
-#: running on other threads before giving up and completing the close.
+#: running on other threads before giving up its local wait.  The router-level
+#: drain still remains pending until those callbacks actually return.
 _SUBSCRIPTION_DRAIN_TIMEOUT = 2.0
 # Router-level close drain bound: close() must never hang forever on a
 # stalled in-flight callback (audit 2026-08-28: the two waits in close()
@@ -145,6 +146,17 @@ class RuntimeEventRouter:
     def closed(self) -> bool:
         with self._lock:
             return self._close_state != "accepting"
+
+    @property
+    def drained(self) -> bool:
+        """Whether all callbacks have returned and cleanup may proceed.
+
+        ``closed`` only means that new events/subscribers are rejected.  A
+        router can be closed while an already-dispatched callback is still
+        using the runtime, so teardown must check this stronger predicate.
+        """
+        with self._lock:
+            return self._close_state == "drained"
 
     @staticmethod
     def domains_for(event_type: type) -> tuple[ProjectionDomain, ...]:
@@ -309,30 +321,39 @@ class RuntimeEventRouter:
                 del subscription._active_by_thread[thread_id]
             self._drain_condition.notify_all()
 
-    def close(self) -> None:
+    def close(self) -> bool:
+        """Stop accepting events and drain callbacks within a bounded wait.
+
+        ``True`` means the router reached ``drained``.  ``False`` means the
+        caller is itself an in-flight callback or the bounded wait expired;
+        the router deliberately remains in ``closing`` so a later callback
+        release (or an explicit retry) can complete deferred cleanup.  A
+        timeout must never be represented as ``drained`` because runtime
+        resources may still be in use.
+        """
         with self._lock:
             current_thread = threading.get_ident()
             own_callbacks = self._active_by_thread.get(current_thread, 0)
             if self._close_state == "drained":
-                return
+                return True
             if self._close_state == "closing":
                 if own_callbacks:
-                    return
+                    return False
                 # Bounded wait for the owning close to finish draining; an
-                # unbounded wait here deadlocks the second closer when the
-                # owner's drain stalls (mirrors _SUBSCRIPTION_DRAIN_TIMEOUT).
+                # unbounded wait here deadlocks a second closer when the
+                # owner's drain stalls.
                 deadline = time.monotonic() + _CLOSE_DRAIN_TIMEOUT
                 while self._close_state != "drained":
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
                         _log.warning(
                             "RuntimeEventRouter close drain timed out after %.1fs "
-                            "while another close is in progress; abandoning wait",
+                            "while another close is in progress; keeping pending",
                             _CLOSE_DRAIN_TIMEOUT,
                         )
-                        return
+                        return False
                     self._drain_condition.wait(timeout=remaining)
-                return
+                return True
 
             self._close_state = "closing"
             self._accepting = False
@@ -354,12 +375,20 @@ class RuntimeEventRouter:
                 if remaining <= 0:
                     _log.warning(
                         "RuntimeEventRouter close drain timed out after %.1fs with "
-                        "%d in-flight callback(s); abandoning drain",
+                        "%d in-flight callback(s); keeping pending",
                         _CLOSE_DRAIN_TIMEOUT,
                         self._inflight - own_callbacks,
                     )
-                    break
+                    # Keep ``closing`` until the final callback releases.  A
+                    # caller must not proceed to tear down runtime services
+                    # while an event callback can still touch them.
+                    return False
                 self._drain_condition.wait(timeout=remaining)
-            if own_callbacks == 0:
+            if own_callbacks == 0 and self._inflight == 0:
                 self._close_state = "drained"
                 self._drain_condition.notify_all()
+                return True
+            # The only remaining callback(s) belong to this close caller.
+            # ``_on_event`` will transition to drained and run deferred
+            # actions after the callback returns.
+            return False

@@ -27,6 +27,11 @@ SHARE_SAFETY_ACK_VERSION_KEY = "lan_share_safety_ack_version"
 TRUSTED_NETWORK_CONFIRMED_KEY = "lan_trusted_network_confirmed"
 SHARE_LAST_SUCCESSFUL_BIND_KEY = "lan_share_last_successful_bind"
 SHARE_LAST_SUCCESSFUL_AUTH_KEY = "lan_share_last_successful_auth"
+# H2-d: bearer token for the read-only MCP surface mounted on the LAN app.
+# Empty (the default) means MCP is disabled — the endpoint must stay
+# completely invisible. The value is an opaque token, never a secret hash:
+# the LAN server needs the raw value for constant-time comparison.
+LAN_MCP_TOKEN_KEY = "lan_mcp_token"
 LIBRARY_WATCHER_INTERVAL_KEY = "library_watcher_interval_seconds"
 THUMBNAIL_CACHE_MAX_BYTES_KEY = "thumbnail_cache_max_bytes"
 AI_TAGGING_ENABLED_KEY = "ai_tagging_enabled"
@@ -84,6 +89,9 @@ _VALIDATORS: dict[str, Callable] = {
         and isinstance(v["mode"], str)
         and bool(v["mode"])
     ),
+    # MCP bearer token (H2-d): any string is accepted (empty = disabled);
+    # only a non-empty str arms the surface, never a non-str truthy value.
+    LAN_MCP_TOKEN_KEY: lambda v: isinstance(v, str),
 }
 
 
@@ -92,6 +100,17 @@ def _validate_setting(key: str, value) -> None:
     validator = _VALIDATORS.get(key)
     if validator and not validator(value):
         raise ValueError(f"Invalid value for setting '{key}': {value!r}")
+
+
+def generate_mcp_token() -> str:
+    """Generate a fresh MCP bearer token: 32 random bytes, base64url-encoded.
+
+    Used by the sharing settings dialog (and tests) when the user enables the
+    read-only MCP surface. 43 URL-safe characters, no padding.
+    """
+    import secrets
+
+    return secrets.token_urlsafe(32)
 
 
 
@@ -381,6 +400,23 @@ class AppSettings:
     def set_ai_tagging_force_existing(self, force_existing: bool) -> None:
         # No bool() coercion — same raw-value rule as the enabled setter.
         self.set(AI_TAGGING_FORCE_EXISTING_KEY, force_existing)
+
+    # ── MCP read-only surface (H2-d) — fail-closed reads ──────────
+
+    def get_lan_mcp_token(self) -> str:
+        """Return the MCP bearer token; missing/malformed means disabled.
+
+        The fail-closed shape mirrors :meth:`get_ai_tagging_enabled`: any
+        value that is not a non-empty string disables the surface, so a
+        corrupted profile can never arm the endpoint by accident.
+        """
+        value = self.get(LAN_MCP_TOKEN_KEY, "")
+        return value if isinstance(value, str) else ""
+
+    def set_lan_mcp_token(self, token: str) -> None:
+        """Persist the MCP bearer token (empty string revokes the surface)."""
+        # No str() coercion: a truthy non-str must never become a token.
+        self.set(LAN_MCP_TOKEN_KEY, token if isinstance(token, str) else "")
 
     def set_share_safety_ack_version(self, version: int) -> None:
         self.set(SHARE_SAFETY_ACK_VERSION_KEY, version)

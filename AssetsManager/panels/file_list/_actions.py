@@ -10,7 +10,10 @@ from PySide6.QtCore import Qt, QUrl, QMimeData, QFileInfo, QRunnable
 from PySide6.QtWidgets import (
     QApplication, QInputDialog, QMessageBox, QWidget,
 )
-from AssetsManager.application.command_executions import CommandExecutionStore
+from AssetsManager.application.command_executions import (
+    plan_hash as build_command_plan_hash,
+    target_identity,
+)
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.panels._ai_tag_common import ai_tag_error_text, ai_tagging_enabled
@@ -483,8 +486,21 @@ class ActionsMixin:
         store = getattr(scoped, "command_executions", None)
         plan_hash = None
         if store is not None:
-            plan_hash = CommandExecutionStore.plan_hash(
-                "file.delete_permanent", path_list)
+            # Include a filesystem identity snapshot so a new file that later
+            # reuses the same path cannot be mistaken for the old successful
+            # delete retained in the bounded journal.
+            target_snapshots = [
+                {
+                    "path": path,
+                    **target_identity(path),
+                }
+                for path in sorted(path_list)
+            ]
+            plan_hash = build_command_plan_hash(
+                "file.delete_permanent",
+                path_list,
+                target_snapshots=target_snapshots,
+            )
             if not store.begin(
                 plan_hash, "file.delete_permanent", json.dumps(path_list)
             ):
@@ -495,52 +511,83 @@ class ActionsMixin:
                 return
 
         def _do_perm_delete():
-            with self._session_operation(session):
-                backup_failures: list[tuple[str, str]] = []
-                entries = []
-                for path in path_list:
-                    entry = undo_service.prepare_delete(path)
-                    if entry is None:
-                        # prepare_delete already logged the concrete reason;
-                        # collect it so the completion handler can tell the
-                        # user this deletion will not be undoable instead of
-                        # silently dropping the promised undo history.
-                        reason = getattr(undo_service, "last_backup_error", None)
-                        reason = reason if isinstance(reason, str) else ""
-                        backup_failures.append((Path(path).name, reason))
-                        _log.warning(
-                            "Delete backup failed for %s; deletion will not "
-                            "be undoable: %s", path, reason,
-                        )
-                    entries.append(entry)
-                backup_failure_holder.append(tuple(backup_failures))
-                try:
+            # Keep the journal row recoverable for every failure path,
+            # including a backup/preparation exception that occurs before the
+            # file-operation service is invoked.  ``result.errors`` is a
+            # normal partial outcome, so it must not be recorded as success.
+            entries = []
+            plan_finalized = False
+            try:
+                with self._session_operation(session):
+                    backup_failures: list[tuple[str, str]] = []
+                    for path in path_list:
+                        entry = undo_service.prepare_delete(path)
+                        entries.append(entry)
+                        if entry is None:
+                            # prepare_delete already logged the concrete
+                            # reason; surface it in the completion feedback.
+                            reason = getattr(undo_service, "last_backup_error", None)
+                            reason = reason if isinstance(reason, str) else ""
+                            backup_failures.append((Path(path).name, reason))
+                            _log.warning(
+                                "Delete backup failed for %s; deletion will not "
+                                "be undoable: %s", path, reason,
+                            )
+                    backup_failure_holder.append(tuple(backup_failures))
                     result = service.delete_permanent(path_list, library_root=lib_root)
-                except Exception:
-                    for entry in entries:
-                        undo_service.discard_delete(entry)
+                    changed_paths = {
+                        Path(path).resolve() for path in result.changed_paths
+                    }
+                    committed_entries = []
+                    for path, entry in zip(path_list, entries, strict=True):
+                        if Path(path).resolve() in changed_paths:
+                            if entry is not None:
+                                committed_entries.append(entry)
+                        elif entry is not None:
+                            undo_service.discard_delete(entry)
+                    # The committed children are wrapped into ONE batch entry
+                    # so a 50-file delete occupies a single undo slot and one
+                    # Ctrl+Z restores the whole batch.  Entries whose backup
+                    # failed are simply absent (not undoable), as before.
+                    undo_service.commit_batch(committed_entries)
                     if store is not None and plan_hash is not None:
-                        store.clear(plan_hash)
-                    raise
-                changed_paths = {Path(path).resolve() for path in result.changed_paths}
-                committed_entries = []
-                for path, entry in zip(path_list, entries, strict=True):
-                    if Path(path).resolve() in changed_paths:
-                        if entry is not None:
-                            committed_entries.append(entry)
-                    else:
-                        undo_service.discard_delete(entry)
-                # The committed children are wrapped into ONE batch entry so
-                # a 50-file delete occupies a single undo slot and one
-                # Ctrl+Z restores the whole batch.  Entries whose backup
-                # failed are simply absent (not undoable), as before.
-                undo_service.commit_batch(committed_entries)
-                if store is not None and plan_hash is not None:
-                    store.mark_succeeded(
-                        plan_hash, result_summary=f"{len(changed_paths)} files")
-            result_holder.append(result)
-            for error in result.errors:
-                _log.error("Permanent delete failed: %s", error)
+                        requested_paths = {
+                            Path(path).resolve() for path in path_list
+                        }
+                        fully_changed = (
+                            not result.errors
+                            and requested_paths <= changed_paths
+                        )
+                        if not fully_changed:
+                            # A partial result must remain retryable; keeping
+                            # a succeeded row would permanently dedup paths
+                            # that failed or were not changed in this attempt.
+                            store.clear(plan_hash)
+                        else:
+                            store.mark_succeeded(
+                                plan_hash, result_summary=f"{len(changed_paths)} files")
+                        plan_finalized = True
+                result_holder.append(result)
+                for error in result.errors:
+                    _log.error("Permanent delete failed: %s", error)
+            except BaseException:
+                # Do not leave an ``executing`` row behind when preparation,
+                # the service, or undo bookkeeping raises.  Discard only
+                # entries that have not been committed; discard_delete is
+                # intentionally tolerant of already-absent entries.
+                for entry in entries:
+                    if entry is not None:
+                        try:
+                            undo_service.discard_delete(entry)
+                        except Exception:
+                            _log.exception("Failed to discard delete backup after error")
+                if (
+                    store is not None
+                    and plan_hash is not None
+                    and not plan_finalized
+                ):
+                    store.clear(plan_hash)
+                raise
 
         def _on_perm_delete_done():
             if not self._is_current_operation_session(session):

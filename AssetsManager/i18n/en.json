@@ -1002,5 +1002,12 @@
   "settings.relink_done": "Relinked {count} pair(s).",
   "settings.relink_truncated": "Directory budget exhausted; results may be incomplete.",
   "settings.relink_capped": "Showing first {limit} rows only.",
-  "filelist.dedup_skipped": "Skipped: this exact delete batch was just executed."
+  "filelist.dedup_skipped": "Skipped: this exact delete batch was just executed.",
+  "sharing.configuration.mcp": "Read-only Agent interface (MCP)",
+  "sharing.configuration.mcp_desc": "Exposes a read-only MCP endpoint on the LAN server for external AI agents. Off by default; generate a token to arm it.",
+  "sharing.mcp.status_armed": "MCP armed — token starts with {prefix}…",
+  "sharing.mcp.status_disabled": "MCP disabled (no token issued)",
+  "sharing.mcp.generate": "Generate token",
+  "sharing.mcp.revoke": "Revoke token",
+  "sharing.mcp.helper": "Read-only: agents can search, read metadata, list collections and view activity. Writes are never exposed."
 }

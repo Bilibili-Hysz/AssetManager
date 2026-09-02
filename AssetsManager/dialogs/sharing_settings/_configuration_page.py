@@ -336,6 +336,25 @@ class ConfigurationPageMixin:
         self._refresh_quota_controls()
         cl.addStretch()
 
+        # Read-only MCP surface (H2-d2): the token is managed immediately
+        # (generate/revoke) rather than through the dirty-tracking apply flow.
+        ml = section("mcp")
+        self._mcp_status = self.make_muted(
+            self._mcp_status_text(self._mcp_token()))
+        self._mcp_status.setWordWrap(True)
+        ml.addWidget(self._mcp_status)
+        mcp_btn_row = QHBoxLayout()
+        self._mcp_generate_btn = self.make_secondary_btn(
+            tr("sharing.mcp.generate"), self._generate_mcp_token)
+        mcp_btn_row.addWidget(self._mcp_generate_btn)
+        self._mcp_revoke_btn = self.make_secondary_btn(
+            tr("sharing.mcp.revoke"), self._revoke_mcp_token)
+        mcp_btn_row.addWidget(self._mcp_revoke_btn)
+        mcp_btn_row.addStretch()
+        ml.addLayout(mcp_btn_row)
+        ml.addWidget(self.make_muted(tr("sharing.mcp.helper")))
+        ml.addStretch()
+
         # Internet access is omitted when the tunnel dependency is unavailable.
         if self._sharing_port.tunnel_is_available():
             tl = section("internet_access")
@@ -424,6 +443,31 @@ class ConfigurationPageMixin:
             signal = getattr(widget, "textChanged", None) or getattr(widget, "valueChanged", None) or getattr(widget, "toggled", None) or getattr(widget, "currentIndexChanged", None)
             if signal is not None:
                 signal.connect(self._update_configuration_summary)
+
+    def _mcp_token(self) -> str:
+        from AssetsManager.core.settings import LAN_MCP_TOKEN_KEY
+
+        return self._settings.get(LAN_MCP_TOKEN_KEY, "") or ""
+
+    def _mcp_status_text(self, token: str) -> str:
+        if token:
+            return tr("sharing.mcp.status_armed").format(prefix=token[:8])
+        return tr("sharing.mcp.status_disabled")
+
+    def _generate_mcp_token(self):
+        from AssetsManager.core.settings import LAN_MCP_TOKEN_KEY, generate_mcp_token
+
+        self._settings.set(LAN_MCP_TOKEN_KEY, generate_mcp_token())
+        self._settings.save()
+        self._mcp_status.setText(
+            self._mcp_status_text(self._mcp_token()))
+
+    def _revoke_mcp_token(self):
+        from AssetsManager.core.settings import LAN_MCP_TOKEN_KEY
+
+        self._settings.set(LAN_MCP_TOKEN_KEY, "")
+        self._settings.save()
+        self._mcp_status.setText(self._mcp_status_text(""))
 
     def _on_quota_toggled(self, _enabled):
         self._refresh_quota_controls()
