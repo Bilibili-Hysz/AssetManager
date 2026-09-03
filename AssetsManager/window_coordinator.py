@@ -73,24 +73,23 @@ class WindowCoordinator:
         font_sm = scaled_pt(int(themes.prop("font_size", "sm")))
         hover = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
         pressed = alpha(t["accent"], 0.72)
-        w._menu_widget.setStyleSheet(f"background: {t['header']};")
+        w._menu_widget.setStyleSheet(f"background: {themes.color('header')};")
         w._menu_bar.setStyleSheet(
-            f"QMenuBar {{ background: transparent; color: {t['heading']}; "
+            f"QMenuBar {{ background: transparent; color: {themes.color('heading')}; "
             f"border: none; padding: {scaled_px(2)}px {spacing_sm}px; font-size: {font_sm}px; }}"
             f"QMenuBar::item {{ padding: {spacing_xs}px {scaled_px(10)}px; border-radius: {radius_sm}px; }}"
             f"QMenuBar::item:selected {{ background: {hover}; }}"
-            f"QMenu {{ background: {t['panel']}; color: {t['heading']}; "
-            f"border: {scaled_px(1)}px solid {t['border']}; border-radius: {radius_md}px; padding: {spacing_xs}px; }}"
+            f"QMenu {{ background: {themes.color('panel')}; color: {themes.color('heading')}; "
+            f"border: {scaled_px(1)}px solid {themes.color('border')}; border-radius: {radius_md}px; padding: {spacing_xs}px; }}"
             f"QMenu::item {{ padding: {scaled_px(5)}px {scaled_px(28)}px {scaled_px(5)}px {scaled_px(12)}px; border-radius: {radius_sm}px; }}"
-            f"QMenu::item:selected {{ background: {t['accent']}; color: {t['on_accent']}; }}"
-            f"QMenu::item:pressed {{ background: {pressed}; color: {t['on_accent']}; }}"
+            f"QMenu::item:selected {{ background: {themes.color('accent')}; color: {themes.color('on_accent')}; }}"
+            f"QMenu::item:pressed {{ background: {pressed}; color: {themes.color('on_accent')}; }}"
         )
 
     def apply_status_bar_theme(self) -> None:
-        t = themes.get()
         w = self._window
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
-        w._share_status_label.setStyleSheet(f"color: {t['muted']}; padding: 0 {scaled_px(8)}px;")
+        w._share_status_label.setStyleSheet(f"color: {themes.color('muted')}; padding: 0 {scaled_px(8)}px;")
         w.statusBar().setStyleSheet(sk.status_bar_css())
 
     def on_theme_refresh(self) -> None:

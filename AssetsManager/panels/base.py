@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QSize
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton
 
 from AssetsManager import i18n
+from AssetsManager.core import themes
 from AssetsManager.core.ui_scale import scaled_px
 
 tr = i18n.tr
@@ -52,7 +53,7 @@ class PanelContent(QWidget):
         lifecycle, and it would apply if a panel is ever shown as a window.
         """
         self._show_anim = QPropertyAnimation(self, b"windowOpacity", self)
-        self._show_anim.setDuration(200)
+        self._show_anim.setDuration(themes.motion("normal"))
         self._show_anim.setStartValue(0.0)
         self._show_anim.setEndValue(1.0)
         self._show_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -116,7 +117,6 @@ class PanelContent(QWidget):
         from PySide6.QtCore import Qt
         from AssetsManager.core import icons, themes
         from AssetsManager.dialogs.generic_settings_dialog import generic_settings_dialog
-        t = themes.get()
         gear = QPushButton()
         gear.setIcon(icons.icon("settings", color="icon_primary", size=scaled_px(16)))
         gear.setIconSize(QSize(scaled_px(16), scaled_px(16)))
@@ -127,7 +127,7 @@ class PanelContent(QWidget):
         gear.setProperty("semanticIcon", "settings")
         themes.set_button_variant(gear, "ghost")
         gear.setStyleSheet(
-            f"color: {t['heading']}; padding: 0; background: transparent; border: none; "
+            f"color: {themes.color('heading')}; padding: 0; background: transparent; border: none; "
             f"border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px;")
         gear.setCursor(Qt.CursorShape.PointingHandCursor)
         gear.clicked.connect(lambda: generic_settings_dialog(self))
@@ -139,14 +139,6 @@ class PanelContent(QWidget):
         """Override to provide a footer bar widget (e.g. action buttons).
         Returns None by default — dock_factory skips footer if None."""
         return None
-
-    # ── Browser context ──────────────────────────────────────────
-
-    def set_browser_context(self, ctx):
-        self._context = ctx
-
-    def get_browser_context(self):
-        return self._context
 
     # ── Clone / State ─────────────────────────────────────────
 
@@ -178,23 +170,132 @@ class PanelContent(QWidget):
             return False
         return self.panel_state().load(self)
 
-    # ── Header ───────────────────────────────────────────────
 
-    def set_title(self, title: str):
-        self.setWindowTitle(title)
+class StandardPanel(PanelContent):
+    """Industrial slot-based panel scaffolding (Design System 2.0).
 
-    # ── Status ───────────────────────────────────────────────
+    Provides standardized vertical layout slots:
+      - Header: Optional panel header / breadcrumbs (for standalone or central canvas)
+      - Toolbar: Standard action and search bar (standard height, token-driven spacing)
+      - Body: Core content area (Tree, Grid, Table, or ScrollArea) with integrated state overlay
+      - Footer: Standard status bar (fixed height metrics.control_height_md = 28px)
+    """
 
-    def set_status_hint(self, text: str):
-        self.status_hint = text
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self._header_widget: QWidget | None = None
+        self._toolbar_widget: QWidget | None = None
+        self._body_widget: QWidget | None = None
+        self._footer_widget: QWidget | None = None
+        self._state_overlay: QWidget | None = None
 
-    # ── Settings ─────────────────────────────────────────────
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_layout.setSpacing(0)
 
-    def refresh_visual_settings(self):
+        self._connect_lifecycle_bus()
+
+    def _connect_lifecycle_bus(self) -> None:
+        """Connect global bus signals for unified theme/lang/scale lifecycle."""
+        from AssetsManager.core.signal_bus import get as bus
+        self._connect_bus(bus().theme_changed, self._handle_theme_changed)
+        self._connect_bus(bus().language_changed, self._handle_language_changed)
+        self._connect_bus(bus().ui_scale_changed, self._handle_ui_scale_changed)
+
+    def _handle_theme_changed(self, name: str = "") -> None:
+        self.on_theme_changed(name)
+
+    def _handle_language_changed(self, lang: str = "") -> None:
+        self.on_language_changed(lang)
+
+    def _handle_ui_scale_changed(self, scale: float = 1.0) -> None:
+        self.on_ui_scale_changed(scale)
+
+    def on_theme_changed(self, name: str) -> None:
         pass
 
-    def apply_app_settings(self, changes=None):
+    def on_language_changed(self, lang: str) -> None:
         pass
 
-    def retranslate_ui(self):
+    def on_ui_scale_changed(self, scale: float) -> None:
         pass
+
+    # ── Standard Slots ──────────────────────────────────────────
+
+    def set_header(self, widget: QWidget) -> None:
+        """Set or replace the header slot."""
+        if self._header_widget is not None:
+            self.content_layout.removeWidget(self._header_widget)
+            self._header_widget.deleteLater()
+        self._header_widget = widget
+        self.content_layout.insertWidget(0, widget)
+
+    def set_toolbar(self, widget: QWidget) -> None:
+        """Set or replace the toolbar slot."""
+        if self._toolbar_widget is not None:
+            self.content_layout.removeWidget(self._toolbar_widget)
+            self._toolbar_widget.deleteLater()
+        self._toolbar_widget = widget
+        idx = 1 if self._header_widget is not None else 0
+        self.content_layout.insertWidget(idx, widget)
+
+    def set_body(self, widget: QWidget, stretch: int = 1) -> None:
+        """Set or replace the main body slot."""
+        if self._body_widget is not None:
+            self.content_layout.removeWidget(self._body_widget)
+            self._body_widget.deleteLater()
+        self._body_widget = widget
+        idx = 0
+        if self._header_widget is not None:
+            idx += 1
+        if self._toolbar_widget is not None:
+            idx += 1
+        self.content_layout.insertWidget(idx, widget, stretch)
+
+    def set_footer(self, widget: QWidget) -> None:
+        """Set or replace the footer slot."""
+        if self._footer_widget is not None:
+            self.content_layout.removeWidget(self._footer_widget)
+            self._footer_widget.deleteLater()
+        self._footer_widget = widget
+        self.content_layout.addWidget(widget)
+
+    # ── State Overlay ───────────────────────────────────────────
+
+    def show_state(
+        self,
+        kind: str = "empty",
+        title: str = "",
+        subtitle: str = "",
+        action_text: str = "",
+        on_action: Any = None,
+    ) -> None:
+        """Show an EmptyStateWidget in place of the body."""
+        from AssetsManager.widgets.empty_state import EmptyStateWidget
+        if self._state_overlay is None:
+            self._state_overlay = EmptyStateWidget(self)
+            idx = 0
+            if self._header_widget is not None:
+                idx += 1
+            if self._toolbar_widget is not None:
+                idx += 1
+            self.content_layout.insertWidget(idx, self._state_overlay, 1)
+
+        from typing import cast
+        cast(EmptyStateWidget, self._state_overlay).set_state(
+            kind=cast(Any, kind),
+            title=title,
+            subtitle=subtitle,
+            action_text=action_text,
+            on_action=on_action,
+        )
+        self._state_overlay.show()
+        if self._body_widget is not None:
+            self._body_widget.hide()
+
+    def clear_state(self) -> None:
+        """Hide state overlay and restore body content."""
+        if self._state_overlay is not None:
+            self._state_overlay.hide()
+        if self._body_widget is not None:
+            self._body_widget.show()
+

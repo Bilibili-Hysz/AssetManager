@@ -12,7 +12,6 @@ from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QComboBox,
-    QDialog,
     QFormLayout,
     QHBoxLayout,
     QLineEdit,
@@ -24,12 +23,13 @@ from AssetsManager.core import themes
 from AssetsManager.core.color_utils import contrast_on
 from AssetsManager.core.constants import DEFAULT_LAN_THEME_COLOR
 from AssetsManager.core.ui_scale import scaled_px
+from AssetsManager.dialogs.modal_dialog import StandardModalDialog
 from AssetsManager import i18n
 
 tr = i18n.tr
 
 
-class TagStyleDialog(QDialog):
+class TagStyleDialog(StandardModalDialog):
     """Edit one tag's visual metadata.
 
     Emits :attr:`saved` with ``(tag, color, icon, category)`` when the user
@@ -40,18 +40,19 @@ class TagStyleDialog(QDialog):
 
     def __init__(self, tag: str, color: str = "", icon: str = "",
                  category: str = "", parent=None):
-        super().__init__(parent)
         self._tag = tag
         self._color = color or ""
         self._icon = icons.normalize(icon, fallback="tag") if icon else ""
         self._category = category or ""
-        self.setWindowTitle(tr("tagstyle.title", name=tag))
-        self.setMinimumSize(scaled_px(380), scaled_px(230))
-        self._build_ui()
+        super().__init__(
+            parent,
+            title=tr("tagstyle.title", name=tag),
+            min_size=(scaled_px(380), scaled_px(230)),
+            ok_text=tr("tagstyle.ok"),
+            cancel_text=tr("tagstyle.cancel"),
+        )
 
-    def _build_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setSpacing(scaled_px(10))
+    def setup_content(self, layout: QVBoxLayout) -> None:
         form = QFormLayout()
         form.setSpacing(scaled_px(int(themes.prop("spacing", "sm"))))
 
@@ -88,17 +89,6 @@ class TagStyleDialog(QDialog):
         layout.addLayout(form)
         layout.addStretch()
 
-        # ── Buttons ───────────────────────────────────────────
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        ok_btn = QPushButton(tr("tagstyle.ok"))
-        ok_btn.clicked.connect(self._on_ok)
-        cancel_btn = QPushButton(tr("tagstyle.cancel"))
-        cancel_btn.clicked.connect(self.reject)
-        btn_row.addWidget(ok_btn)
-        btn_row.addWidget(cancel_btn)
-        layout.addLayout(btn_row)
-
     def _pick_color(self):
         from AssetsManager.dialogs.color_picker_dialog import ColorPickerDialog
 
@@ -120,6 +110,7 @@ class TagStyleDialog(QDialog):
         self._color_btn.setText(color or tr("tagstyle.no_color"))
         text = self._contrast_text(color)
         radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
+        # Existing sanctioned site: dynamic swatch feedback via tokenized QSS.
         self._color_btn.setStyleSheet(
             f"QPushButton {{ background: {color or 'transparent'}; "
             f"border: {scaled_px(1)}px solid {themes.color('border')}; border-radius: {radius_sm}px; "
@@ -134,6 +125,9 @@ class TagStyleDialog(QDialog):
     def _select_current_icon(self):
         index = self._icon_combo.findData(self._icon)
         self._icon_combo.setCurrentIndex(index if index >= 0 else 0)
+
+    def _on_ok_clicked(self) -> None:
+        self._on_ok()
 
     def _on_ok(self):
         self.saved.emit(

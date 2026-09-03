@@ -2,8 +2,10 @@
 
 from unittest.mock import Mock
 
-from PySide6.QtWidgets import QApplication, QTreeWidgetItem
+from PySide6.QtWidgets import QApplication, QTreeWidgetItem, QSizePolicy
+from PySide6.QtGui import QFont
 
+from AssetsManager.core.ui_scale import scaled_px
 from AssetsManager.i18n import tr
 from AssetsManager.core import themes
 from AssetsManager.core.signal_bus import get as bus
@@ -124,11 +126,15 @@ def test_sidebar_empty_state_replaces_tree_when_nothing_to_show(monkeypatch):
     )
     panel = SidebarPanel()
     try:
+        # The empty state renders through the StandardPanel state overlay
+        # (EmptyStateWidget) in place of the body tree.
+        overlay = panel._state_overlay
+        assert overlay is not None
         assert panel._tree.isHidden()
-        assert not panel._empty_state.isHidden()
-        assert panel._empty_text.text() == tr("sidebar.status_empty")
-        assert panel._empty_hint.text() == tr("sidebar.empty_hint")
-        assert panel._empty_icon.pixmap() is not None
+        assert not overlay.isHidden()
+        assert overlay._title_label.text() == tr("sidebar.status_empty")
+        assert overlay._subtitle_label.text() == tr("sidebar.empty_hint")
+        assert not overlay._icon_label.pixmap().isNull()
     finally:
         panel.shutdown()
         panel.deleteLater()
@@ -342,6 +348,100 @@ def test_sidebar_modern_styles_use_theme_tokens_and_hover_state():
         tree_qss = panel._tree.styleSheet()
         assert "QTreeWidget::item:hover" in tree_qss
         assert "QTreeWidget::item:selected:focus" in tree_qss
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+
+def test_sidebar_toolbar_layout_metrics_and_stretch():
+    app = QApplication.instance() or QApplication([])
+    panel = SidebarPanel()
+    try:
+        # Attributes preserved
+        assert hasattr(panel, "_search")
+        assert hasattr(panel, "_expand_btn")
+        assert hasattr(panel, "_collapse_btn")
+
+        # Toolbar layout spacing and margins
+        layout = panel._toolbar_layout
+        assert layout.spacing() == scaled_px(2)
+        assert layout.contentsMargins().left() == scaled_px(6)
+        assert layout.contentsMargins().right() == scaled_px(6)
+
+        # Stretch & size policies: search box expands, buttons are fixed
+        assert panel._search.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Expanding
+        assert panel._search.minimumWidth() == 0
+        assert panel._expand_btn.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Fixed
+        assert panel._collapse_btn.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Fixed
+
+        # Button hit areas
+        hit = scaled_px(themes.metrics("hit_area"))
+        assert panel._expand_btn.width() == hit
+        assert panel._expand_btn.height() == hit
+        assert panel._collapse_btn.width() == hit
+        assert panel._collapse_btn.height() == hit
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        app.processEvents()
+
+
+def test_sidebar_section_header_visual_hierarchy_and_contrast(tmp_path):
+    from types import SimpleNamespace
+    app = QApplication.instance() or QApplication([])
+
+    collection_service = Mock()
+    collection_service.list_collections.return_value = [
+        {"id": 1, "name": "Favorites Set", "kind": "manual", "member_count": 1},
+    ]
+    panel = SidebarPanel()
+    try:
+        panel._scoped_services = SimpleNamespace(
+            collection_service=collection_service,
+            session=SimpleNamespace(event_token="token-1"),
+        )
+        panel._favs.add(str(tmp_path / "fav1"))
+        panel._recents.record_visit(str(tmp_path / "rec1"))
+        panel._library_root = str(tmp_path)
+        panel._populate()
+
+        t = themes.get()
+        headers = {}
+        for i in range(panel._tree.topLevelItemCount()):
+            item = panel._tree.topLevelItem(i)
+            vtype = panel._get_vtype(item)
+            if vtype in (
+                sidebar_module.VTYPE_FAV_HEADER,
+                sidebar_module.VTYPE_REC_HEADER,
+                sidebar_module.VTYPE_COLLECTION_HEADER,
+            ):
+                headers[vtype] = item
+
+        assert sidebar_module.VTYPE_FAV_HEADER in headers
+        assert sidebar_module.VTYPE_REC_HEADER in headers
+        assert sidebar_module.VTYPE_COLLECTION_HEADER in headers
+
+        # Verify font weight and bold
+        for item in headers.values():
+            font = item.font(0)
+            assert font.bold() is True
+            assert font.weight() == QFont.Weight.Bold
+
+        # Verify distinct foreground contrast
+        assert headers[sidebar_module.VTYPE_FAV_HEADER].foreground(0).color().name().lower() == t["favorite"].lower()
+        assert headers[sidebar_module.VTYPE_REC_HEADER].foreground(0).color().name().lower() == t["recent"].lower()
+        expected_coll = t.get("accent", t["recent"]).lower()
+        assert headers[sidebar_module.VTYPE_COLLECTION_HEADER].foreground(0).color().name().lower() == expected_coll
+
+        # Retest styling on theme change and tree style re-apply
+        panel._apply_tree_style()
+        panel._on_theme_changed()
+
+        for item in headers.values():
+            font = item.font(0)
+            assert font.bold() is True
+            assert font.weight() == QFont.Weight.Bold
     finally:
         panel.shutdown()
         panel.deleteLater()

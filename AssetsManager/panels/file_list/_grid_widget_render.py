@@ -13,13 +13,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
-from PySide6.QtCore import Qt, QRect, QSize, QPoint
+from PySide6.QtCore import Qt, QRect, QRectF, QSize, QPoint
 from PySide6.QtGui import QPainter, QPixmap, QColor, QPen, QFont, QFontMetrics, QPolygon
 from PySide6.QtWidgets import QWidget
 
 from AssetsManager.core import icons
 from AssetsManager.core import themes
+from AssetsManager.core.color_utils import contrast_on
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
+from AssetsManager.widgets.elevation import shadow_params
 from AssetsManager import i18n
 from AssetsManager.application.asset_filters import FILTER_CATEGORY_LABELS
 from AssetsManager.panels.file_list._common import (
@@ -40,6 +42,8 @@ tr = i18n.tr
 # Card drawing constants — matching GridDelegate exactly (scaled for DPI)
 _CORNER_R = scaled_px(10)
 _PREVIEW_R = scaled_px(8)
+# Folder-tab glyph corner, canonical source: themes.metrics("radius_badge").
+_BADGE_R = scaled_px(int(themes.metrics("radius_badge")))
 _BADGE_H = scaled_px(14)
 _BADGE_R = scaled_px(6)
 
@@ -399,6 +403,8 @@ class RenderMixin:
                     dx = (vp.width() - sw) // 2
                     target = QRect(vp.x() + dx, vp.y() + lift_dy, sw, sh)
                     draw_rect = target
+                    ground_card = self._card_rect_in_item(vp)
+                    self._draw_hover_shadow(p, ground_card, 1.0 * op)
                     if op < 1.0:
                         p.save()
                         p.setOpacity(op)
@@ -416,6 +422,8 @@ class RenderMixin:
                         dy = int(lift_dy * pv)
                         target = QRect(vp.x() + dx, vp.y() + dy, sw, sh)
                         draw_rect = target
+                        ground_card = self._card_rect_in_item(vp)
+                        self._draw_hover_shadow(p, ground_card, pv * op)
                         if op < 1.0:
                             p.save()
                             p.setOpacity(op)
@@ -427,14 +435,17 @@ class RenderMixin:
 
         # ── Rubber band overlay ──
         if self._rubber_band_active and not self._rubber_band_rect.isNull():
+            p.save()
+            p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
             rb = QColor(self._clr_accent)
-            rb.setAlpha(30)
-            p.setPen(QPen(self._clr_accent, 1))
+            rb.setAlpha(35)
+            p.setPen(QPen(self._clr_accent, 1.0))
             p.setBrush(rb)
             band = self._rubber_band_rect
             if not self._zoom_relayout_active:
                 band = band.translated(0, -sy)
-            p.drawRect(band)
+            p.drawRoundedRect(band, 3.0, 3.0)
+            p.restore()
 
         p.end()
         self._record_performance(
@@ -468,11 +479,20 @@ class RenderMixin:
         # Interaction states are painted later so mouse movement and selection
         # changes do not invalidate this expensive thumbnail texture.
         r2, g2, b2 = self._clr_heading.red(), self._clr_heading.green(), self._clr_heading.blue()
-        fill = QColor(r2, g2, b2, 10)
-        border = QColor(r2, g2, b2, 20)
-        tp.setPen(QPen(border, 1))
-        tp.setBrush(fill)
-        tp.drawRoundedRect(card, _CORNER_R, _CORNER_R)
+        card_f = QRectF(
+            float(card.x()) + 0.5,
+            float(card.y()) + 0.5,
+            float(card.width()) - 1.0,
+            float(card.height()) - 1.0,
+        )
+        # Flat neutral tint instead of a gradient: the card must not cast any
+        # color onto the thumbnail, so the asset stays the only color source
+        # (design-language-unification-2026-09-03, P0-3).
+        bg = QColor(r2, g2, b2, 6)
+        border = QColor(r2, g2, b2, 24)
+        tp.setPen(QPen(border, 1.0))
+        tp.setBrush(bg)
+        tp.drawRoundedRect(card_f, float(_CORNER_R), float(_CORNER_R))
 
         preview = QRect(card.x() + _PREVIEW_MARGIN, card.y() + _PREVIEW_MARGIN,
                         self._thumb_size, self._thumb_size)
@@ -545,6 +565,58 @@ class RenderMixin:
         ]))
         tp.restore()
 
+    def _draw_hover_shadow(self, p: QPainter, card_rect: QRect, progress: float) -> None:
+        """Render diffuse ambient ground shadow beneath a hover-lifted card.
+
+        Alpha and vertical spread are derived from the canonical E1 shadow
+        (``elevation.shadow_params(1)``) so custom-painted surfaces share the
+        same depth vocabulary as elevation-based ones
+        (design-language-unification-2026-09-03, P0-2).
+        """
+        if progress <= 0.01:
+            return
+        blur, off_x, off_y, alpha = shadow_params(1)
+        a_outer = int(alpha * 0.25)
+        a_mid = int(alpha * 0.39)
+        a_contact = int(alpha * 0.50)
+        spread_outer = off_y + 3
+        spread_mid = off_y + 1
+        spread_contact = max(1, off_y - 1)
+        p.save()
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        p.setPen(Qt.PenStyle.NoPen)
+        # Soft ambient diffuse shadow on the ground beneath lifted card:
+        # Layer 1: Outer diffuse layer (wide, soft dispersion)
+        s1 = card_rect.adjusted(
+            int(-2 * progress),
+            int(3 * progress),
+            int(2 * progress),
+            int(spread_outer * progress),
+        )
+        p.setBrush(QColor(0, 0, 0, int(a_outer * progress)))
+        p.drawRoundedRect(s1, _CORNER_R + 2, _CORNER_R + 2)
+
+        # Layer 2: Mid ambient layer
+        s2 = card_rect.adjusted(
+            0,
+            int(2 * progress),
+            0,
+            int(spread_mid * progress),
+        )
+        p.setBrush(QColor(0, 0, 0, int(a_mid * progress)))
+        p.drawRoundedRect(s2, _CORNER_R + 1, _CORNER_R + 1)
+
+        # Layer 3: Contact/core shadow layer
+        s3 = card_rect.adjusted(
+            int(2 * progress),
+            int(1 * progress),
+            int(-2 * progress),
+            int(spread_contact * progress),
+        )
+        p.setBrush(QColor(0, 0, 0, int(a_contact * progress)))
+        p.drawRoundedRect(s3, _CORNER_R, _CORNER_R)
+        p.restore()
+
     def _draw_interaction_overlay(self, p: QPainter, row: int, item_rect: QRect, opacity: float):
         """Paint selection, hover, and keyboard focus without rebuilding the cache."""
         selection_progress = (
@@ -583,11 +655,17 @@ class RenderMixin:
             p.setBrush(fill)
         p.drawRoundedRect(card, _CORNER_R, _CORNER_R)
         if row == focus_row:
-            # Keyboard focus indicator for the anchor card: dashed accent ring,
-            # independent from hover/selection fills.
-            p.setPen(QPen(self._clr_accent, 1, Qt.PenStyle.DashLine))
+            # Modern 2px double-layer rounded glowing solid ring:
+            # Translucent faint glow ring overlaid with outer 2px highlight solid line.
             p.setBrush(Qt.BrushStyle.NoBrush)
-            p.drawRoundedRect(card.adjusted(2, 2, -2, -2), max(1, _CORNER_R - 2), max(1, _CORNER_R - 2))
+            glow = QColor(self._clr_accent)
+            glow.setAlpha(65)
+            # Translucent faint glow ring
+            p.setPen(QPen(glow, 3.5, Qt.PenStyle.SolidLine))
+            p.drawRoundedRect(card.adjusted(1, 1, -1, -1), max(1, _CORNER_R - 1), max(1, _CORNER_R - 1))
+            # Outer highlight solid line (2px)
+            p.setPen(QPen(self._clr_accent, 2.0, Qt.PenStyle.SolidLine))
+            p.drawRoundedRect(card.adjusted(1, 1, -1, -1), max(1, _CORNER_R - 1), max(1, _CORNER_R - 1))
         p.restore()
 
     # ── Folder / Image rendering ────────────────────────────
@@ -622,15 +700,15 @@ class RenderMixin:
         p.save()
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QColor(0, 0, 0, 20))
-        p.drawRoundedRect(tab_rect.adjusted(1, 1, 1, 1), 4, 4)
-        p.drawRoundedRect(folder.adjusted(1, 2, -1, -1), 5, 5)
+        p.drawRoundedRect(tab_rect.adjusted(1, 1, 1, 1), _BADGE_R, _BADGE_R)
+        p.drawRoundedRect(folder.adjusted(1, 2, -1, -1), _BADGE_R, _BADGE_R)
         p.restore()
 
         # Tab + Body (two overlapping rects matching delegate — avoids antialias seam)
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(body_c)
-        p.drawRoundedRect(tab_rect, 4, 4)
-        p.drawRoundedRect(folder, 5, 5)
+        p.drawRoundedRect(tab_rect, _BADGE_R, _BADGE_R)
+        p.drawRoundedRect(folder, _BADGE_R, _BADGE_R)
 
         if has_image and pixmap is not None:
             img_rect = folder.adjusted(6, -15, -6, -8)
@@ -645,7 +723,7 @@ class RenderMixin:
 
         p.setBrush(front_c)
         p.setPen(Qt.PenStyle.NoPen)
-        p.drawRoundedRect(front_rect, 5, 5)
+        p.drawRoundedRect(front_rect, _BADGE_R, _BADGE_R)
         p.setPen(QPen(self._clr_folder_highlight, 1))
         p.drawLine(front_rect.left() + 2, front_rect.top(),
                     front_rect.right() - 2, front_rect.top())
@@ -669,7 +747,7 @@ class RenderMixin:
                            rect.width(), int(rect.height() * 0.85))
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(body_c)
-            p.drawRoundedRect(folder, 5, 5)
+            p.drawRoundedRect(folder, _BADGE_R, _BADGE_R)
         else:
             ext = name[name.rfind("."):].lower() if "." in name else ""
             clr = QColor(badge_color_for_extension(ext))
@@ -696,9 +774,9 @@ class RenderMixin:
             preview_rect.right() - bw - 2, preview_rect.top() + 2,
             bw, _BADGE_H,
         )
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor(color))
+        qc = QColor(color)
+        p.setBrush(qc)
         p.drawRoundedRect(badge_rect, _BADGE_R, _BADGE_R)
-        text_color = QColor("white") if QColor(color).lightness() < 128 else QColor("black")
+        text_color = QColor(contrast_on(qc.name()))
         p.setPen(text_color)
         p.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, label)

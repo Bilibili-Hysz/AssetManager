@@ -21,12 +21,16 @@ class ShortcutManager:
 
     _instance: "ShortcutManager | None" = None
 
-    # Documentation seeds for shortcuts whose target features actually exist.
-    # (Ctrl+K Command Palette, Ctrl+P File Picker and Ctrl+B Toggle Sidebar
-    # were removed: the product has no such features, and the help dialog is
-    # generated from this registry.)
+    # Documentation seeds mirrored by window.py's register_action calls.
+    # Seeding them here keeps the help dialog complete even when queried
+    # before the main window menus are built (register_action later replaces
+    # each seed with the live QAction).  (Ctrl+P File Picker was removed:
+    # the product has no such feature.)
     _DEFAULTS = (
         ("Ctrl+,", "menu.settings", "navigation"),
+        ("Ctrl+K", "menu.command_palette", "application"),
+        ("Ctrl+B", "menu.toggle_sidebar", "navigation"),
+        ("Ctrl+I", "menu.toggle_info", "navigation"),
         ("Ctrl+Q", "menu.exit", "application"),
         ("F1", "menu.keyboard_shortcuts", "application"),
         # Escape closes dialogs natively (QDialog); documented, never wired

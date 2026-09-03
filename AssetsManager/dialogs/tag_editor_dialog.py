@@ -11,12 +11,12 @@ from AssetsManager.core.tag_library import get_library
 from AssetsManager.core.ui_scale import scaled_px
 from AssetsManager.core import icons, themes
 from AssetsManager.widgets.tag_chip import create_tag_chip, tag_color_from
-from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
+from AssetsManager.dialogs.modal_dialog import StandardModalDialog
 from AssetsManager import i18n
 tr = i18n.tr
 
 
-class TagEditorDialog(TabbedDialog):
+class TagEditorDialog(StandardModalDialog):
     supports_runtime_refresh = True
 
     def __init__(self, store: TagStoreProtocol, file_path: str, parent=None):
@@ -24,9 +24,18 @@ class TagEditorDialog(TabbedDialog):
         self._file_path = file_path
         self._modified = False
         self._del_worker = None  # set when the unused-tag worker starts
-        file_name = Path(file_path).name if file_path else "Unknown"
-        super().__init__(parent, title=tr("tageditor.title", name=file_name),
-                         min_size=(scaled_px(420), scaled_px(400)))
+        self._file_name = Path(file_path).name if file_path else "Unknown"
+        super().__init__(
+            parent,
+            title=tr("tageditor.title", name=self._file_name),
+            min_size=(scaled_px(440), scaled_px(460)),
+            ok_text=tr("tageditor.done"),
+            show_cancel=False,
+        )
+        self._done_btn = self._ok_btn
+        self._refresh_button_icons()
+        self._refresh_current()
+        self._refresh_suggestions()
 
     def closeEvent(self, event):
         # Never destroy a running worker thread ("QThread: Destroyed while
@@ -36,12 +45,9 @@ class TagEditorDialog(TabbedDialog):
             worker.wait(2000)
         super().closeEvent(event)
 
-    def _build_ui(self):
-        layout = QVBoxLayout(self)
-        self._root_layout = layout
+    def setup_content(self, layout: QVBoxLayout):
         self._root_layout.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12))
         self._root_layout.setSpacing(scaled_px(10))
-        self.setStyleSheet(self._dialog_qss())
 
         # ── Current Tags ─────────────────────────────────────
 
@@ -108,19 +114,6 @@ class TagEditorDialog(TabbedDialog):
         self._del_progress.setFixedHeight(scaled_px(4))
         danger_layout.addWidget(self._del_progress)
         layout.addWidget(danger)
-
-        # ── Bottom buttons ────────────────────────────────────
-
-        bottom = QHBoxLayout()
-        bottom.addStretch()
-        self._done_btn = self.make_primary_btn(tr("tageditor.done"), self.accept)
-        bottom.addWidget(self._done_btn)
-        layout.addLayout(bottom)
-
-        self._refresh_button_icons()
-
-        self._refresh_current()
-        self._refresh_suggestions()
 
     def _refresh_button_icons(self):
         t = themes.get()

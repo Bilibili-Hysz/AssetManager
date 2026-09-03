@@ -108,15 +108,6 @@ def test_state_color():
     assert sk.state_color("unknown") == sk.token("body")
 
 
-def test_state_icon():
-    sk = _make_sk()
-    assert sk.state_icon("loading") == "clock"
-    assert sk.state_icon("error") == "close"
-    assert sk.state_icon("success") == "check"
-    assert sk.state_icon("retry") == "refresh"
-    assert sk.state_icon("idle") == ""
-
-
 # ── QSS generation ────────────────────────────────────────────
 
 
@@ -363,50 +354,6 @@ def test_switch_nav_and_status_bar_generators():
 def test_reduce_motion_returns_bool():
     result = StyleKit.reduce_motion()
     assert isinstance(result, bool)
-
-
-def test_make_fade_in():
-    app = QApplication.instance() or QApplication([])
-    sk = _make_sk()
-    w = QWidget()
-    anim = sk.make_fade_in(w, duration=100)
-    try:
-        assert anim is not None
-        assert anim.duration() == 100
-        assert w.graphicsEffect() is not None
-    finally:
-        w.deleteLater()
-        app.processEvents()
-
-
-def test_make_fade_out():
-    app = QApplication.instance() or QApplication([])
-    sk = _make_sk()
-    w = QWidget()
-    w.show()
-    app.processEvents()
-    try:
-        anim = sk.make_fade_out(w, duration=200)
-        assert anim is not None
-        assert anim.duration() == 200
-    finally:
-        w.close()
-        w.deleteLater()
-        app.processEvents()
-
-
-def test_make_pulse():
-    app = QApplication.instance() or QApplication([])
-    sk = _make_sk()
-    w = QWidget()
-    anim = sk.make_pulse(w, duration=800)
-    try:
-        assert anim is not None
-        assert anim.loopCount() == -1  # infinite
-        assert anim.duration() == 800
-    finally:
-        w.deleteLater()
-        app.processEvents()
 
 
 # ── Widget factories ──────────────────────────────────────────

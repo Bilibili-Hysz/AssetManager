@@ -311,7 +311,6 @@ class LanSharingMixin:
     def _update_share_status(self, running, port=8080):
         """Update share status indicators in status bar and toolbar."""
         from AssetsManager.core import themes
-        t = themes.get()
 
         # Update status bar label
         if hasattr(self, '_share_status_label'):
@@ -321,13 +320,13 @@ class LanSharingMixin:
                     f"{tr('sharing.status_active')} · {url}"
                 )
                 self._share_status_label.setStyleSheet(
-                    f"color: {t['accent']}; padding: 0 {scaled_px(8)}px;"
+                    f"color: {themes.color('accent')}; padding: 0 {scaled_px(8)}px;"
                 )
                 self._share_status_label.setToolTip(tr("sharing.click_to_copy"))
             else:
                 self._share_status_label.setText(tr("sharing.off"))
                 self._share_status_label.setStyleSheet(
-                    f"color: {t['muted']}; padding: 0 {scaled_px(8)}px;"
+                    f"color: {themes.color('muted')}; padding: 0 {scaled_px(8)}px;"
                 )
                 self._share_status_label.setToolTip(tr("sharing.click_to_share"))
 

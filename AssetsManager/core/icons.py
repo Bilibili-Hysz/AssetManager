@@ -134,19 +134,90 @@ def has(name: str | None) -> bool:
     return _ALIASES.get(key, key) in _ICON_PATHS
 
 
-def icon(name: str | None, *, color: str | None = None, size: int | None = None, fallback: str = "file") -> QIcon:
+def _detect_dpr(explicit_dpr: float | None = None) -> float:
+    """Detect the exact DPR for the current focused window or primary screen."""
+    if explicit_dpr is not None and explicit_dpr > 0:
+        return float(explicit_dpr)
+
+    app = QGuiApplication.instance()
+    if app is None:
+        return 1.0
+
+    # 1. Focused window takes precedence
+    focus_win = QGuiApplication.focusWindow()
+    if focus_win is not None:
+        try:
+            dpr = focus_win.devicePixelRatio()
+            if dpr > 0:
+                return float(dpr)
+        except Exception:
+            pass
+        try:
+            scr = focus_win.screen()
+            if scr is not None and scr.devicePixelRatio() > 0:
+                return float(scr.devicePixelRatio())
+        except Exception:
+            pass
+
+    # 2. Active widget window via application
+    active_win_fn = getattr(app, "activeWindow", None)
+    if callable(active_win_fn):
+        try:
+            active_win = active_win_fn()
+            if active_win is not None:
+                dpr_fn = getattr(active_win, "devicePixelRatioF", None)
+                if callable(dpr_fn):
+                    dpr = dpr_fn()
+                    if dpr > 0:
+                        return float(dpr)
+                scr = getattr(active_win, "screen", lambda: None)()
+                if scr is not None and scr.devicePixelRatio() > 0:
+                    return float(scr.devicePixelRatio())
+        except Exception:
+            pass
+
+    # 3. Any visible top-level window
+    try:
+        for win in QGuiApplication.topLevelWindows():
+            if win.isVisible():
+                dpr = win.devicePixelRatio()
+                if dpr > 0:
+                    return float(dpr)
+    except Exception:
+        pass
+
+    # 4. Fallback to primary screen
+    try:
+        screen = QGuiApplication.primaryScreen()
+        if screen is not None and screen.devicePixelRatio() > 0:
+            return float(screen.devicePixelRatio())
+    except Exception:
+        pass
+
+    return 1.0
+
+
+def icon(
+    name: str | None,
+    *,
+    color: str | None = None,
+    size: int | None = None,
+    fallback: str = "file",
+    dpr: float | None = None,
+) -> QIcon:
     """Render a semantic line icon using the current theme color.
 
     ``color`` accepts a semantic theme token name (e.g. "icon_primary",
     "heading", "favorite") or an explicit color string (e.g. "#c480d4").
     None resolves to the theme's primary icon color.
+    ``dpr`` optionally forces an exact device pixel ratio; otherwise detects
+    from the current focused window or primary screen.
     """
     resolved = normalize(name, fallback=fallback)
     tint = _resolve_tint(color)
     pixel_size = max(1, int(size or scaled_px(16)))
-    screen = QGuiApplication.primaryScreen()
-    dpr = max(1.0, screen.devicePixelRatio() if screen else 1.0)
-    cache_key = (resolved, tint, pixel_size, dpr)
+    effective_dpr = max(1.0, _detect_dpr(dpr))
+    cache_key = (resolved, tint, pixel_size, effective_dpr)
     cached = _CACHE.get(cache_key)
     if cached is not None:
         _CACHE.move_to_end(cache_key)
@@ -158,8 +229,8 @@ def icon(name: str | None, *, color: str | None = None, size: int | None = None,
         f'stroke-linecap="round" stroke-linejoin="round">{_ICON_PATHS[resolved]}</svg>'
     )
     renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
-    pixmap = QPixmap(int(pixel_size * dpr), int(pixel_size * dpr))
-    pixmap.setDevicePixelRatio(dpr)
+    pixmap = QPixmap(int(pixel_size * effective_dpr), int(pixel_size * effective_dpr))
+    pixmap.setDevicePixelRatio(effective_dpr)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     try:
@@ -167,6 +238,16 @@ def icon(name: str | None, *, color: str | None = None, size: int | None = None,
     finally:
         painter.end()
     result = QIcon(pixmap)
+    if abs(effective_dpr - 1.0) > 0.01:
+        base_pixmap = QPixmap(pixel_size, pixel_size)
+        base_pixmap.setDevicePixelRatio(1.0)
+        base_pixmap.fill(Qt.GlobalColor.transparent)
+        bp = QPainter(base_pixmap)
+        try:
+            renderer.render(bp, QRectF(0, 0, pixel_size, pixel_size))
+        finally:
+            bp.end()
+        result.addPixmap(base_pixmap)
     _CACHE[cache_key] = result
     _CACHE.move_to_end(cache_key)
     if len(_CACHE) > _CACHE_MAX:

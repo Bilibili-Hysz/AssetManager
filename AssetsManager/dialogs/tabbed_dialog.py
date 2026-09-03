@@ -62,7 +62,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QLineEdit,
     QSpinBox, QCheckBox, QGroupBox, QComboBox, QFrame,
-    QDialogButtonBox, QWidget, QTabWidget, QScrollArea, QRadioButton,
+    QDialogButtonBox, QTabWidget, QScrollArea, QRadioButton, QWidget,
 )
 from AssetsManager import i18n
 from AssetsManager.core.color_utils import alpha
@@ -76,84 +76,64 @@ tr = i18n.tr
 _log = logging.getLogger(__name__)
 
 
-class _CollapsibleSection(QWidget):
-    """Section with clickable header that toggles content visibility."""
+class _DialogButtonBar(QWidget):
+    """Manual dialog button bar with a fixed, cross-platform visual order.
 
-    def __init__(self, title: str, parent=None):
+    QDialogButtonBox delegates button ordering to the platform theme: on
+    Windows the primary button lands leftmost, while StandardModalDialog
+    (hand-built in modal_dialog.py) puts it rightmost — two muscle memories
+    in one app.  This bar mirrors StandardModalDialog's order
+    (stretch | Cancel | Apply | OK) and reimplements the small
+    QDialogButtonBox surface TabbedDialog relies on (button / buttons /
+    addButton / buttonRole / accepted / rejected).
+    """
+
+    accepted = Signal()
+    rejected = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._expanded = False
-        self._title = title
-        self._header = QPushButton()
-        self._header.setCheckable(True)
-        self._header.setChecked(False)
-        self._header.setAccessibleName(self._title)
-        self._header.setToolTip(self._title)
-        self._update_header_presentation()
-        self._apply_header_style()
-        self._header.toggled.connect(self._on_toggle)
-        self._header.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._header.setFixedHeight(scaled_px(28))
+        self._ok_btn = QPushButton(tr("dialog.ok"), self)
+        self._cancel_btn = QPushButton(tr("dialog.cancel"), self)
+        self._apply_btn: QPushButton | None = None
+        self._ok_btn.setDefault(True)
+        self._ok_btn.clicked.connect(self.accepted)
+        self._cancel_btn.clicked.connect(self.rejected)
+        bar = QHBoxLayout(self)
+        bar.setContentsMargins(0, 0, 0, 0)
+        bar.setSpacing(scaled_px(8))
+        bar.addStretch()
+        bar.addWidget(self._cancel_btn)
+        self._insert_index = bar.count()  # between Cancel and OK
+        bar.addWidget(self._ok_btn)
 
-        self._content = QWidget()
-        self._content.setVisible(False)
-        self._content.setStyleSheet(
-            "QWidget { background: transparent; } QLabel { color: inherit; }")
-        self._content_layout = QVBoxLayout(self._content)
-        self._content_layout.setContentsMargins(scaled_px(8), scaled_px(4), 0, scaled_px(4))
-        self._content_layout.setSpacing(scaled_px(6))
+    def addButton(self, text: str, role: QDialogButtonBox.ButtonRole) -> QPushButton:
+        """Add a custom button; TabbedDialog only ever adds Apply."""
+        btn = QPushButton(text, self)
+        self.layout().insertWidget(self._insert_index, btn)
+        self._insert_index += 1
+        self._apply_btn = btn
+        return btn
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.addWidget(self._header)
-        layout.addWidget(self._content)
+    def button(self, standard: QDialogButtonBox.StandardButton) -> QPushButton | None:
+        if standard == QDialogButtonBox.StandardButton.Ok:
+            return self._ok_btn
+        if standard == QDialogButtonBox.StandardButton.Cancel:
+            return self._cancel_btn
+        return None
 
-    def content_layout(self) -> QVBoxLayout:
-        return self._content_layout
+    def buttons(self) -> list[QPushButton]:
+        btns = [self._ok_btn, self._cancel_btn]
+        if self._apply_btn is not None:
+            btns.append(self._apply_btn)
+        return btns
 
-    def refresh_theme(self):
-        self._update_header_presentation()
-        self._apply_header_style()
-
-    def refresh_scaled_geometry(self):
-        self._header.setFixedHeight(scaled_px(28))
-        self._header.setIconSize(QSize(scaled_px(14), scaled_px(14)))
-        self._content_layout.setContentsMargins(
-            scaled_px(8), scaled_px(4), 0, scaled_px(4))
-        self._content_layout.setSpacing(scaled_px(6))
-        self._apply_header_style()
-
-    def _update_header_presentation(self):
-        icon_name = "chevron_down" if self._expanded else "chevron_right"
-        self._header.setText(self._title)
-        self._header.setIcon(
-            icons.icon(icon_name, color="icon_primary", size=scaled_px(14)))
-        self._header.setIconSize(QSize(scaled_px(14), scaled_px(14)))
-        self._header.setAccessibleName(self._title)
-        self._header.setToolTip(self._title)
-
-    def _apply_header_style(self):
-        t = themes.get()
-        bg = alpha(t["accent"], 0.19) if self._expanded else "transparent"
-        hover_bg = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
-        focus_color = t.get("border_focus", t["accent"])
-        radius = scaled_px(int(themes.prop("border_radius", "sm")))
-        pad_x = scaled_px(int(themes.prop("spacing", "xs")))
-        pad_y = scaled_px(int(themes.prop("spacing", "sm")))
-        fs_sm = scaled_pt(int(themes.prop("font_size", "sm")))
-        self._header.setStyleSheet(
-            f"QPushButton {{ text-align: left; font-weight: bold; font-size: {fs_sm}px; "
-            f"color: {t['heading']}; background: {bg}; border: {scaled_px(1)}px solid {t['border']}40; "
-            f"border-radius: {radius}px; padding: {pad_x}px {pad_y}px; }}"
-            f"QPushButton:hover {{ background: {hover_bg}; }}"
-            f"QPushButton:focus {{ background: {hover_bg}; "
-            f"border: {scaled_px(1)}px solid {focus_color}; }}")
-
-    def _on_toggle(self, checked):
-        self._expanded = checked
-        self._content.setVisible(checked)
-        self._update_header_presentation()
-        self._apply_header_style()
+    def buttonRole(self, btn: QPushButton) -> QDialogButtonBox.ButtonRole:
+        if btn is self._ok_btn:
+            return QDialogButtonBox.ButtonRole.AcceptRole
+        if btn is self._cancel_btn:
+            return QDialogButtonBox.ButtonRole.RejectRole
+        return QDialogButtonBox.ButtonRole.ApplyRole
 
 
 class TabbedDialog(QDialog):
@@ -178,9 +158,12 @@ class TabbedDialog(QDialog):
         self._dialog_fade_anim: QPropertyAnimation | None = None
         self._geometry_restored = False
 
+        # Single contract: dialog chrome QSS applies to EVERY subclass,
+        # tabbed or single-page (audit D5 — the _build_ui branch used to rely
+        # on each subclass remembering to apply it; ShareQrDialog forgot).
+        self.setStyleSheet(self._dialog_qss())
         if hasattr(self, '_setup_tabs') and type(self)._setup_tabs is not TabbedDialog._setup_tabs:
             # Subclass uses tabbed layout
-            self.setStyleSheet(self._dialog_qss())
             self._setup_tabbed_ui()
         else:
             # Subclass uses single-page layout (_build_ui)
@@ -296,7 +279,7 @@ class TabbedDialog(QDialog):
             return
         self.setWindowOpacity(0.0)
         animation = QPropertyAnimation(self, b"windowOpacity", self)
-        animation.setDuration(150)
+        animation.setDuration(themes.motion("fast"))
         animation.setStartValue(0.0)
         animation.setEndValue(1.0)
         animation.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -311,8 +294,6 @@ class TabbedDialog(QDialog):
         if hasattr(self, '_tabs'):
             self._tabs.setStyleSheet(self._tab_qss())
         self._refresh_static_labels()
-        for section in self.findChildren(_CollapsibleSection):
-            section.refresh_theme()
         self._refresh_semantic_button_icons()
         for scroll_area in self.findChildren(QScrollArea):
             self._apply_viewport_color(scroll_area)
@@ -334,8 +315,6 @@ class TabbedDialog(QDialog):
 
     def _on_ui_scale_changed(self, _scale: float):
         self._on_theme_changed("")
-        for section in self.findChildren(_CollapsibleSection):
-            section.refresh_scaled_geometry()
         self._refresh_semantic_button_icons()
         if hasattr(self, "_tabs") and hasattr(self, "_root_layout"):
             self._root_layout.setContentsMargins(
@@ -385,13 +364,15 @@ class TabbedDialog(QDialog):
         self._root_layout.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12))
         self._root_layout.setSpacing(scaled_px(10))
 
-        self._tabs = QTabWidget()
+        self._tabs = self._create_tab_container()
         self._tabs.setStyleSheet(self._tab_qss())
         self._setup_tabs()
         self._root_layout.addWidget(self._tabs)
 
-        self._button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        # Fixed order (stretch | Cancel | Apply | OK) matches StandardModalDialog
+        # so both dialog families share one muscle memory
+        # (design-language-unification-2026-09-03, P0-5).
+        self._button_box = _DialogButtonBar(self)
         self._apply_btn = self._button_box.addButton(tr("dialog.apply"), QDialogButtonBox.ButtonRole.ApplyRole)
         self._apply_btn.clicked.connect(self._on_apply)
         self._apply_btn.clicked.connect(self.settings_changed.emit)
@@ -432,6 +413,16 @@ class TabbedDialog(QDialog):
             self.setTabOrder(apply_btn, cancel_btn)
         elif cancel_btn and ok_btn:
             self.setTabOrder(ok_btn, cancel_btn)
+
+    def _create_tab_container(self):
+        """Factory hook for the page container.
+
+        Subclasses may return any QWidget implementing the small surface
+        TabbedDialog actually uses — ``addTab(widget, label)``,
+        ``setTabText(index, text)`` and ``setStyleSheet`` — to swap the
+        tab paradigm (e.g. SettingsDialog uses a left-rail shell).
+        """
+        return QTabWidget()
 
     def _setup_tabs(self):
         pass
@@ -547,11 +538,10 @@ class TabbedDialog(QDialog):
         btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
         btn.setToolTip(tr("panel.settings"))
         btn.setAccessibleName(tr("panel.settings"))
-        btn.setFixedSize(scaled_px(20), scaled_px(20))
+        btn.setFixedSize(scaled_px(themes.metrics("hit_area")), scaled_px(themes.metrics("hit_area")))
         btn.setFlat(True)
-        themes.set_button_variant(btn, "ghost")
         btn.setStyleSheet(
-            f"QPushButton {{ color: {t['heading']}; padding: 0; background: transparent; "
+            f"QPushButton {{ color: {themes.color('heading')}; padding: 0; background: transparent; "
             f"border: {scaled_px(1)}px solid transparent; "
             f"border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px; }}"
             f"QPushButton:hover {{ background: {hover_bg}; }}"
@@ -585,10 +575,6 @@ class TabbedDialog(QDialog):
         btn.setFixedWidth(scaled_px(60))
         row.addWidget(btn)
         return row, edit
-
-    def make_collapsible(self, title):
-        section = _CollapsibleSection(title)
-        return section, section.content_layout()
 
     def make_radio_group(self, title, options, current, on_changed=None):
         from PySide6.QtWidgets import QButtonGroup as _BtnGrp
@@ -636,8 +622,8 @@ class TabbedDialog(QDialog):
         sk = self._sk
         shape = self._btn_shape(sk)
         focus_color = sk.token('border_focus', sk.token('accent'))
-        hover_bg = sk._alpha('accent', 0.85)
-        pressed_bg = sk._darker('accent', 115)
+        hover_bg = sk.lighter('accent', 110)
+        pressed_bg = sk.darker('accent', 115)
         return (f"QPushButton {{ background: {sk.token('accent')}; color: {sk.token('on_accent')}; "
                 f"border: {scaled_px(1)}px solid transparent; "
                 f"border-radius: {shape['radius']}px; padding: {shape['pad_y']}px {shape['pad_x']}px; "
@@ -650,7 +636,7 @@ class TabbedDialog(QDialog):
         sk = self._sk
         px = sk.px
         c = sk.token('accent') if active else sk.token('muted')
-        return (f"QFrame {{ background: {sk._alpha(c, 0.13)}; border: {scaled_px(1)}px solid {sk._alpha(c, 0.38)}; "
+        return (f"QFrame {{ background: {sk.alpha(c, 0.13)}; border: {scaled_px(1)}px solid {sk.alpha(c, 0.38)}; "
                 f"border-radius: {px(int(sk.prop('border_radius', 'sm', 8)))}px; "
                 f"padding: {px(int(sk.prop('spacing', 'sm', 8)))}px; }}")
 
@@ -660,10 +646,10 @@ class TabbedDialog(QDialog):
         focus_color = sk.token('border_focus', sk.token('accent'))
         if active:
             base, hover_bg, pressed_bg = (
-                sk.token('danger'), sk._alpha('danger', 0.87), sk._darker('danger', 115))
+                sk.token('danger'), sk.lighter('danger', 110), sk.darker('danger', 115))
         else:
             base, hover_bg, pressed_bg = (
-                sk.token('accent'), sk._alpha('accent', 0.85), sk._darker('accent', 115))
+                sk.token('accent'), sk.lighter('accent', 110), sk.darker('accent', 115))
         return (f"QPushButton {{ background: {base}; color: {sk.token('on_accent')}; "
                 f"border: {scaled_px(1)}px solid transparent; "
                 f"border-radius: {shape['radius']}px; padding: {shape['pad_y']}px {shape['pad_x']}px; "

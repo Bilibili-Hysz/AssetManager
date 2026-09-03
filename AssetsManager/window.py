@@ -166,7 +166,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         from AssetsManager.window_lifecycle_coordinator import WindowLifecycleCoordinator
         self._coordinator = WindowCoordinator(self)
         self.setWindowTitle(tr("app.name"))
-        self.resize(1200, 800)
+        self.resize(scaled_px(1200), scaled_px(800))
         _restore_window_geometry(self)
         self.setDockNestingEnabled(True)
         self._bg_cache: tuple = ("", None, None)  # (path, processed_raw, scaled)
@@ -385,18 +385,11 @@ class MainWindow(LanSharingMixin, QMainWindow):
         if isinstance(app, QApplication):
             themes.apply_to(app)
         self._apply_menu_theme()
-        from AssetsManager import dock_factory as dk
-        for dock_widget, (_i18n_key, _title, _extra_buttons) in dk._DOCK_TITLES.items():
-            try:
-                bar = dock_widget.titleBarWidget()
-                if bar and bar.property("is_custom_title"):
-                    bar.setStyleSheet(
-                        f"background: {themes.header_for_dock()}; "
-                        f"border: {scaled_px(1)}px solid {themes.get()['border']}; "
-                        f"border-top-left-radius: {scaled_px(7)}px; border-top-right-radius: {scaled_px(7)}px; ")
-            except RuntimeError:
-                # L10: the dock was deleted while the theme change propagated.
-                continue
+        # Dock chrome rebuilds through the coalesced dock-refresh slot so
+        # _build_title_bar stays the single construction point for the title
+        # bar QSS (audit A3 — the previous hand-rolled copy had already
+        # drifted: 7px radius vs border_radius.md, border vs border_subtle).
+        dock.request_refresh()
         self._workspace._apply_style()
         refresh_header = getattr(self.file_list, "refresh_header", None)
         if callable(refresh_header):
@@ -419,6 +412,12 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._menu_lib.addSeparator()
         # A real exit even when the system tray makes close() hide instead.
         self._menu_act_exit = self._menu_lib.addAction(tr("menu.exit"), self.request_exit)
+        # View menu — dock toggle and workspace presets
+        self._setup_view_menu(bar)
+
+        # Tools menu
+        self._setup_tools_menu(bar)
+
         self._menu_act_settings = bar.addAction(tr("menu.settings"), self._open_settings)
 
         # Help menu — version identity entry point (A1 分发起步).
@@ -426,8 +425,9 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._menu_act_about = self._menu_help.addAction(
             tr("about.menu_entry"), self._show_about)
 
-        # Tools menu
-        self._setup_tools_menu(bar)
+        # Wire the window-level shortcuts through the shared registry so the
+        # help dialog (generated from that registry) matches reality.
+        self._register_window_shortcuts()
 
         # Hide native menu bar since we have our own in the menu widget
         self.menuBar().hide()
@@ -437,6 +437,14 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._menu_tools = bar.addMenu(tr("menu.tools"))
         tools_menu = self._menu_tools
         self._tools_menu_icon_specs: list[tuple] = []
+
+        # Command Palette (Ctrl+K)
+        self._menu_act_command_palette = tools_menu.addAction(
+            tr("menu.command_palette"), self._open_command_palette)
+        self._menu_act_command_palette.setIcon(
+            icons.icon("search", color="icon_primary", size=scaled_px(16)))
+        self._tools_menu_icon_specs.append((self._menu_act_command_palette, "search", "search"))
+        tools_menu.addSeparator()
 
         # External tools
         tools = list_tools()
@@ -498,9 +506,100 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._menu_act_activity_log = tools_menu.addAction(
             tr("menu.activity_log"), self._open_activity_log)
 
-        # Wire the window-level shortcuts through the shared registry so the
-        # help dialog (generated from that registry) matches reality.
-        self._register_window_shortcuts()
+    def _setup_view_menu(self, bar):
+        self._menu_view = bar.addMenu(tr("menu.view"))
+        view_menu = self._menu_view
+
+        self._menu_act_toggle_sidebar = view_menu.addAction(
+            tr("menu.toggle_sidebar"), self._toggle_sidebar
+        )
+        self._menu_act_toggle_sidebar.setCheckable(True)
+        self._menu_act_toggle_sidebar.setChecked(True)
+
+        self._menu_act_toggle_info = view_menu.addAction(
+            tr("menu.toggle_info"), self._toggle_info
+        )
+        self._menu_act_toggle_info.setCheckable(True)
+        self._menu_act_toggle_info.setChecked(True)
+
+        view_menu.addSeparator()
+
+        self._presets_menu = view_menu.addMenu(tr("menu.workspace_presets"))
+        self._menu_act_preset_default = self._presets_menu.addAction(
+            tr("menu.preset_default"), self._apply_preset_default
+        )
+        self._menu_act_preset_browse = self._presets_menu.addAction(
+            tr("menu.preset_browse"), self._apply_preset_browse
+        )
+        self._menu_act_preset_inspect = self._presets_menu.addAction(
+            tr("menu.preset_inspect"), self._apply_preset_inspect
+        )
+        self._presets_menu.addSeparator()
+        self._menu_act_reset_layout = self._presets_menu.addAction(
+            tr("menu.reset_layout"), self._reset_dock_layout
+        )
+
+    def _toggle_sidebar(self):
+        dock = getattr(self, "sidebar_dock", None)
+        if _alive(dock):
+            visible = dock.isHidden()
+            dock.setVisible(visible)
+            if hasattr(self, "_menu_act_toggle_sidebar"):
+                self._menu_act_toggle_sidebar.setChecked(visible)
+
+    def _toggle_info(self):
+        dock = getattr(self, "info_dock", None)
+        if _alive(dock):
+            visible = dock.isHidden()
+            dock.setVisible(visible)
+            if hasattr(self, "_menu_act_toggle_info"):
+                self._menu_act_toggle_info.setChecked(visible)
+
+    def _apply_preset_default(self):
+        """Standard layout: both Sidebar and Info visible."""
+        dock_s = getattr(self, "sidebar_dock", None)
+        if _alive(dock_s):
+            dock_s.show()
+            if hasattr(self, "_menu_act_toggle_sidebar"):
+                self._menu_act_toggle_sidebar.setChecked(True)
+        dock_i = getattr(self, "info_dock", None)
+        if _alive(dock_i):
+            dock_i.show()
+            if hasattr(self, "_menu_act_toggle_info"):
+                self._menu_act_toggle_info.setChecked(True)
+
+    def _apply_preset_browse(self):
+        """Full canvas browse mode: hide both side docks for maximum grid canvas."""
+        dock_s = getattr(self, "sidebar_dock", None)
+        if _alive(dock_s):
+            dock_s.hide()
+            if hasattr(self, "_menu_act_toggle_sidebar"):
+                self._menu_act_toggle_sidebar.setChecked(False)
+        dock_i = getattr(self, "info_dock", None)
+        if _alive(dock_i):
+            dock_i.hide()
+            if hasattr(self, "_menu_act_toggle_info"):
+                self._menu_act_toggle_info.setChecked(False)
+
+    def _apply_preset_inspect(self):
+        """Inspector focus mode: hide sidebar, show info dock."""
+        dock_s = getattr(self, "sidebar_dock", None)
+        if _alive(dock_s):
+            dock_s.hide()
+            if hasattr(self, "_menu_act_toggle_sidebar"):
+                self._menu_act_toggle_sidebar.setChecked(False)
+        dock_i = getattr(self, "info_dock", None)
+        if _alive(dock_i):
+            dock_i.show()
+            if hasattr(self, "_menu_act_toggle_info"):
+                self._menu_act_toggle_info.setChecked(True)
+
+    def _reset_dock_layout(self):
+        """Reset dock positions to initial default state."""
+        self._apply_preset_default()
+        default_state = getattr(self, "_default_dock_state", None)
+        if default_state is not None:
+            self.restoreState(default_state)
 
     def _register_window_shortcuts(self) -> None:
         """Record the window-level menu shortcuts in ShortcutManager.
@@ -517,6 +616,18 @@ class MainWindow(LanSharingMixin, QMainWindow):
             self._menu_act_exit, "Ctrl+Q", "menu.exit", "application")
         manager.register_action(
             self._menu_act_settings, "Ctrl+,", "menu.settings", "navigation")
+        if getattr(self, "_menu_act_command_palette", None) is not None:
+            manager.register_action(
+                self._menu_act_command_palette, "Ctrl+K", "menu.command_palette",
+                "application")
+        if getattr(self, "_menu_act_toggle_sidebar", None) is not None:
+            manager.register_action(
+                self._menu_act_toggle_sidebar, "Ctrl+B", "menu.toggle_sidebar",
+                "navigation")
+        if getattr(self, "_menu_act_toggle_info", None) is not None:
+            manager.register_action(
+                self._menu_act_toggle_info, "Ctrl+I", "menu.toggle_info",
+                "navigation")
         manager.register_action(
             self._menu_act_shortcuts, "F1", "menu.keyboard_shortcuts",
             "application")
@@ -587,6 +698,11 @@ class MainWindow(LanSharingMixin, QMainWindow):
         if not isinstance(self.info, InfoPanel):
             raise RuntimeError("Info dock did not create InfoPanel")
 
+        if hasattr(self, "_menu_act_toggle_sidebar"):
+            self.sidebar_dock.visibilityChanged.connect(self._menu_act_toggle_sidebar.setChecked)
+        if hasattr(self, "_menu_act_toggle_info"):
+            self.info_dock.visibilityChanged.connect(self._menu_act_toggle_info.setChecked)
+
         # ── Status bar ──────────────────────────────────────────
         self._setup_status_bar()
 
@@ -612,8 +728,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
 
         # Share status indicator
         self._share_status_label = QLabel(tr("sharing.off"))
-        t = themes.get()
-        self._share_status_label.setStyleSheet(f"color: {t['muted']}; padding: 0 {scaled_px(8)}px;")
+        self._share_status_label.setStyleSheet(f"color: {themes.color('muted')}; padding: 0 {scaled_px(8)}px;")
         self._share_status_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self._share_status_label.mousePressEvent = self._on_share_status_clicked
         status_bar.addPermanentWidget(self._share_status_label)
@@ -795,8 +910,26 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._menu_act_refresh.setText(tr("menu.refresh"))
         self._menu_act_exit.setText(tr("menu.exit"))
         self._menu_act_settings.setText(tr("menu.settings"))
+        if hasattr(self, '_menu_view'):
+            self._menu_view.setTitle(tr("menu.view"))
+        if hasattr(self, '_menu_act_toggle_sidebar'):
+            self._menu_act_toggle_sidebar.setText(tr("menu.toggle_sidebar"))
+        if hasattr(self, '_menu_act_toggle_info'):
+            self._menu_act_toggle_info.setText(tr("menu.toggle_info"))
+        if hasattr(self, '_presets_menu'):
+            self._presets_menu.setTitle(tr("menu.workspace_presets"))
+        if hasattr(self, '_menu_act_preset_default'):
+            self._menu_act_preset_default.setText(tr("menu.preset_default"))
+        if hasattr(self, '_menu_act_preset_browse'):
+            self._menu_act_preset_browse.setText(tr("menu.preset_browse"))
+        if hasattr(self, '_menu_act_preset_inspect'):
+            self._menu_act_preset_inspect.setText(tr("menu.preset_inspect"))
+        if hasattr(self, '_menu_act_reset_layout'):
+            self._menu_act_reset_layout.setText(tr("menu.reset_layout"))
         if hasattr(self, '_menu_tools'):
             self._menu_tools.setTitle(tr("menu.tools"))
+        if hasattr(self, '_menu_act_command_palette'):
+            self._menu_act_command_palette.setText(tr("menu.command_palette"))
         if hasattr(self, '_menu_act_plugin_manager'):
             self._menu_act_plugin_manager.setText(tr("menu.plugin_manager"))
         if hasattr(self, '_menu_act_share'):
@@ -845,8 +978,15 @@ class MainWindow(LanSharingMixin, QMainWindow):
                 qpanel.resize(w, qpanel.height())
 
     def _save_dock_layout(self):
-        """Save dock sizes and panel view state for session restore."""
+        """Save dock sizes, visibility, and panel view state for session restore."""
         from AssetsManager.panels.panel_state import PanelState
+
+        try:
+            state_hex = bytes(self.saveState().data()).hex()
+            AppSettings.instance().set("window_dock_state", state_hex)
+            AppSettings.instance().save()
+        except Exception:
+            _log.warning("Failed to save window dock state", exc_info=True)
 
         PanelState("dock_widths", save=self._dock_widths_state,
                    restore=self._restore_dock_widths).persist(self)
@@ -870,6 +1010,20 @@ class MainWindow(LanSharingMixin, QMainWindow):
     def _restore_dock_layout(self):
         """Restore dock sizes and panel view state from previous session."""
         from AssetsManager.panels.panel_state import PanelState
+
+        # Capture pristine default dock state before applying any saved state
+        self._default_dock_state = self.saveState()
+
+        try:
+            saved_state = AppSettings.instance().get("window_dock_state")
+            if isinstance(saved_state, str) and saved_state:
+                self.restoreState(bytes.fromhex(saved_state))
+                if hasattr(self, "_menu_act_toggle_sidebar") and _alive(self.sidebar_dock):
+                    self._menu_act_toggle_sidebar.setChecked(not self.sidebar_dock.isHidden())
+                if hasattr(self, "_menu_act_toggle_info") and _alive(self.info_dock):
+                    self._menu_act_toggle_info.setChecked(not self.info_dock.isHidden())
+        except Exception:
+            _log.warning("Ignoring malformed window dock state", exc_info=True)
 
         PanelState("dock_widths", save=self._dock_widths_state,
                    restore=self._restore_dock_widths).load(self)
@@ -981,6 +1135,13 @@ class MainWindow(LanSharingMixin, QMainWindow):
             + "\n\n"
             + tr("about.tagline"),
         )
+
+    def _open_command_palette(self) -> None:
+        """Open the global command palette overlay (Ctrl+K)."""
+        from AssetsManager.widgets.command_palette import CommandPalette
+
+        dlg = CommandPalette(self)
+        dlg.exec()
 
     def _open_settings(self):
         from AssetsManager.application.library_settings_adapter import LibrarySettingsAdapter

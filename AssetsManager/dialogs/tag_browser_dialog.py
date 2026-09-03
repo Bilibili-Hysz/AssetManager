@@ -33,7 +33,6 @@ class TagBrowserDialog(TabbedDialog):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         self._root_layout = layout
-        self.setStyleSheet(self._dialog_qss())
 
         self._tag_tree = TagTreePanel(self)
         self._tag_tree.set_scoped_services(self._services)

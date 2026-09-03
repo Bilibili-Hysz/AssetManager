@@ -139,7 +139,16 @@ def test_remove_from_list():
 def test_save_load_prefers_current_settings_over_legacy_file(tmp_path, monkeypatch):
     legacy_path = tmp_path / ".assetmanager" / "settings.json"
     legacy_path.parent.mkdir()
-    legacy_path.write_text('{"theme": "Navy", "legacy_only": true}', encoding="utf-8")
+    legacy_path.write_text(
+        json.dumps({
+            "theme": "Navy",
+            "recent_libraries": ["D:/old/library"],
+            "legacy_only": True,
+            "key1": "value1",
+            "test_list": [1, 2, 3],
+        }),
+        encoding="utf-8",
+    )
     monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
     writer = AppSettings.__new__(AppSettings)
     writer._path = tmp_path / "settings.json"
@@ -153,7 +162,44 @@ def test_save_load_prefers_current_settings_over_legacy_file(tmp_path, monkeypat
     reader.load()
 
     assert reader.get("theme") == "Forest"
-    assert reader.get("legacy_only") is True
+    assert reader.get("legacy_only") is None
+    assert reader.get("key1") is None
+    assert reader.get("test_list") is None
+
+
+def test_legacy_migration_carries_only_allowlisted_keys(tmp_path, monkeypatch):
+    """Regression: the legacy ~/.assetmanager migration used to copy every
+    key into the fresh profile, so unit-test leftovers recorded in an old
+    profile (key1/prepend_test/...) leaked into new installs — including the
+    packaged portable app's first-launch settings.json."""
+    legacy_path = tmp_path / ".assetmanager" / "settings.json"
+    legacy_path.parent.mkdir()
+    legacy_path.write_text(
+        json.dumps({
+            "theme": "Navy",
+            "recent_libraries": ["D:/old/library"],
+            "tab_state": {"tabs": ["D:/old/library"], "active": 0},
+            "key1": "value1",
+            "test": 123,
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    reader = AppSettings.__new__(AppSettings)
+    reader._path = tmp_path / "settings.json"
+    reader._data = {}
+    reader._dirty = False
+    reader.load()
+
+    assert reader.get("theme") == "Navy"
+    assert reader.get("recent_libraries") == ["D:/old/library"]
+    assert reader.get("tab_state") is None
+    assert reader.get("key1") is None
+    assert reader.get("test") is None
+    assert reader.get("_cfg_version") == CURRENT_VERSION
+    saved = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))
+    assert saved["_cfg_version"] == CURRENT_VERSION
+    assert "key1" not in saved and "tab_state" not in saved
 
 
 def test_malformed_legacy_settings_marks_migration_complete(tmp_path, monkeypatch):

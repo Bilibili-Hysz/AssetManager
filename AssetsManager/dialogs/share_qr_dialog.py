@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QVBoxLayout
 
 from AssetsManager import i18n
 from AssetsManager.core.ui_scale import scaled_px
-from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
+from AssetsManager.dialogs.modal_dialog import StandardModalDialog
 
 tr = i18n.tr
 
@@ -27,20 +27,23 @@ def qr_pixmap(url: str) -> QPixmap | None:
         return None
 
 
-class ShareQrDialog(TabbedDialog):
+class ShareQrDialog(StandardModalDialog):
     """Show a QR code only when the owner asks to share a known URL."""
 
     def __init__(self, parent=None, url: str = ""):
         self._url = url
         self._qr_pixmap = qr_pixmap(url) if url else None
-        super().__init__(parent, title=tr("sharing.qr.title"), min_size=(400, 470))
+        super().__init__(
+            parent,
+            title=tr("sharing.qr.title"),
+            min_size=(scaled_px(400), scaled_px(470)),
+            ok_text=tr("dialog.close"),
+            show_cancel=False,
+        )
+        self._close_btn = self._ok_btn
 
-    def _build_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(scaled_px(16), scaled_px(16), scaled_px(16), scaled_px(16))
-        layout.setSpacing(scaled_px(12))
-        layout.addWidget(self.make_heading(tr("sharing.qr.title")))
-        layout.addWidget(self.make_muted(tr("sharing.qr.hint")))
+    def setup_content(self, layout: QVBoxLayout) -> None:
+        self.set_header(tr("sharing.qr.title"), subtitle=tr("sharing.qr.hint"), icon_name="share")
 
         self._image_label = QLabel()
         self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -62,11 +65,9 @@ class ShareQrDialog(TabbedDialog):
         self._copy_link_btn = self.make_primary_btn(tr("sharing.qr.copy_link"), self._copy_link)
         self._copy_image_btn = self.make_secondary_btn(tr("sharing.qr.copy_image"), self._copy_image)
         self._copy_image_btn.setEnabled(self._qr_pixmap is not None)
-        self._close_btn = self.make_secondary_btn(tr("dialog.close"), self.accept)
         actions.addWidget(self._copy_link_btn)
         actions.addWidget(self._copy_image_btn)
         actions.addStretch()
-        actions.addWidget(self._close_btn)
         layout.addLayout(actions)
 
     def _copy_link(self):

@@ -19,7 +19,7 @@ from AssetsManager.core import themes
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.core.signal_bus import get as bus
-from AssetsManager.core.color_utils import alpha
+from AssetsManager.core.color_utils import alpha, darken, lighten
 from AssetsManager.core import icons
 from AssetsManager.widgets.elevation import apply_elevation, refresh_elevation
 from AssetsManager.widgets.stylekit import StyleKit
@@ -30,23 +30,6 @@ tr = i18n.tr
 # designed to render 30 entries and this is the ONLY write point (both the
 # startup picker and library reopen flows record visits through it).
 RECENT_LIBRARIES_MAX = 30
-
-
-def _interpolate_color(hex_color: str, factor: float) -> str:
-    """Lighten or darken a hex color by blending toward white/black."""
-    h = hex_color.lstrip("#")
-    if len(h) == 3:
-        h = h[0] * 2 + h[1] * 2 + h[2] * 2
-    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-    if factor > 0:
-        r += int((255 - r) * factor)
-        g += int((255 - g) * factor)
-        b += int((255 - b) * factor)
-    else:
-        r += int(r * factor)
-        g += int(g * factor)
-        b += int(b * factor)
-    return f"#{max(0, min(255, r)):02x}{max(0, min(255, g)):02x}{max(0, min(255, b)):02x}"
 
 
 def _font(key: str) -> int:
@@ -67,7 +50,9 @@ class _DetailPanel(QFrame):
 
     def _setup(self):
         self.setStyleSheet(self._card_qss("detailPanel"))
-        apply_elevation(self, level=1)
+        # E2 Floating: persistent raised card (unified depth ladder,
+        # design-language-unification-2026-09-03, P0-4).
+        apply_elevation(self, level=2)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(scaled_px(16), scaled_px(14), scaled_px(16), scaled_px(14))
         layout.setSpacing(scaled_px(8))
@@ -133,16 +118,15 @@ class _DetailPanel(QFrame):
         self._remove_btn.setToolTip(tr("startup.remove_btn"))
 
     def refresh_theme(self):
-        t = themes.get()
         self.setStyleSheet(self._card_qss("detailPanel"))
         self._header.setStyleSheet(
-            f"font-size: {_font('xxs')}px; font-weight: bold; color: {t['muted']}; "
+            f"font-size: {_font('xxs')}px; font-weight: bold; color: {themes.color('muted')}; "
             f"letter-spacing: {scaled_px(1)}px; padding: 0; background: transparent; border: none;")
         self._name.setStyleSheet(
-            f"font-size: {_font('xl')}px; font-weight: bold; color: {t['heading']}; "
+            f"font-size: {_font('xl')}px; font-weight: bold; color: {themes.color('heading')}; "
             f"padding: 0; line-height: 1.3; background: transparent; border: none;")
         self._path.setStyleSheet(
-            f"font-size: {_font('xs')}px; color: {t['muted']}; "
+            f"font-size: {_font('xs')}px; color: {themes.color('muted')}; "
             f"padding: 0; background: transparent; border: none;")
         self._refresh_button_icons()
         self._open_btn.setStyleSheet(self._primary_btn_qss())
@@ -152,7 +136,6 @@ class _DetailPanel(QFrame):
                            Path(self._path_data).exists())
 
     def show_detail(self, name: str, path: str, exists: bool):
-        t = themes.get()
         self._path_data = path
         self._header.show()
         self._name.setText(name)
@@ -165,14 +148,14 @@ class _DetailPanel(QFrame):
             self._status.setText(tr("startup.ready"))
             self._status.setStyleSheet(
                 f"font-size: {_font('caption')}px; font-weight: bold; padding: {scaled_px(2)}px {scaled_px(8)}px; "
-                f"border-radius: {radius_sm}px; color: {t['success']}; "
-                f"background: {_interpolate_color(t['success'], -0.75)};")
+                f"border-radius: {radius_sm}px; color: {themes.color('success')}; "
+                f"background: {darken(themes.color('success'), 0.25)};")
         else:
             self._status.setText(tr("startup.missing"))
             self._status.setStyleSheet(
                 f"font-size: {_font('caption')}px; font-weight: bold; padding: {scaled_px(2)}px {scaled_px(8)}px; "
-                f"border-radius: {radius_sm}px; color: {t['danger']}; "
-                f"background: {_interpolate_color(t['danger'], -0.75)};")
+                f"border-radius: {radius_sm}px; color: {themes.color('danger')}; "
+                f"background: {darken(themes.color('danger'), 0.25)};")
         self._status.show()
 
         self._open_btn.setEnabled(exists)
@@ -202,13 +185,14 @@ class _DetailPanel(QFrame):
             self._remove_cb(self._path_data)
 
     def _card_qss(self, name: str) -> str:
-        t = themes.get()
+        hairline = themes.color("border_subtle")
+        card_bg = alpha(themes.color("panel"), 0.55)
+        radius = scaled_px(int(themes.prop("border_radius", "md")))
         return (
             f"#{name} {{"
-            f"  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
-            f"    stop:0 {t['panel']}, stop:1 {t['base']}); "
-            f"  border: {scaled_px(1)}px solid {t['border_subtle']}; "
-            f"  border-radius: {scaled_px(int(themes.prop('border_radius', 'md')))}px; "
+            f"  background: {card_bg}; "
+            f"  border: {scaled_px(1)}px solid {hairline}; "
+            f"  border-radius: {radius}px; "
             f"}}")
 
     def _primary_btn_qss(self) -> str:
@@ -285,10 +269,10 @@ class _LibraryCard(QFrame):
             f"border-radius: {radius_sm}px; padding: 0;")
         # Name and path labels
         self._name_label.setStyleSheet(
-            f"font-size: {_font('md')}px; font-weight: bold; color: {t['heading']}; "
+            f"font-size: {_font('md')}px; font-weight: bold; color: {themes.color('heading')}; "
             f"background: transparent; border: none;")
         self._path_label.setStyleSheet(
-            f"font-size: {_font('xs')}px; color: {t['muted']}; "
+            f"font-size: {_font('xs')}px; color: {themes.color('muted')}; "
             f"background: transparent; border: none;")
         # Card background
         if self._selected:
@@ -307,7 +291,7 @@ class _LibraryCard(QFrame):
             f"  background: {hover_bg}; "
             f"}}"
             f"#libraryCard:focus {{"
-            f"  background: {alpha(t['accent'], 0.12)}; "
+            f"  background: {alpha(themes.color('accent'), 0.12)}; "
             f"  border: {scaled_px(1)}px solid {focus_border}; "
             f"}}")
 
@@ -382,8 +366,8 @@ class _FirstRunCard(QFrame):
         self.setStyleSheet(
             f"#firstRunCard {{"
             f"  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
-            f"    stop:0 {t['panel']}, stop:1 {t['base']}); "
-            f"  border: {scaled_px(1)}px solid {t['border_subtle']}; "
+            f"    stop:0 {themes.color('panel')}, stop:1 {themes.color('base')}); "
+            f"  border: {scaled_px(1)}px solid {themes.color('border_subtle')}; "
             f"  border-radius: {radius_md}px; "
             f"}}"
             f"#firstRunCard:hover {{"
@@ -393,10 +377,10 @@ class _FirstRunCard(QFrame):
             f"  border: {scaled_px(1)}px solid {focus_border}; "
             f"}}")
         self._title_label.setStyleSheet(
-            f"font-size: {_font('lg')}px; font-weight: bold; color: {t['heading']}; "
+            f"font-size: {_font('lg')}px; font-weight: bold; color: {themes.color('heading')}; "
             f"background: transparent; border: none;")
         self._subtitle_label.setStyleSheet(
-            f"font-size: {_font('sm')}px; color: {t['muted']}; "
+            f"font-size: {_font('sm')}px; color: {themes.color('muted')}; "
             f"background: transparent; border: none;")
 
     def mousePressEvent(self, event):
@@ -471,7 +455,6 @@ class StartupWindow(QMainWindow):
     # ── UI ──────────────────────────────────────────────────────
 
     def _setup_ui(self):
-        t = themes.get()
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
 
         # ── Menu bar ──────────────────────────────────────────
@@ -502,10 +485,10 @@ class StartupWindow(QMainWindow):
         self._hero_card.setStyleSheet(
             f"#heroCard {{"
             f"  background: qlineargradient(x1:0, y1:0, x2:1, y2:0.7, "
-            f"    stop:0 {_interpolate_color(t['panel'], 0.06)}, "
-            f"    stop:0.5 {t['panel']}, "
-            f"    stop:1 {t['panel']}); "
-            f"  border-bottom: {scaled_px(1)}px solid {t['border_subtle']}; "
+            f"    stop:0 {lighten(themes.color('panel'), 1.06)}, "
+            f"    stop:0.5 {themes.color('panel')}, "
+            f"    stop:1 {themes.color('panel')}); "
+            f"  border-bottom: {scaled_px(1)}px solid {themes.color('border_subtle')}; "
             f"}}")
         hero_layout = QVBoxLayout(self._hero_card)
         hero_layout.setContentsMargins(scaled_px(28), scaled_px(14), scaled_px(28), scaled_px(12))
@@ -513,20 +496,20 @@ class StartupWindow(QMainWindow):
 
         self._hero_title = QLabel(tr("startup.hero_title"))
         self._hero_title.setStyleSheet(
-            f"font-size: {_font('xxl')}px; font-weight: bold; color: {t['heading']}; "
+            f"font-size: {_font('xxl')}px; font-weight: bold; color: {themes.color('heading')}; "
             f"background: transparent; border: none;")
         hero_layout.addWidget(self._hero_title)
 
         self._hero_sub = QLabel(tr("startup.hero_sub"))
         self._hero_sub.setStyleSheet(
-            f"font-size: {_font('sm')}px; color: {t['muted']}; "
+            f"font-size: {_font('sm')}px; color: {themes.color('muted')}; "
             f"background: transparent; border: none;")
         hero_layout.addWidget(self._hero_sub)
 
         hero_layout.addSpacing(scaled_px(6))
         self._hero_count = QLabel()
         self._hero_count.setStyleSheet(
-            f"font-size: {_font('caption')}px; color: {_interpolate_color(t['muted'], 0.4)}; "
+            f"font-size: {_font('caption')}px; color: {lighten(themes.color('muted'), 1.4)}; "
             f"background: transparent; border: none;")
         hero_layout.addWidget(self._hero_count)
 
@@ -546,18 +529,20 @@ class StartupWindow(QMainWindow):
         self._list_panel.setStyleSheet(
             f"#listPanel {{"
             f"  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
-            f"    stop:0 {_interpolate_color(t['panel'], 0.03)}, stop:1 {t['base']}); "
-            f"  border: {scaled_px(1)}px solid {t['border_subtle']}; "
+            f"    stop:0 {lighten(themes.color('panel'), 1.03)}, stop:1 {themes.color('base')}); "
+            f"  border: {scaled_px(1)}px solid {themes.color('border_subtle')}; "
             f"  border-radius: {scaled_px(int(themes.prop('border_radius', 'md')))}px; "
             f"}}")
-        apply_elevation(self._list_panel, level=1)
+        # E2 Floating: persistent raised card (unified depth ladder,
+        # design-language-unification-2026-09-03, P0-4).
+        apply_elevation(self._list_panel, level=2)
         right_layout = QVBoxLayout(self._list_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
 
         self._list_header = QLabel(tr("startup.recent_header"))
         self._list_header.setStyleSheet(
-            f"font-size: {_font('xxs')}px; font-weight: bold; color: {t['muted']}; "
+            f"font-size: {_font('xxs')}px; font-weight: bold; color: {themes.color('muted')}; "
             f"letter-spacing: {scaled_px(1)}px; padding: {scaled_px(10)}px 0 {scaled_px(4)}px {scaled_px(12)}px; "
             f"background: transparent; border: none;")
         right_layout.addWidget(self._list_header)
@@ -580,7 +565,7 @@ class StartupWindow(QMainWindow):
 
         self._first_run_header = QLabel(tr("startup.first_run_header"))
         self._first_run_header.setStyleSheet(
-            f"font-size: {_font('xxs')}px; font-weight: bold; color: {t['muted']}; "
+            f"font-size: {_font('xxs')}px; font-weight: bold; color: {themes.color('muted')}; "
             f"letter-spacing: {scaled_px(1)}px; padding: 0; "
             f"background: transparent; border: none;")
         empty_layout.addWidget(self._first_run_header)
@@ -616,14 +601,9 @@ class StartupWindow(QMainWindow):
 
         self._browse_btn = QPushButton(tr("startup.browse_btn"))
         self._browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._browse_btn.setStyleSheet(
-            f"QPushButton {{"
-            f"  background: transparent; color: {t['body']}; "
-            f"  border: {scaled_px(1)}px solid {alpha(t['border'], 0.375)}; "
-            f"  border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px; "
-            f"  padding: {scaled_px(6)}px {scaled_px(14)}px; font-size: {_font('sm')}px; "
-            f"}}"
-            f"QPushButton:hover {{ background: {alpha(t['hover_overlay'], themes.prop('opacity', 'hover'))}; }}")
+        self._browse_btn.setStyleSheet(sk.button_css(
+            "secondary", font_size_key="sm",
+            padding_y=scaled_px(6), padding_x=scaled_px(14)))
         self._browse_btn.setIcon(icons.icon("folder", color="icon_secondary", size=scaled_px(15)))
         self._browse_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
         self._browse_btn.setAccessibleName(tr("startup.browse_btn"))
@@ -667,19 +647,18 @@ class StartupWindow(QMainWindow):
     # ── Menu theming ───────────────────────────────────────────
 
     def _apply_menu_theme(self):
-        t = themes.get()
         radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
         self._menu_bar.setStyleSheet(
-            f"QMenuBar {{ background: {t['header']}; color: {t['heading']}; "
-            f"border-bottom: {scaled_px(1)}px solid {alpha(t['border'], 0.25)}; "
+            f"QMenuBar {{ background: {themes.color('header')}; color: {themes.color('heading')}; "
+            f"border-bottom: {scaled_px(1)}px solid {alpha(themes.color('border'), 0.25)}; "
             f"padding: {scaled_px(2)}px 0; font-size: {_font('sm')}px; }}"
             f"QMenuBar::item {{ padding: {scaled_px(4)}px {scaled_px(10)}px; border-radius: {radius_sm}px; }}"
-            f"QMenuBar::item:selected {{ background: {alpha(t['accent'], 0.313)}; }}"
-            f"QMenu {{ background: {t['panel']}; color: {t['heading']}; "
-            f"border: {scaled_px(1)}px solid {t['border']}; "
+            f"QMenuBar::item:selected {{ background: {alpha(themes.color('accent'), 0.313)}; }}"
+            f"QMenu {{ background: {themes.color('panel')}; color: {themes.color('heading')}; "
+            f"border: {scaled_px(1)}px solid {themes.color('border')}; "
             f"border-radius: {radius_sm}px; padding: {scaled_px(4)}px; }}"
             f"QMenu::item {{ padding: {scaled_px(5)}px {scaled_px(28)}px {scaled_px(5)}px {scaled_px(12)}px; border-radius: {radius_sm}px; }}"
-            f"QMenu::item:selected {{ background: {t['accent']}; }}")
+            f"QMenu::item:selected {{ background: {themes.color('accent')}; }}")
 
     def _open_settings(self):
         from AssetsManager.dialogs.settings_dialog import SettingsDialog
@@ -728,11 +707,10 @@ class StartupWindow(QMainWindow):
             self._card_layout.insertWidget(len(self._cards) - 1, card)
 
         if len(recent) > RECENT_LIBRARIES_MAX:
-            t = themes.get()
             indicator = QLabel(tr("startup.hero_truncated",
                                   shown=RECENT_LIBRARIES_MAX, total=len(recent)))
             indicator.setStyleSheet(
-                f"font-size: {_font('xs')}px; color: {t['muted']}; "
+                f"font-size: {_font('xs')}px; color: {themes.color('muted')}; "
                 f"padding: {scaled_px(4)}px {scaled_px(12)}px; background: transparent; border: none;")
             self._truncation_indicator = indicator
             self._card_layout.insertWidget(len(self._cards), indicator)
@@ -815,7 +793,6 @@ class StartupWindow(QMainWindow):
     def refresh_theme(self, _name: str = ""):
         """Re-apply all theme-dependent styles on startup window."""
         themes.apply_to(self)
-        t = themes.get()
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         self._central.setStyleSheet(f"background: {sk.token('base')};")
         self._apply_menu_theme()
@@ -824,29 +801,29 @@ class StartupWindow(QMainWindow):
         self._hero_card.setStyleSheet(
             f"#heroCard {{"
             f"  background: qlineargradient(x1:0, y1:0, x2:1, y2:0.7, "
-            f"    stop:0 {_interpolate_color(t['panel'], 0.06)}, "
-            f"    stop:0.5 {t['panel']}, "
-            f"    stop:1 {t['panel']}); "
-            f"  border-bottom: {scaled_px(1)}px solid {t['border_subtle']}; "
+            f"    stop:0 {lighten(themes.color('panel'), 1.06)}, "
+            f"    stop:0.5 {themes.color('panel')}, "
+            f"    stop:1 {themes.color('panel')}); "
+            f"  border-bottom: {scaled_px(1)}px solid {themes.color('border_subtle')}; "
             f"}}")
 
         # List panel
         self._list_panel.setStyleSheet(
             f"#listPanel {{"
             f"  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
-            f"    stop:0 {_interpolate_color(t['panel'], 0.03)}, stop:1 {t['base']}); "
-            f"  border: {scaled_px(1)}px solid {t['border_subtle']}; "
+            f"    stop:0 {lighten(themes.color('panel'), 1.03)}, stop:1 {themes.color('base')}); "
+            f"  border: {scaled_px(1)}px solid {themes.color('border_subtle')}; "
             f"  border-radius: {scaled_px(int(themes.prop('border_radius', 'md')))}px; "
             f"}}")
 
         # Detail panel
         self._detail.refresh_theme()
-        refresh_elevation(self._detail, level=1)
-        refresh_elevation(self._list_panel, level=1)
+        refresh_elevation(self._detail, level=2)
+        refresh_elevation(self._list_panel, level=2)
 
         # First-run empty state
         self._first_run_header.setStyleSheet(
-            f"font-size: {_font('xxs')}px; font-weight: bold; color: {t['muted']}; "
+            f"font-size: {_font('xxs')}px; font-weight: bold; color: {themes.color('muted')}; "
             f"letter-spacing: {scaled_px(1)}px; padding: 0; "
             f"background: transparent; border: none;")
         self._new_library_card._apply_style()
@@ -856,28 +833,23 @@ class StartupWindow(QMainWindow):
 
         # Hero text
         self._hero_title.setStyleSheet(
-            f"font-size: {_font('xxl')}px; font-weight: bold; color: {t['heading']}; "
+            f"font-size: {_font('xxl')}px; font-weight: bold; color: {themes.color('heading')}; "
             f"background: transparent; border: none;")
         self._hero_sub.setStyleSheet(
-            f"font-size: {_font('sm')}px; color: {t['muted']}; "
+            f"font-size: {_font('sm')}px; color: {themes.color('muted')}; "
             f"background: transparent; border: none;")
         self._hero_count.setStyleSheet(
-            f"font-size: {_font('caption')}px; color: {_interpolate_color(t['muted'], 0.4)}; "
+            f"font-size: {_font('caption')}px; color: {lighten(themes.color('muted'), 1.4)}; "
             f"background: transparent; border: none;")
         self._list_header.setStyleSheet(
-            f"font-size: {_font('xxs')}px; font-weight: bold; color: {t['muted']}; "
+            f"font-size: {_font('xxs')}px; font-weight: bold; color: {themes.color('muted')}; "
             f"letter-spacing: {scaled_px(1)}px; padding: {scaled_px(10)}px 0 {scaled_px(4)}px {scaled_px(12)}px; "
             f"background: transparent; border: none;")
 
         # Browse button
-        self._browse_btn.setStyleSheet(
-            f"QPushButton {{"
-            f"  background: transparent; color: {t['body']}; "
-            f"  border: {scaled_px(1)}px solid {alpha(t['border'], 0.375)}; "
-            f"  border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px; "
-            f"  padding: {scaled_px(6)}px {scaled_px(14)}px; font-size: {_font('sm')}px; "
-            f"}}"
-            f"QPushButton:hover {{ background: {alpha(t['hover_overlay'], themes.prop('opacity', 'hover'))}; }}")
+        self._browse_btn.setStyleSheet(sk.button_css(
+            "secondary", font_size_key="sm",
+            padding_y=scaled_px(6), padding_x=scaled_px(14)))
 
         # Library cards
         for c in self._cards:

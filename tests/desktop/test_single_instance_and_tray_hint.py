@@ -1,13 +1,24 @@
-"""H5 regression tests: single-instance lock and first-hide tray hint."""
 import logging
+import uuid
+import pytest
 
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication
 
+import AssetsManager.app as app_mod
 from AssetsManager.app import _SINGLE_INSTANCE_KEY, _bind_single_instance
 from AssetsManager.i18n import tr
 from AssetsManager.window import maybe_show_tray_hide_hint
+
+
+@pytest.fixture(autouse=True)
+def _isolate_pipe_key(monkeypatch):
+    test_key = f"AssetsManager_TestPipe_{uuid.uuid4().hex}"
+    monkeypatch.setattr(app_mod, "_SINGLE_INSTANCE_KEY", test_key)
+    monkeypatch.setattr("tests.desktop.test_single_instance_and_tray_hint._SINGLE_INSTANCE_KEY", test_key)
+    yield test_key
+    QLocalServer.removeServer(test_key)
 
 
 class _FakeSettings:

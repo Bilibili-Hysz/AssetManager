@@ -917,12 +917,20 @@ def test_grid_interaction_overlay_draws_focus_ring_for_anchor_row(monkeypatch):
 
     widget._draw_interaction_overlay(painter, 0, QRect(0, 0, 100, 100), 1.0)
 
+    # Modern 2px double-layer solid glowing focus ring (no DashLine)
     dashed_pens = [
         call.args[0]
         for call in painter.setPen.call_args_list
         if call.args and call.args[0].style() == Qt.PenStyle.DashLine
     ]
-    assert dashed_pens, "anchor card should get a dashed keyboard focus ring"
+    assert not dashed_pens, "focus ring should not use Win95 DashLine"
+
+    solid_pens = [
+        call.args[0]
+        for call in painter.setPen.call_args_list
+        if call.args and call.args[0].style() == Qt.PenStyle.SolidLine
+    ]
+    assert any(pen.widthF() >= 2.0 for pen in solid_pens), "anchor card should get 2px solid focus ring"
 
 
 def test_grid_light_relayout_preserves_cached_textures_and_dirty_rows():
@@ -1696,3 +1704,116 @@ def test_grid_invalidate_failed_row_discards_texture_and_repaints(tmp_path):
     # Row texture stays until the frame rebuild (same policy as
     # commit_thumbnail_rows); the dirty flag drives that rebuild.
     assert row in widget._dirty
+
+
+def test_keyboard_navigation_empty_selection_activates_ends():
+    widget = FileListGridWidget()
+    widget._model_rows = 10
+    widget.set_layout_ref(GridLayout())
+    widget._layout._cols = 4
+
+    # 1. Empty selection + Down arrow -> activates row 0
+    widget._selection = set()
+    widget._last_click_row = -1
+    event_down = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Down, Qt.KeyboardModifier.NoModifier)
+    widget.keyPressEvent(event_down)
+    assert widget._selection == {0}
+    assert widget._last_click_row == 0
+
+    # 2. Empty selection + Right arrow -> activates row 0
+    widget._selection = set()
+    widget._last_click_row = -1
+    event_right = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Right, Qt.KeyboardModifier.NoModifier)
+    widget.keyPressEvent(event_right)
+    assert widget._selection == {0}
+    assert widget._last_click_row == 0
+
+    # 3. Empty selection + Up arrow -> activates last row (9)
+    widget._selection = set()
+    widget._last_click_row = -1
+    event_up = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Up, Qt.KeyboardModifier.NoModifier)
+    widget.keyPressEvent(event_up)
+    assert widget._selection == {9}
+    assert widget._last_click_row == 9
+
+    # 4. Empty selection + Left arrow -> activates last row (9)
+    widget._selection = set()
+    widget._last_click_row = -1
+    event_left = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Left, Qt.KeyboardModifier.NoModifier)
+    widget.keyPressEvent(event_left)
+    assert widget._selection == {9}
+    assert widget._last_click_row == 9
+
+
+def test_keyboard_navigation_smooth_line_wrapping_and_unified_anchor():
+    widget = FileListGridWidget()
+    widget._model_rows = 12
+    widget.set_layout_ref(GridLayout())
+    widget._layout._cols = 4
+
+    # Row 0: [0, 1, 2, 3]
+    # Row 1: [4, 5, 6, 7]
+    # Row 2: [8, 9, 10, 11]
+
+    # End of row 0 (row 3): Right arrow wraps into start of row 1 (row 4)
+    widget._selection = {3}
+    widget._last_click_row = 3
+    event_right = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Right, Qt.KeyboardModifier.NoModifier)
+    widget.keyPressEvent(event_right)
+    assert widget._selection == {4}
+    assert widget._last_click_row == 4
+
+    # Start of row 1 (row 4): Left arrow wraps into end of row 0 (row 3)
+    event_left = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Left, Qt.KeyboardModifier.NoModifier)
+    widget.keyPressEvent(event_left)
+    assert widget._selection == {3}
+    assert widget._last_click_row == 3
+
+    # Multi-selection anchor: unified on _last_click_row instead of arbitrary set iteration
+    widget._selection = {1, 5, 8}
+    widget._last_click_row = 5
+    widget.keyPressEvent(event_right)
+    assert widget._selection == {6}
+    assert widget._last_click_row == 6
+
+
+def test_hover_lift_ground_shadow_rendering():
+    widget = FileListGridWidget()
+    painter = Mock()
+    card = QRect(10, 10, 100, 120)
+
+    # Calling with 0 progress should not draw shadow
+    widget._draw_hover_shadow(painter, card, 0.0)
+    assert painter.drawRoundedRect.call_count == 0
+
+    # Calling with positive progress draws 3-layer diffuse soft shadow
+    widget._draw_hover_shadow(painter, card, 1.0)
+    assert painter.drawRoundedRect.call_count == 3
+    assert painter.save.called
+    assert painter.restore.called
+
+
+def test_icon_detect_dpr_and_cross_screen_scaling(monkeypatch):
+    from AssetsManager.core import icons
+
+    # 1. Explicit DPR parameter works and creates distinct cached icons
+    icon_1x = icons.icon("folder", color="#ffffff", size=16, dpr=1.0)
+    icon_2x = icons.icon("folder", color="#ffffff", size=16, dpr=2.0)
+    assert not icon_1x.isNull()
+    assert not icon_2x.isNull()
+    assert icon_1x is not icon_2x
+
+    # 2. Focused window DPR sensing
+    class DummyWindow:
+        def devicePixelRatio(self):
+            return 2.0
+
+        def screen(self):
+            return None
+
+    monkeypatch.setattr(icons.QGuiApplication, "focusWindow", lambda: DummyWindow())
+    detected = icons._detect_dpr()
+    assert detected == 2.0
+
+    sensed_icon = icons.icon("settings", color="#ffffff", size=16)
+    assert not sensed_icon.isNull()

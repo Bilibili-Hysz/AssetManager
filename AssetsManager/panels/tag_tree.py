@@ -9,12 +9,12 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QLineEdit, QPushButton, QHBoxLayout,
-    QMenu, QInputDialog, QMessageBox,
+    QMenu, QInputDialog, QMessageBox, QWidget,
 )
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
-from AssetsManager.core.color_utils import alpha
 from AssetsManager.core import themes, icons
-from AssetsManager.panels.base import PanelContent
+from AssetsManager.widgets.stylekit import StyleKit
+from AssetsManager.panels.base import StandardPanel
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.controllers.tag_tree_controller import TagTreeController
 from AssetsManager.application.runtime_events import ProjectionDomain
@@ -27,7 +27,7 @@ _COLOR_ROLE = Qt.ItemDataRole.UserRole + 2
 _SOURCE_ROLE = Qt.ItemDataRole.UserRole + 3
 
 
-class TagTreePanel(PanelContent):
+class TagTreePanel(StandardPanel):
     directory_selected = Signal(str)
 
     def __init__(self, parent=None):
@@ -42,6 +42,32 @@ class TagTreePanel(PanelContent):
         self._binding_generation = 0
 
 
+        # ── Search bar + action toolbar at top (unified reading flow) ─
+        self._search = QLineEdit()
+        self._search.setPlaceholderText(tr("tagtree.filter_placeholder"))
+        self._search.textChanged.connect(self._on_search)
+        self._search.setClearButtonEnabled(True)
+        bar = QHBoxLayout()
+        bar.setContentsMargins(scaled_px(4), scaled_px(4), scaled_px(4), scaled_px(2))
+        bar.setSpacing(scaled_px(4))
+        bar.addWidget(self._search)
+
+        add_btn = QPushButton(tr("tagtree.new_tag"))
+        add_btn.setIcon(icons.icon("tag", color="icon_secondary", size=scaled_px(16)))
+        add_btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
+        add_btn.setAccessibleName(tr("tagtree.new_tag"))
+        add_btn.setToolTip(tr("tagtree.new_tag"))
+        add_btn.clicked.connect(self._add_tag)
+        add_btn.setMinimumWidth(scaled_px(28))
+        themes.set_button_variant(add_btn, "secondary")
+        bar.addWidget(add_btn)
+        self._add_btn = add_btn
+        # StandardPanel slot contract: search/new-tag bar → toolbar slot.
+        toolbar = QWidget()
+        toolbar.setLayout(bar)
+        self.set_toolbar(toolbar)
+
+        # ── Tree view below toolbar (stretch=1) ───────────────────────
         self._tree = QTreeWidget()
         self._tree.setHeaderHidden(True)
         self._tree.setIndentation(scaled_px(16))
@@ -52,26 +78,10 @@ class TagTreePanel(PanelContent):
         self._tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._tree.customContextMenuRequested.connect(self._ctx_menu)
         self._tree.itemClicked.connect(self._on_click)
-        self.content_layout.addWidget(self._tree)
+        self.set_body(self._tree, 1)
 
-        self._search = QLineEdit()
-        self._search.setPlaceholderText(tr("tagtree.filter_placeholder"))
-        self._search.textChanged.connect(self._on_search)
-        self._search.setClearButtonEnabled(True)
-        bar = QHBoxLayout()
-        bar.addWidget(self._search)
-        add_btn = QPushButton(tr("tagtree.new_tag"))
-        add_btn.setIcon(icons.icon("tag", color="icon_secondary", size=scaled_px(16)))
-        add_btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
-        add_btn.setAccessibleName(tr("tagtree.new_tag"))
-        add_btn.setToolTip(tr("tagtree.new_tag"))
-        add_btn.clicked.connect(self._add_tag)
-        add_btn.setMaximumWidth(scaled_px(72))
-        themes.set_button_variant(add_btn, "secondary")
-        bar.addWidget(add_btn)
-        self._add_btn = add_btn
+        self.setFocusProxy(self._search)
         self._apply_tree_style()
-        self.content_layout.addLayout(bar)
 
         self._connect_bus(bus().theme_changed, self._on_visual_theme_changed)
         self._connect_bus(bus().language_changed, self._on_language_changed)
@@ -80,33 +90,9 @@ class TagTreePanel(PanelContent):
 
     def _apply_tree_style(self):
         """Apply the compact tree presentation shared by the desktop panels."""
-        t = themes.get()
-        font_size = scaled_pt(int(themes.prop("font_size", "sm")))
-        padding_xs = scaled_px(int(themes.prop("spacing", "xs")))
-        padding_sm = scaled_px(int(themes.prop("spacing", "sm")))
-        radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
-        hover = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
-        selected = alpha(t["selected_overlay"], 0.28)
         self._tree.setIconSize(QSize(scaled_px(18), scaled_px(18)))
-        self._tree.setStyleSheet(
-            f"QTreeWidget {{"
-            f"  background: transparent; color: {t['body']}; border: none; outline: none; "
-            f"  font-size: {font_size}px; "
-            f"}}"
-            f"QTreeWidget::item {{"
-            f"  padding: {padding_xs}px {padding_sm}px; "
-            f"  border: none; border-radius: {radius_sm}px; "
-            f"}}"
-            f"QTreeWidget::item:hover {{"
-            f"  background: {hover}; "
-            f"}}"
-            f"QTreeWidget::item:selected {{"
-            f"  background: {selected}; color: {t['heading']}; "
-            f"}}"
-            f"QTreeWidget::item:selected:focus {{"
-            f"  background: {selected}; color: {t['heading']}; "
-            f"}}"
-            f"QTreeWidget::item:disabled {{ color: {t['muted']}; }}")
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+        self._tree.setStyleSheet(sk.tree_css())
         self._add_btn.setIcon(icons.icon("tag", color="icon_secondary", size=scaled_px(16)))
         self._add_btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
 

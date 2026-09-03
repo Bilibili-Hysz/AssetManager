@@ -17,7 +17,7 @@ import re
 import threading
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.core.signal_bus import get as bus
-from AssetsManager.core.color_utils import alpha
+from AssetsManager.core.color_utils import alpha, darker, lighter
 from AssetsManager.core.theme_loader import ThemeLoader
 
 _log = logging.getLogger(__name__)
@@ -403,9 +403,14 @@ def color(token: str) -> str:
         token: e.g. 'accent', 'scrollbar_thumb', 'disabled_text'.
 
     Returns:
-        Hex color string (e.g. '#4a60b0').
+        Hex color string (e.g. '#4a60b0'). Missing tokens return an empty
+        string (with a warning) — an empty value pasted into QSS produces
+        an invalid declaration, so callers should treat it as an error.
     """
-    return get().get(token, "")
+    value = get().get(token, "")
+    if not value:
+        _log.warning("Theme color token %r missing from theme %r", token, _current)
+    return value
 
 
 def prop(category: str, key: str) -> int | float:
@@ -416,11 +421,89 @@ def prop(category: str, key: str) -> int | float:
         key: e.g. 'md', 'lg', 'sm'.
 
     Returns:
-        Numeric value from the theme's properties section.
+        Numeric value from the theme's properties section. A missing key
+        returns 0 with a warning — a silent 0 becomes ``0px`` in QSS and
+        has historically hidden token typos (audit B3/E5).
     """
     props = get().get("properties", {})
     cat = props.get(category, {})
-    return cat.get(key, 0)
+    value = cat.get(key)
+    if value is None:
+        _log.warning(
+            "Theme property %s.%s missing from theme %r — returning 0",
+            category, key, _current,
+        )
+        return 0
+    return value
+
+
+# Logical-px UI metrics every theme inherits (overridable per theme via
+# properties.metrics). Introduced by I2 (audit E6) to kill the icon 15/16
+# and hit-area 20/22/26 drift; wrap results in scaled_px before geometry use.
+_BUILTIN_METRICS: dict[str, int] = {
+    "icon_sm": 16,           # standard action icon (dock chrome, panels)
+    "icon_xs": 12,           # compact icon (status bars, workspace bar)
+    "hit_area": 24,          # square icon-button hot zone (a11y floor)
+    "control_height_md": 28, # de-facto standard control/status-bar height
+    "radius_xs": 3,          # sub-token corner (pill tracks, separators)
+    "radius_badge": 6,       # small drawn corner (badges, folder-tab glyphs)
+}
+
+
+def metrics(key: str) -> int:
+    """Return a logical-px UI metric for the current theme.
+
+    Metrics are theme-overridable via ``properties.metrics`` and otherwise
+    fall back to :data:`_BUILTIN_METRICS`. Wrap the result in ``scaled_px``
+    before use in geometry.
+
+    Args:
+        key: e.g. 'icon_sm', 'hit_area', 'control_height_md'.
+
+    Returns:
+        Logical pixel value (0 with a warning for unknown keys — a silent 0
+        would collapse geometry exactly like a missing property token).
+    """
+    custom = get().get("properties", {}).get("metrics", {})
+    value = custom.get(key)
+    if value is None:
+        value = _BUILTIN_METRICS.get(key)
+        if value is None:
+            _log.warning("Unknown theme metric %r — returning 0", key)
+            return 0
+    return int(value)
+
+
+# Named motion tiers (ms). Introduced by the design-language unification
+# (P1-11): components must reference these instead of inlining raw numbers
+# so the motion language stays consistent across the QSS and QPainter
+# rendering generations. Themes may override individual tiers via
+# properties.animation.<tier>.
+_MOTION_TIERS: dict[str, int] = {
+    "micro": 120,   # tiny in-place feedback (e.g. type-badge pulse)
+    "fast": 150,    # quick fades, dialog section transitions
+    "normal": 200,  # standard UI motion (panel fades, tab indicators)
+    "slow": 300,    # dismissals / attention (toast fade-out)
+}
+
+
+def motion(key: str) -> int:
+    """Return a named motion duration in milliseconds.
+
+    Resolution order: current theme ``properties.animation.<key>`` →
+    builtin tier → builtin ``normal`` (with a warning) for unknown keys.
+
+    Gesture/distance-derived durations (e.g. momentum zoom) are exempt —
+    they interpolate continuously and cannot use fixed tiers.
+    """
+    if key not in _MOTION_TIERS:
+        _log.warning("Unknown motion tier %r — using 'normal'", key)
+        key = "normal"
+    props = get().get("properties", {}).get("animation", {})
+    value = props.get(key)
+    if isinstance(value, (int, float)) and value > 0:
+        return int(value)
+    return _MOTION_TIERS[key]
 
 
 def set_button_variant(widget, variant: str = "primary"):
@@ -572,6 +655,15 @@ def stylesheet() -> str:
     menubar_bg = alpha(t["header"], hdr_opacity) if bg_enabled() else t["header"]
     result = f"""
     QMainWindow {{ background: {main_bg}; }}
+    QMainWindow::separator {{
+        background: transparent;
+        width: {scaled_px(6)}px;
+        height: {scaled_px(6)}px;
+    }}
+    QMainWindow::separator:hover {{
+        background: {alpha(t['accent'], 0.35)};
+        border-radius: {scaled_px(3)}px;
+    }}
     QDialog {{ background: {t['panel']}; }}
     QDockWidget {{ background: transparent; }}
     QDockWidget::title {{
@@ -587,6 +679,8 @@ def stylesheet() -> str:
     QMenu {{ background: {t['panel']}; color: {t['heading']}; border: 1px solid {hairline}; border-radius: {r_md}px; padding: {s_xs}px; }}
     QMenu::item {{ padding: {s_sm}px {s_lg}px; border-radius: {r_sm}px; }}
     QMenu::item:selected {{ background: {t['accent']}; color: {t['on_accent']}; }}
+    QMenu::item:disabled {{ color: {t['disabled_text']}; }}
+    QMenu::separator {{ height: 1px; background: {hairline}; margin: {s_xs}px {s_sm}px; }}
     QListWidget, QTreeWidget, QTabWidget::pane {{
         background: transparent; border: none; padding: {s_xs}px;
         color: {t['body']}; outline: none;
@@ -612,33 +706,51 @@ def stylesheet() -> str:
         selection-background-color: {t['accent']}; selection-color: {t['on_accent']};
     }}
     QLineEdit:focus, QTextEdit:focus, QSpinBox:focus {{ border: 1px solid {t['border_focus']}; }}
+    QLineEdit:disabled, QTextEdit:disabled, QComboBox:disabled, QSpinBox:disabled {{
+        background: {t['disabled_bg']}; color: {t['disabled_text']};
+    }}
+    QHeaderView::section {{
+        background: {t['header']}; color: {t['heading']};
+        padding: {s_xs}px {s_sm}px; border: none;
+        border-right: 1px solid {hairline};
+        font-size: {f_sm}px; font-weight: bold;
+    }}
+    QHeaderView::section:hover {{ background: {hov}; }}
+    QHeaderView::down-arrow, QHeaderView::up-arrow {{
+        width: {scaled_px(10)}px; height: {scaled_px(10)}px;
+    }}
     QComboBox::drop-down {{ border: none; width: {s_lg}px; }}
     QComboBox QAbstractItemView {{
         background: {t['panel']}; color: {t['body']};
         border: 1px solid {hairline}; selection-background-color: {t['accent']}; selection-color: {t['on_accent']};
     }}
     QGroupBox {{
-        color: {t['heading']}; border: 1px solid {hairline};
-        border-radius: {r_md}px; margin-top: {s_md}px; padding-top: {s_md}px;
+        color: {t['heading']}; background: {alpha(t['panel'], 0.45)};
+        border: 1px solid {hairline}; border-radius: {r_md}px;
+        margin-top: {s_sm}px; padding: {s_md}px; padding-top: {s_lg}px;
     }}
-    QGroupBox::title {{ subcontrol-origin: margin; left: {s_md}px; padding: 0 {s_xs}px; }}
+    QGroupBox::title {{
+        subcontrol-origin: padding; subcontrol-position: top left;
+        left: 0; top: {s_sm}px; font-weight: 600;
+        color: {t['heading']}; background: transparent; padding: 0;
+    }}
     QRadioButton, QCheckBox {{ color: {t['body']}; spacing: {s_sm}px; }}
     QPushButton {{
         background: {t['accent']}; color: {t['on_accent']};
         border: none; border-radius: {r_sm}px; padding: {s_sm}px {s_lg}px;
         font-weight: 600;
     }}
-    QPushButton:hover {{ background: {alpha(t['accent'], 0.88)}; }}
-    QPushButton:pressed {{ background: {alpha(t['accent'], 0.72)}; }}
+    QPushButton:hover {{ background: {lighter(t['accent'])}; }}
+    QPushButton:pressed {{ background: {darker(t['accent'])}; }}
     QPushButton:focus {{ border: 1px solid {t['border_focus']}; padding: {s_sm}px {s_lg}px; }}
     QPushButton[buttonVariant="primary"] {{
         background: {t['accent']}; color: {t['on_accent']};
     }}
     QPushButton[buttonVariant="primary"]:hover {{
-        background: {alpha(t['accent'], 0.88)};
+        background: {lighter(t['accent'])};
     }}
     QPushButton[buttonVariant="primary"]:pressed {{
-        background: {alpha(t['accent'], 0.72)};
+        background: {darker(t['accent'])};
     }}
     QPushButton[buttonVariant="secondary"] {{
         background: {t['panel']}; color: {t['heading']};
@@ -658,11 +770,21 @@ def stylesheet() -> str:
         background: {hov};
         color: {t['heading']};
     }}
+    QPushButton[buttonVariant="ghost"]:pressed {{
+        background: {alpha(t['accent'], 0.18)};
+        color: {t['heading']};
+    }}
+    QPushButton:checked {{
+        background: {t['accent']}; color: {t['on_accent']}; font-weight: bold;
+    }}
     QPushButton[buttonVariant="danger"] {{
         background: {t['danger']}; color: {t['on_accent']};
     }}
     QPushButton[buttonVariant="danger"]:hover {{
-        background: {alpha(t['danger'], 0.88)};
+        background: {lighter(t['danger'])};
+    }}
+    QPushButton[buttonVariant="danger"]:pressed {{
+        background: {darker(t['danger'])};
     }}
     QPushButton:disabled {{
         background: {t['disabled_bg']}; color: {t['disabled_text']};
@@ -676,6 +798,9 @@ def stylesheet() -> str:
     QScrollBar::handle:vertical:hover {{
         background: {t['scrollbar_thumb_hover']};
     }}
+    QScrollBar::handle:vertical:pressed {{
+        background: {darker(t['scrollbar_thumb_hover'])};
+    }}
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
     QScrollBar:horizontal {{
         background: transparent; height: {scaled_px(6)}px;
@@ -685,6 +810,9 @@ def stylesheet() -> str:
     }}
     QScrollBar::handle:horizontal:hover {{
         background: {t['scrollbar_thumb_hover']};
+    }}
+    QScrollBar::handle:horizontal:pressed {{
+        background: {darker(t['scrollbar_thumb_hover'])};
     }}
     QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
     QScrollArea {{ background: transparent; border: none; }}
@@ -776,6 +904,7 @@ def stylesheet() -> str:
         border: 1px solid {hairline};
         border-radius: {r_sm}px;
         padding: {s_xs}px {s_sm}px;
+        font-size: {f_sm}px;
     }}
     #PanelContent {{
         background: {panel_alpha};

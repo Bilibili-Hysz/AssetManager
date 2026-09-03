@@ -4,15 +4,17 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from PySide6.QtWidgets import QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QLineEdit, QTableWidget, QTableWidgetItem, QVBoxLayout
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QTableWidget, QTableWidgetItem, QVBoxLayout
 
 from AssetsManager import i18n
+from AssetsManager.core.ui_scale import scaled_px
+from AssetsManager.dialogs.modal_dialog import StandardModalDialog
 from AssetsManager.panels.file_list._batch_rename import BatchRenamePlan, plan_batch_rename
 
 tr = i18n.tr
 
 
-class BatchRenameDialog(QDialog):
+class BatchRenameDialog(StandardModalDialog):
     # D1: cap on sibling entries collected per parent directory. A full
     # iterdir()+resolve() pass over every sibling is what makes duplicate
     # detection reliable, but scanning huge directories synchronously on the
@@ -21,16 +23,26 @@ class BatchRenameDialog(QDialog):
     _OCCUPIED_CAP = 5000
 
     def __init__(self, paths: list[str], parent=None):
-        super().__init__(parent)
         self._paths = [Path(path) for path in paths]
         # D1: lazy — collecting thousands of paths (iterdir + resolve in
         # plan_batch_rename) is deferred to the first _update_plan() call
         # instead of blocking dialog construction.
         self._occupied_paths: list[Path] | None = None
         self.plan: BatchRenamePlan | None = None
-        self.setWindowTitle(tr("filelist.dialog.batch_rename"))
-        self.resize(620, 400)
-        layout = QVBoxLayout(self)
+        super().__init__(
+            parent,
+            title=tr("filelist.dialog.batch_rename"),
+            min_size=(scaled_px(620), scaled_px(400)),
+            ok_text=tr("filelist.batch_rename.apply"),
+        )
+        # The template-hosted primary OK button IS the apply action; keep the
+        # historical ``_apply`` alias so plan-refresh logic and tests can
+        # enable/disable it as before.
+        self._apply = self._ok_btn
+        self._pattern.textChanged.connect(self._update_plan)
+        self._update_plan()
+
+    def setup_content(self, layout: QVBoxLayout) -> None:
         row = QHBoxLayout()
         row.addWidget(QLabel(tr("filelist.dialog.batch_pattern")))
         self._pattern = QLineEdit("{name}_{n}")
@@ -44,14 +56,7 @@ class BatchRenameDialog(QDialog):
             tr("filelist.batch_rename.status"),
         ])
         self._table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self._table)
-        self._buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
-        self._apply = self._buttons.addButton(tr("filelist.batch_rename.apply"), QDialogButtonBox.ButtonRole.AcceptRole)
-        self._buttons.accepted.connect(self.accept)
-        self._buttons.rejected.connect(self.reject)
-        layout.addWidget(self._buttons)
-        self._pattern.textChanged.connect(self._update_plan)
-        self._update_plan()
+        layout.addWidget(self._table, 1)
 
     def _collect_occupied_paths(self) -> list[Path]:
         occupied: list[Path] = []

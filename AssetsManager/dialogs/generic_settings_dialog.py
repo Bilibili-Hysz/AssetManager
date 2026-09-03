@@ -1,31 +1,38 @@
 """Generic settings dialog — shown when a panel has no specific settings yet."""
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel
 from PySide6.QtCore import Qt
 from AssetsManager.core import themes
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.widgets.stylekit import StyleKit
+from AssetsManager.dialogs.modal_dialog import StandardModalDialog
 from AssetsManager import i18n
 tr = i18n.tr
 
 
+class _NoSettingsDialog(StandardModalDialog):
+    """Single-action notice popup: one primary Close, no Cancel."""
+
+    def __init__(self, parent=None):
+        super().__init__(
+            parent,
+            title=tr("panel.settings"),
+            min_size=(scaled_px(300), scaled_px(180)),
+            ok_text=tr("dialog.close"),
+        )
+        # A no-settings notice has exactly one action; the template-hosted
+        # ghost Cancel would be a meaningless second exit.
+        self._cancel_btn.hide()
+
+    def setup_content(self, layout: QVBoxLayout) -> None:
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+        msg = QLabel(tr("panel.no_settings"))
+        msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Existing sanctioned site relocated from the former hand-built dialog.
+        msg.setStyleSheet(sk.label_css("body", size=int(sk.prop("font_size", "lg", 14))))
+        layout.addWidget(msg, 1)
+
+
 def generic_settings_dialog(parent=None) -> QDialog:
-    dlg = QDialog(parent)
-    dlg.setWindowTitle(tr("panel.settings"))
-    dlg.setMinimumSize(scaled_px(300), scaled_px(180))
-    themes.apply_to(dlg)
-
-    sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
-
-    layout = QVBoxLayout(dlg)
-
-    msg = QLabel(tr("panel.no_settings"))
-    msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    msg.setStyleSheet(sk.label_css("body", size=int(sk.prop("font_size", "lg", 14))))
-    layout.addWidget(msg)
-
-    close_btn = QPushButton(tr("dialog.close"))
-    close_btn.clicked.connect(dlg.accept)
-    layout.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignCenter)
-
+    dlg = _NoSettingsDialog(parent)
     dlg.exec()
     return dlg

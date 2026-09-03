@@ -27,6 +27,9 @@ def test_standard_shortcuts_are_available_by_default(manager):
 
     assert shortcuts == [
         {"key": "Ctrl+,", "description": "menu.settings", "category": "navigation"},
+        {"key": "Ctrl+K", "description": "menu.command_palette", "category": "application"},
+        {"key": "Ctrl+B", "description": "menu.toggle_sidebar", "category": "navigation"},
+        {"key": "Ctrl+I", "description": "menu.toggle_info", "category": "navigation"},
         {"key": "Ctrl+Q", "description": "menu.exit", "category": "application"},
         {"key": "F1", "description": "menu.keyboard_shortcuts", "category": "application"},
         {"key": "Escape", "description": "shortcuts.close_dialog", "category": "navigation"},
@@ -72,6 +75,7 @@ def test_get_shortcuts_by_category(manager):
     application_shortcuts = manager.get_shortcuts_by_category("application")
 
     assert application_shortcuts == [
+        {"key": "Ctrl+K", "description": "menu.command_palette", "category": "application"},
         {"key": "Ctrl+Q", "description": "menu.exit", "category": "application"},
         {"key": "F1", "description": "menu.keyboard_shortcuts", "category": "application"},
     ]
@@ -120,6 +124,7 @@ def test_register_action_dispatches_menu_action_keystroke(manager):
         window.close()
     triggered.assert_called_once_with()
     assert manager.get_shortcuts_by_category("application") == [
+        {"key": "Ctrl+K", "description": "menu.command_palette", "category": "application"},
         {"key": "Ctrl+Q", "description": "menu.exit", "category": "application"},
         {"key": "F1", "description": "menu.keyboard_shortcuts", "category": "application"},
     ]
@@ -209,6 +214,7 @@ def test_shortcuts_help_text_lists_registry_and_filelist_entries():
     # missed (Ctrl+D / Ctrl+Shift+N / Alt+Enter / Backspace / Ctrl+H).
     for key in ("Ctrl+D", "Ctrl+Shift+N", "Alt+Enter", "Backspace", "Ctrl+H"):
         assert key in text
-    # Fabricated entries must stay out (no Command Palette / Ctrl+Tab).
-    assert "Ctrl+K" not in text
+    # Fabricated entries must stay out (no File Picker / Ctrl+Tab);
+    # Ctrl+K Command Palette is real (window.py) and must appear.
+    assert "Ctrl+K" in text
     assert "Ctrl+Tab" not in text

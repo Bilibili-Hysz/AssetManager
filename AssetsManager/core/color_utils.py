@@ -102,6 +102,49 @@ def darken(hex_color: str, factor: float = 0.8) -> str:
     return _rgb_to_hex(int(r2 * 255), int(g2 * 255), int(b2 * 255))
 
 
+def lighter(hex_color: str, factor: int = 110) -> str:
+    """Lighten a color the way ``QColor.lighter`` does (HSV value scaling).
+
+    This is the CANONICAL hover algorithm for accent buttons across the
+    app (Design System audit 2026-09-03, finding B4): opaque result that
+    does not depend on the widget stack beneath it, unlike ``alpha()``.
+    ``StyleKit._lighter`` and the central QSS both route through this
+    formula; do not introduce additional hover/pressed recipes.
+
+    Args:
+        hex_color: '#RRGGBB' hex color string.
+        factor: Percentage multiplier for HSV value (110 = 10% lighter).
+
+    Returns:
+        '#RRGGBB' hex string.
+    """
+    r, g, b = _hex_to_rgb(hex_color)
+    h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+    v = min(1.0, v * factor / 100.0)
+    r2, g2, b2 = colorsys.hsv_to_rgb(h, s, v)
+    return _rgb_to_hex(round(r2 * 255), round(g2 * 255), round(b2 * 255))
+
+
+def darker(hex_color: str, factor: int = 115) -> str:
+    """Darken a color the way ``QColor.darker`` does (HSV value scaling).
+
+    Canonical pressed algorithm for accent/danger buttons — the pressed
+    counterpart of :func:`lighter`.
+
+    Args:
+        hex_color: '#RRGGBB' hex color string.
+        factor: Percentage divisor for HSV value (115 = ~13% darker).
+
+    Returns:
+        '#RRGGBB' hex string.
+    """
+    r, g, b = _hex_to_rgb(hex_color)
+    h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+    v = max(0.0, v / (factor / 100.0))
+    r2, g2, b2 = colorsys.hsv_to_rgb(h, s, v)
+    return _rgb_to_hex(round(r2 * 255), round(g2 * 255), round(b2 * 255))
+
+
 def contrast_ratio(fg_hex: str, bg_hex: str) -> float:
     """Calculate WCAG 2.0 contrast ratio between two colors.
 

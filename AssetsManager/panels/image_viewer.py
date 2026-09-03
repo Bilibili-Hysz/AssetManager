@@ -279,15 +279,13 @@ class _GraphicsView(QGraphicsView):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.SmartViewportUpdate)
-        try:
-            from PySide6.QtOpenGLWidgets import QOpenGLWidget
-            self.setViewport(QOpenGLWidget(self))
-        except ImportError:
-            # GL widget unavailable (headless / restricted environments):
-            # fall back to the default raster viewport. Rendering stays
-            # correct, only GPU acceleration is lost.
-            _log.warning(
-                "QOpenGLWidget unavailable; image viewer falls back to a raster viewport")
+        # NOTE: 本视图宿主于 WA_TranslucentBackground 的 frameless Tool 顶层窗口。
+        # Qt 不支持在半透明顶层窗口上使用 QOpenGLWidget——真实 GPU 环境下
+        # setViewport(QOpenGLWidget) 直接 access violation（事件日志 16:30/16:31
+        # 两次 c0000005，faulthandler 栈钉在本文件 :284）。因此这里保持默认的
+        # 光栅视口：单图缩放查看的光栅路径完全够用，且无 GL 上下文创建失败面。
+        # app.py 的 QOpenGLWidget 探针保留，仅为打包锚点（G2 要求 QtOpenGLWidgets
+        # 随包），与此视口无关。
 
     def wheelEvent(self, event):
         d = event.angleDelta().y()
@@ -860,13 +858,14 @@ class ImageViewerOverlay(QFrame):
         # Container background
         p.setBrush(QColor(t["panel"]))
         p.setPen(QPen(QColor(t["border"]), 1))
-        p.drawRoundedRect(container, 10, 10)
+        r_md = scaled_px(int(themes.prop("border_radius", "md")))
+        p.drawRoundedRect(container, r_md, r_md)
 
         # ── Header ──
         header = self._header_rect()
         p.setBrush(QColor(t["header"]))
         p.setPen(Qt.PenStyle.NoPen)
-        p.drawRoundedRect(header, 10, 10)
+        p.drawRoundedRect(header, r_md, r_md)
         p.setBrush(QColor(t["panel"]))
         p.drawRect(QRect(header.x(), header.bottom() - 8, header.width(), 8))
 
@@ -888,7 +887,8 @@ class ImageViewerOverlay(QFrame):
         if close_hover:
             p.setBrush(QColor(t["danger"]))
             p.setPen(Qt.PenStyle.NoPen)
-            p.drawRoundedRect(close_r, 4, 4)
+            r_xs = scaled_px(int(themes.metrics("radius_xs")))
+            p.drawRoundedRect(close_r, r_xs, r_xs)
             p.setPen(QColor("white"))
         else:
             p.setPen(QColor(t["muted"]))
@@ -905,7 +905,7 @@ class ImageViewerOverlay(QFrame):
         footer = self._footer_rect()
         p.setBrush(QColor(t["header"]))
         p.setPen(Qt.PenStyle.NoPen)
-        p.drawRoundedRect(footer, 10, 10)
+        p.drawRoundedRect(footer, r_md, r_md)
         p.setBrush(QColor(t["panel"]))
         p.drawRect(QRect(footer.x(), footer.y(), footer.width(), 8))
 
@@ -956,7 +956,8 @@ class ImageViewerOverlay(QFrame):
             return
         p.setBrush(QColor(t["header"]))
         p.setPen(Qt.PenStyle.NoPen)
-        p.drawRoundedRect(sr, 8, 8)
+        r_sm = scaled_px(int(themes.prop("border_radius", "sm")))
+        p.drawRoundedRect(sr, r_sm, r_sm)
         any_missing = False
         for rel in range(visible):
             idx = start + rel
@@ -995,7 +996,8 @@ class ImageViewerOverlay(QFrame):
             return
         p.setBrush(QColor(t["panel"]))
         p.setPen(QPen(QColor(t["border"]), 1))
-        p.drawRoundedRect(panel, 8, 8)
+        r_sm = scaled_px(int(themes.prop("border_radius", "sm")))
+        p.drawRoundedRect(panel, r_sm, r_sm)
 
         title_font = QFont()
         title_font.setPointSize(scaled_pt(10))

@@ -755,10 +755,9 @@ class DataMixin:
         self._apply_scrollbar_theme()
 
     def _apply_scrollbar_theme(self):
-        t = themes.get()
         self._scrollbar.setStyleSheet(
             f"QScrollBar:vertical {{ background: transparent; width:{scaled_px(6)}px; }}"
-            f"QScrollBar::handle:vertical {{ background: {t['scrollbar_thumb']}; "
+            f"QScrollBar::handle:vertical {{ background: {themes.color('scrollbar_thumb')}; "
             f"border-radius:{scaled_px(int(themes.prop('border_radius', 'sm')))}px; min-height:{scaled_px(24)}px; }}"
             f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}")
 

@@ -65,6 +65,8 @@ class AccessPageMixin:
         role_label = QLabel(tr("sharing.users.role_admin"))
         role_label.setStyleSheet(sk.label_css("accent", bold=True))
         user_row.addWidget(role_label)
+        self._access_role_label = role_label
+        self._apply_access_theme()
         user_row.addStretch()
         layout.addLayout(user_row)
 
@@ -204,3 +206,19 @@ class AccessPageMixin:
         self._online_status.setText(
             tr("sharing.access.connected_user_count").format(count=len(self._online_users))
             if self._online_users else tr("sharing.users.no_online"))
+
+    def _apply_access_theme(self):
+        """Re-derive access-page label styles from current tokens (B2⑧)."""
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+        for label in (
+            getattr(self, "_admin_user_label", None),
+            getattr(self, "_access_role_label", None),
+        ):
+            if label is None:
+                continue
+            try:
+                label.setStyleSheet(sk.label_css(
+                    "accent" if label is self._access_role_label else "heading",
+                    bold=True))
+            except RuntimeError:
+                pass

@@ -75,13 +75,13 @@ class ActivityPanelDialog(TabbedDialog):
     def __init__(self, runtime, parent=None):
         self._recorder = runtime.services.activity_recorder
         super().__init__(
-            parent, title=tr("activity_panel.title"), min_size=(680, 420))
+            parent, title=tr("activity_panel.title"),
+            min_size=(scaled_px(680), scaled_px(420)))
         self.setObjectName("ActivityPanelDialog")
 
     # ── UI ───────────────────────────────────────────────────────
 
     def _build_ui(self):
-        self.setStyleSheet(self._dialog_qss())
         root = QVBoxLayout(self)
         root.setContentsMargins(
             scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12))

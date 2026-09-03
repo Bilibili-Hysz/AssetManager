@@ -48,7 +48,8 @@ class ShareLinkDialog(TabbedDialog):
         self._request_generation = 0
         self._share_url = None
         self._creating = False
-        super().__init__(parent, title=tr("sharelink.title"), min_size=(400, 450))
+        super().__init__(parent, title=tr("sharelink.title"),
+                         min_size=(scaled_px(400), scaled_px(450)))
         # Member timer (parented to this dialog) instead of a QTimer.singleShot
         # lambda, so a pending reset is cancelled automatically when the dialog
         # is destroyed and can never fire against a deleted button.

@@ -3,34 +3,35 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout,
-    QLineEdit, QLabel, QPushButton, QRadioButton,
+    QVBoxLayout, QHBoxLayout,
+    QLineEdit, QLabel, QRadioButton,
     QSpinBox, QGroupBox, QButtonGroup,
 )
 from PySide6.QtGui import QColor
 from AssetsManager.core import themes
 from AssetsManager.core.ui_scale import scaled_px
 from AssetsManager.widgets.hsv_wheel import HSVWheel, BrightnessSlider
+from AssetsManager.dialogs.modal_dialog import StandardModalDialog
 from AssetsManager import i18n
 tr = i18n.tr
 
 
-class ColorPickerDialog(QDialog):
+class ColorPickerDialog(StandardModalDialog):
     color_selected = Signal(QColor)
 
     def __init__(self, initial_color: QColor | None = None, parent=None):
-        super().__init__(parent)
         self._color = initial_color or QColor("#ff6b6b")
         self._updating = False
-        self.setWindowTitle(tr("colorpicker.title"))
-        self.setMinimumSize(scaled_px(400), scaled_px(350))
-        self._setup_ui()
+        super().__init__(
+            parent,
+            title=tr("colorpicker.title"),
+            min_size=(scaled_px(400), scaled_px(350)),
+            ok_text=tr("colorpicker.ok"),
+            cancel_text=tr("colorpicker.cancel"),
+        )
         self._update_from_color(self._color)
 
-    def _setup_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setSpacing(scaled_px(int(themes.prop("spacing", "sm"))))
-
+    def setup_content(self, layout: QVBoxLayout) -> None:
         # Top: HSV wheel + brightness slider
         top = QHBoxLayout()
         self._wheel = HSVWheel()
@@ -93,24 +94,10 @@ class ColorPickerDialog(QDialog):
         hex_row.addWidget(self._hex_input)
         self._preview = QLabel()
         self._preview.setFixedSize(scaled_px(32), scaled_px(32))
-        radius_sm = scaled_px(int(themes.prop("border_radius", "sm")))
-        self._preview.setStyleSheet(
-            f"background: {self._color.name()}; border: {scaled_px(1)}px solid {themes.color('border')}; border-radius: {radius_sm}px;"
-        )
+        self._apply_preview_style()
         hex_row.addWidget(self._preview)
         hex_row.addStretch()
         layout.addLayout(hex_row)
-
-        # Buttons
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        ok_btn = QPushButton(tr("colorpicker.ok"))
-        ok_btn.clicked.connect(self._on_ok)
-        cancel_btn = QPushButton(tr("colorpicker.cancel"))
-        cancel_btn.clicked.connect(self.reject)
-        btn_row.addWidget(ok_btn)
-        btn_row.addWidget(cancel_btn)
-        layout.addLayout(btn_row)
 
     def _make_spin(self, min_val, max_val, label):
         lbl = QLabel(label)
@@ -185,6 +172,12 @@ class ColorPickerDialog(QDialog):
         finally:
             self._updating = False
 
+    def _apply_preview_style(self):
+        # Existing sanctioned site: dynamic swatch feedback via tokenized QSS.
+        self._preview.setStyleSheet(
+            f"background: {self._color.name()}; border: {scaled_px(1)}px solid {themes.color('border')}; border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px;"
+        )
+
     def _update_displays(self):
         self._updating = True
         try:
@@ -202,13 +195,11 @@ class ColorPickerDialog(QDialog):
             # HEX
             self._hex_input.setText(self._color.name())
             # Preview
-            self._preview.setStyleSheet(
-                f"background: {self._color.name()}; border: {scaled_px(1)}px solid {themes.color('border')}; border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px;"
-            )
+            self._apply_preview_style()
         finally:
             self._updating = False
 
-    def _on_ok(self):
+    def _on_ok_clicked(self) -> None:
         self.color_selected.emit(self._color)
         self.accept()
 

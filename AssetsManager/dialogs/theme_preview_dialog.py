@@ -3,31 +3,38 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QSplitter, QWidget,
+    QVBoxLayout, QHBoxLayout, QSplitter, QWidget,
     QListWidget, QListWidgetItem, QPushButton, QInputDialog, QMessageBox,
 )
 from PySide6.QtGui import QPixmap, QPainter, QColor, QIcon
 from AssetsManager.core.ui_scale import scaled_px
 from AssetsManager.core import themes
+from AssetsManager.dialogs.modal_dialog import StandardModalDialog
 from AssetsManager.widgets.theme_preview import ThemePreviewWidget, ThemePreviewRenderer
 from AssetsManager import i18n
 tr = i18n.tr
 
 
-class ThemePreviewDialog(QDialog):
+class ThemePreviewDialog(StandardModalDialog):
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle(tr("settings.theme_preview"))
-        self.setMinimumSize(scaled_px(800), scaled_px(500))
         self._renderer = ThemePreviewRenderer()
         self._current_theme_name: str | None = None
         self._baseline_data: dict = {}
-        self._setup_ui()
+        super().__init__(
+            parent,
+            title=tr("settings.theme_preview"),
+            min_size=(scaled_px(800), scaled_px(500)),
+            ok_text=tr("settings.apply_theme"),
+            cancel_text=tr("dialog.close"),
+        )
         self._load_themes()
 
-    def _setup_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+    def _on_ok_clicked(self) -> None:
+        # Apply decides itself whether the dialog may close (dirty edits may
+        # route into the save-as-custom flow instead of accepting).
+        self._on_apply()
+
+    def setup_content(self, layout: QVBoxLayout) -> None:
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
         left = QWidget()
@@ -41,20 +48,13 @@ class ThemePreviewDialog(QDialog):
         self._theme_list.currentItemChanged.connect(self._on_theme_selected)
         left_layout.addWidget(self._theme_list)
 
-        btn_row = QHBoxLayout()
-        apply_btn = QPushButton(tr("settings.apply_theme"))
-        apply_btn.clicked.connect(self._on_apply)
-        close_btn = QPushButton(tr("dialog.close"))
-        close_btn.clicked.connect(self.close)
-        btn_row.addWidget(apply_btn)
-        btn_row.addWidget(close_btn)
-        left_layout.addLayout(btn_row)
-
         custom_row = QHBoxLayout()
         new_btn = QPushButton(tr("settings.new_theme"))
         new_btn.clicked.connect(self._on_new_custom_theme)
         save_btn = QPushButton(tr("settings.save_as_custom"))
         save_btn.clicked.connect(self._on_save_as_custom)
+        themes.set_button_variant(new_btn, "secondary")
+        themes.set_button_variant(save_btn, "secondary")
         custom_row.addWidget(new_btn)
         custom_row.addWidget(save_btn)
         left_layout.addLayout(custom_row)
@@ -65,7 +65,7 @@ class ThemePreviewDialog(QDialog):
         splitter.addWidget(left)
         splitter.addWidget(self._preview)
         splitter.setSizes([scaled_px(200), scaled_px(600)])
-        layout.addWidget(splitter)
+        layout.addWidget(splitter, 1)
 
     def _load_themes(self):
         self._theme_list.clear()

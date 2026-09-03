@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
 )
 
 from AssetsManager.core import themes
-from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.widgets.stylekit import StyleKit
 from AssetsManager import i18n
@@ -151,32 +150,41 @@ class LinksPageMixin:
             actions_layout.setSpacing(scaled_px(4))
 
             copy_btn = QPushButton(tr("sharing.links.btn_copy_link"))
+            copy_btn.setObjectName("sharing_copy_btn")
             copy_btn.setFixedHeight(scaled_px(24))
             copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            copy_btn.setStyleSheet(
-                f"QPushButton {{ background: {sk.token('accent')}; color: {sk.token('on_accent')}; "
-                f"border: none; border-radius: {sk.px(int(sk.prop('border_radius', 'sm')))}px; "
-                f"font-size: {sk.pt(sk.font_size('xs'))}px; "
-                f"padding: {sk.px(int(sk.prop('spacing', 'xs')))}px {sk.px(int(sk.prop('spacing', 'sm')))}px; }}"
-                f"QPushButton:hover {{ background: {alpha(sk.token('accent'), 0.87)}; }}"
-                f"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.18)}; }}"
-                f"QPushButton:focus {{ border: {scaled_px(1)}px solid {sk.token('border_focus', sk.token('accent'))}; }}")
+            copy_btn.setStyleSheet(sk.button_css(
+                "primary", font_size_key="xs",
+                padding_y=sk.px(int(sk.prop("spacing", "xs"))),
+                padding_x=sk.px(int(sk.prop("spacing", "sm")))))
             copy_btn.clicked.connect(lambda checked, idx=i: self._copy_table_share_link(idx))
             actions_layout.addWidget(copy_btn)
 
             delete_btn = QPushButton(tr("sharing.links.btn_delete"))
+            delete_btn.setObjectName("sharing_delete_btn")
             delete_btn.setFixedHeight(scaled_px(24))
             delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            delete_btn.setStyleSheet(
-                f"QPushButton {{ background: {sk.token('danger')}; color: {sk.token('on_accent')}; "
-                f"border: none; border-radius: {sk.px(int(sk.prop('border_radius', 'sm')))}px; "
-                f"font-size: {sk.pt(sk.font_size('xs'))}px; "
-                f"padding: {sk.px(int(sk.prop('spacing', 'xs')))}px {sk.px(int(sk.prop('spacing', 'sm')))}px; }}"
-                f"QPushButton:hover {{ background: {alpha(sk.token('danger'), 0.87)}; }}"
-                f"QPushButton:pressed {{ background: {alpha(sk.token('danger'), 0.18)}; }}"
-                f"QPushButton:focus {{ border: {scaled_px(1)}px solid {sk.token('border_focus', sk.token('danger'))}; }}")
+            delete_btn.setStyleSheet(sk.button_css(
+                "danger", font_size_key="xs",
+                padding_y=sk.px(int(sk.prop("spacing", "xs"))),
+                padding_x=sk.px(int(sk.prop("spacing", "sm")))))
             delete_btn.clicked.connect(lambda checked, idx=i: self._delete_share_link(idx))
             actions_layout.addWidget(delete_btn)
 
             actions_layout.addStretch()
             self._links_table.setCellWidget(i, 5, actions_widget)
+
+    def _apply_links_theme(self):
+        """Re-apply per-row action button styles from current tokens (B2⑦)."""
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+        params = dict(
+            font_size_key="xs",
+            padding_y=sk.px(int(sk.prop("spacing", "xs"))),
+            padding_x=sk.px(int(sk.prop("spacing", "sm"))),
+        )
+        for btn in self._links_table.findChildren(QPushButton):
+            name = btn.objectName()
+            if name == "sharing_copy_btn":
+                btn.setStyleSheet(sk.button_css("primary", **params))
+            elif name == "sharing_delete_btn":
+                btn.setStyleSheet(sk.button_css("danger", **params))

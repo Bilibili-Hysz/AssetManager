@@ -28,6 +28,12 @@ def handle_key(panel, event) -> bool:
     if key == Qt.Key.Key_Backspace:
         panel._go_up()
         return True
+    if key == Qt.Key.Key_Space:
+        selected_paths_fn = getattr(panel, "_selected_paths", None)
+        selected = selected_paths_fn() if callable(selected_paths_fn) else []
+        if selected:
+            panel._open_quick_look()
+            return True
     command_id = shortcut_command_id(key, mods)
     if command_id is not None:
         panel._invoke_command(command_id, shortcut=True)

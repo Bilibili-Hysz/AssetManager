@@ -76,6 +76,7 @@ class FileListPanel(NavigationMixin, ActionsMixin, LayoutMixin, LogicMixin, Even
             "filter": self._model._filter_text,
             "category": self._model._filter_cat,
             "hidden": self._model.show_hidden,
+            "toolbar_visible": self._toolbar_widget.isVisibleTo(self._toolbar_widget.parentWidget()),
             "view_memory": dict(self._view_memory),
         }
 
@@ -97,6 +98,9 @@ class FileListPanel(NavigationMixin, ActionsMixin, LayoutMixin, LogicMixin, Even
             str(state.get("category", "All")),
         )
         self._model.set_show_hidden(bool(state.get("hidden", False)))
+        toolbar_visible = state.get("toolbar_visible")
+        if isinstance(toolbar_visible, bool):
+            self._set_toolbar_visible(toolbar_visible)
         memory = state.get("view_memory")
         if isinstance(memory, dict):
             self._view_memory = {str(k): str(v) for k, v in memory.items()}

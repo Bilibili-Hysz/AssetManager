@@ -32,7 +32,7 @@ from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core.workers import BoundedPool, CancellableRunnable, CancellationToken
 from AssetsManager.core import themes, icons
-from AssetsManager.core.color_utils import alpha, darken, lighten
+from AssetsManager.core.color_utils import alpha
 from AssetsManager.widgets.stylekit import StyleKit
 from AssetsManager.widgets.tag_chip import create_tag_chip, tag_color_from
 from AssetsManager.panels._info_parts import (
@@ -137,7 +137,24 @@ class InfoPanel(PanelContent):
         # Install event filter AFTER all children are set up
         self._preview_host.installEventFilter(self)
 
-        # ── Metadata area (bottom pane, scrollable) ───────────
+        # ── Metadata area (bottom pane, scrollable with sticky MicroTabBar) ───
+        from AssetsManager.widgets.micro_tab_bar import MicroTabBar
+
+        self._details_container = QWidget()
+        self._details_container.setStyleSheet("background: transparent;")
+        details_container_layout = QVBoxLayout(self._details_container)
+        details_container_layout.setContentsMargins(0, scaled_px(2), 0, 0)
+        details_container_layout.setSpacing(scaled_px(4))
+
+        self._section_preference: dict[str, bool] = {"meta": True, "tags": True, "notes": True}
+        self._tab_bar = MicroTabBar([
+            tr("info.all"),
+            tr("info.title"),
+            tr("info.tags"),
+            tr("info.notes"),
+        ], parent=self)
+        self._tab_bar.current_changed.connect(self._on_info_tab_changed)
+        details_container_layout.addWidget(self._tab_bar)
 
         self._details_scroll = QScrollArea()
         self._details_scroll.setWidgetResizable(True)
@@ -182,6 +199,10 @@ class InfoPanel(PanelContent):
 
         self._field_link = self._make_link_field()
         meta_layout.addWidget(self._field_link)
+
+        from AssetsManager.widgets.dominant_palette_strip import DominantPaletteStrip
+        self._palette_strip = DominantPaletteStrip(parent=self)
+        meta_layout.addWidget(self._palette_strip)
 
         # Plugin metadata fields (populated dynamically)
         self._plugin_fields_widget = QWidget()
@@ -293,13 +314,14 @@ class InfoPanel(PanelContent):
         details_layout.addWidget(notes_grp, 1)
 
         self._details_scroll.setWidget(details_widget)
-        self._splitter.addWidget(self._details_scroll)
+        details_container_layout.addWidget(self._details_scroll, 1)
+        self._splitter.addWidget(self._details_container)
         # ── Actions (fixed at bottom, outside scroll) ──────────
 
         act_bar = QWidget()
         self._act_bar = act_bar
         act_bar.setStyleSheet(f"background: transparent; "
-                              f"border-top: {scaled_px(1)}px solid {sk.token('border')};")
+                              f"border-top: {scaled_px(1)}px solid {sk.token('border_subtle')};")
         act_bar.setFixedHeight(scaled_px(28))
         act_layout = QHBoxLayout(act_bar)
         act_layout.setContentsMargins(scaled_px(10), scaled_px(4), scaled_px(10), scaled_px(4))
@@ -310,30 +332,24 @@ class InfoPanel(PanelContent):
         self._open_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
         self._open_btn.setAccessibleName(tr("info.open"))
         self._open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._open_btn.setToolTip(tr("info.open_tooltip"))
-        self._open_btn.setStyleSheet(
-            f"QPushButton {{ background: {sk.token('accent')}; color: {sk.token('heading')}; "
-            f"border: {scaled_px(1)}px solid {sk.token('accent')}; "
-            f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
-            f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; "
-            f"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}"
-            f"QPushButton:hover {{ background: {lighten(sk.token('accent'), 1.1)}; }}"
-            f"QPushButton:pressed {{ background: {darken(sk.token('accent'), 0.87)}; }}")
+        self._open_btn.setEnabled(False)
+        self._open_btn.setToolTip(tr("info.select_file_first"))
+        self._open_btn.setStyleSheet(sk.button_css(
+            "primary", font_size_key="sm",
+            padding_y=sk.px(int(themes.prop("spacing", "xs"))),
+            padding_x=sk.px(int(themes.prop("spacing", "md")))))
         self._open_btn.clicked.connect(lambda: self.open_requested.emit(self._current_path))
         self._copy_btn = QPushButton(tr("info.copy_path"))
         self._copy_btn.setIcon(icons.icon("file", color="icon_secondary", size=scaled_px(15)))
         self._copy_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
         self._copy_btn.setAccessibleName(tr("info.copy_path"))
         self._copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._copy_btn.setToolTip(tr("info.copy_tooltip"))
-        self._copy_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent; color: {sk.token('body')}; "
-            f"border: {scaled_px(1)}px solid {sk.token('border')}; "
-            f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
-            f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; "
-            f"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}"
-            f"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; }}"
-            f"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.28)}; }}")
+        self._copy_btn.setEnabled(False)
+        self._copy_btn.setToolTip(tr("info.select_file_first"))
+        self._copy_btn.setStyleSheet(sk.button_css(
+            "secondary", font_size_key="sm",
+            padding_y=sk.px(int(themes.prop("spacing", "xs"))),
+            padding_x=sk.px(int(themes.prop("spacing", "md")))))
         self._copy_btn.clicked.connect(lambda: self.copy_path_requested.emit(self._current_path))
         act_layout.addWidget(self._open_btn)
         act_layout.addWidget(self._copy_btn)
@@ -342,13 +358,13 @@ class InfoPanel(PanelContent):
         # ── Initial ────────────────────────────────────────────
 
         self._splitter.setSizes([160, 400])
+        self._saved_splitter_sizes = [160, 400]
         # Debounce splitter drags: each move event would otherwise trigger a
         # full SmoothTransformation rescale of the preview on the UI thread.
         self._preview_rescale_timer = QTimer(self)
         self._preview_rescale_timer.setSingleShot(True)
         self._preview_rescale_timer.setInterval(150)
         self._preview_rescale_timer.timeout.connect(self._apply_scaled_preview)
-        self._splitter.splitterMoved.connect(lambda *_args: self._preview_rescale_timer.start())
         # Epoch dedupe for _apply_scaled_preview: remember the last (target
         # size, source pixmap) actually rendered so duplicate triggers — the
         # panel resizeEvent plus the preview label's own Resize event from
@@ -364,7 +380,7 @@ class InfoPanel(PanelContent):
         self._layout_save_timer.setSingleShot(True)
         self._layout_save_timer.setInterval(500)
         self._layout_save_timer.timeout.connect(self._save_layout_state)
-        self._splitter.splitterMoved.connect(lambda *_args: self._layout_save_timer.start())
+        self._splitter.splitterMoved.connect(self._on_splitter_moved)
 
         # Subscribe to domain events through a Qt bridge for UI-safe delivery.
         from AssetsManager.domain.events import (
@@ -383,21 +399,59 @@ class InfoPanel(PanelContent):
         self._connect_bus(bus().ui_scale_changed, self.refresh_scaled_geometry)
         self._load_sidebar_depth_cfg()
 
+    def _on_splitter_moved(self, _pos: int = 0, _index: int = 0) -> None:
+        sizes = self._splitter.sizes()
+        if len(sizes) == 2 and sizes[0] > 0 and sizes[1] > 0:
+            self._saved_splitter_sizes = list(sizes)
+        self._preview_rescale_timer.start()
+        self._layout_save_timer.start()
+
+    @staticmethod
+    def _ghost_tool_style(sk, border_style: str) -> str:
+        """Shared QSS for the four ghost tool buttons (audit P2-1)."""
+        return (
+            f"QPushButton {{ background: transparent; color: {sk.token('muted')}; "
+            f"border: {scaled_px(1)}px {border_style} {sk.token('border')}; "
+            f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
+            f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; "
+            f"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}"
+            f"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; }}"
+            f"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.28)}; }}")
+
     @staticmethod
     def _group_css(sk) -> str:
         """Single source for InfoPanel group-box QSS (build + theme refresh).
 
-        Uses the global hairline token instead of a full-strength border so
-        the metadata/tags/notes sections read as layers, not boxed-in cards.
+        Presents a modern, cohesive Linear-style card container with unbroken
+        hairline border and translucent depth.
         """
+        radius = sk.px(int(themes.prop('border_radius', 'md')))
+        pad_x = sk.px(int(themes.prop('spacing', 'md')))
+        pad_y = sk.px(int(themes.prop('spacing', 'sm')))
+        hairline = sk.token('border_subtle')
+        card_bg = alpha(sk.token('panel'), 0.45)
         return (
-            f"QGroupBox {{ color: {sk.token('heading')}; border: {scaled_px(1)}px solid {sk.token('border_subtle')}; "
-            f"border-radius: {sk.px(int(themes.prop('border_radius', 'md')))}px; "
-            f"margin-top: {sk.px(int(themes.prop('spacing', 'md')))}px; "
-            f"padding-top: {sk.px(int(themes.prop('spacing', 'md')))}px; }}"
-            f"QGroupBox::title {{ subcontrol-origin: margin; "
-            f"left: {sk.px(int(themes.prop('spacing', 'md')))}px; "
-            f"padding: 0 {sk.px(int(themes.prop('spacing', 'xs')))}px; }}"
+            f"QGroupBox {{"
+            f"  color: {sk.token('heading')}; "
+            f"  background: {card_bg}; "
+            f"  border: {scaled_px(1)}px solid {hairline}; "
+            f"  border-radius: {radius}px; "
+            f"  margin-top: {pad_y}px; "
+            f"  padding-top: {pad_y * 2 + scaled_px(8)}px; "
+            f"  padding-left: {pad_x}px; "
+            f"  padding-right: {pad_x}px; "
+            f"  padding-bottom: {pad_y}px; "
+            f"}} "
+            f"QGroupBox::title {{"
+            f"  subcontrol-origin: padding; "
+            f"  subcontrol-position: top left; "
+            f"  left: 0; "
+            f"  top: {pad_y}px; "
+            f"  font-weight: bold; "
+            f"  color: {sk.token('heading')}; "
+            f"  background: transparent; "
+            f"  padding: 0; "
+            f"}}"
         )
 
     def refresh_scaled_geometry(self, _scale: float | None = None):
@@ -418,7 +472,6 @@ class InfoPanel(PanelContent):
             layout.activate()
 
     def _refresh_theme(self, _name: str = ""):
-        t = themes.get()
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         self._preview_host.setStyleSheet(            "background: transparent;")
         if hasattr(self, '_details_scroll'):
@@ -435,7 +488,7 @@ class InfoPanel(PanelContent):
             btn.setIconSize(QSize(scaled_px(14), scaled_px(14)))
             border_style = "dashed" if dashed else "solid"
             btn.setStyleSheet(
-                f"QPushButton {{ background: transparent; color: {t['muted']}; "
+                f"QPushButton {{ background: transparent; color: {themes.color('muted')}; "
                 f"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; "
                 f"border: {scaled_px(1)}px {border_style} {sk.token('border')}; "
                 f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
@@ -447,25 +500,22 @@ class InfoPanel(PanelContent):
             f"padding: {sk.px(4)}px {sk.px(8)}px;")
         self._open_btn.setIcon(icons.icon("folder", color="icon_primary", size=scaled_px(15)))
         self._open_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
-        self._open_btn.setStyleSheet(
-            f"QPushButton {{ background: {sk.token('accent')}; color: {sk.token('heading')}; "
-            f"font-size: {sk.pt(int(themes.prop('font_size', 'md')))}px; "
-            f"border: {scaled_px(1)}px solid {sk.token('accent')}; "
-            f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
-            f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; }}"
-            f"QPushButton:hover {{ background: {lighten(sk.token('accent'), 1.1)}; }}"
-            f"QPushButton:pressed {{ background: {darken(sk.token('accent'), 0.87)}; }}")
-        self._copy_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent; color: {sk.token('body')}; "
-            f"border: {scaled_px(1)}px solid {sk.token('border')}; "
-            f"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; "
-            f"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; "
-            f"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}"
-            f"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; }}"
-            f"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.28)}; }}")
+        self._open_btn.setStyleSheet(sk.button_css(
+            "primary", font_size_key="md",
+            padding_y=sk.px(int(themes.prop("spacing", "xs"))),
+            padding_x=sk.px(int(themes.prop("spacing", "md")))))
+        self._copy_btn.setStyleSheet(sk.button_css(
+            "secondary", font_size_key="sm",
+            padding_y=sk.px(int(themes.prop("spacing", "xs"))),
+            padding_x=sk.px(int(themes.prop("spacing", "md")))))
         self._copy_btn.setIcon(icons.icon("file", color="icon_secondary", size=scaled_px(15)))
         self._copy_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
         self._refresh_empty_preview_state()
+        if self._current_path:
+            self._open_btn.setEnabled(True)
+            self._open_btn.setToolTip(tr("info.open_tooltip"))
+            self._copy_btn.setEnabled(True)
+            self._copy_btn.setToolTip(tr("info.copy_tooltip"))
         self._name.setStyleSheet(
             sk.label_css("heading", size=16, bold=True)
             + f" QLabel {{ border: none; padding: {sk.px(2)}px 0; }}")
@@ -487,6 +537,13 @@ class InfoPanel(PanelContent):
                 rating_label.setStyleSheet(
                     sk.muted_css(11)
                     + f" QLabel {{ min-width: {sk.px(65)}px; }}")
+        # Tag chips mix a light/dark polarity from the active theme
+        # (tag_chip.py), so force a re-render — otherwise chips keep the
+        # previous theme's polarity after a switch (audit B2②).
+        if self._rendered_tags:
+            forced_tags = list(self._rendered_tags)
+            self._rendered_tags = ()
+            self._render_tags(forced_tags)
 
     @staticmethod
     def _detect_reduce_motion() -> bool:
@@ -496,6 +553,17 @@ class InfoPanel(PanelContent):
             return False
 
     def _refresh_language(self, _code: str = ""):
+        if hasattr(self, "_tab_bar"):
+            self._tab_bar.set_tabs([
+                tr("info.all"),
+                tr("info.title"),
+                tr("info.tags"),
+                tr("info.notes"),
+            ])
+            # set_tabs() resets the selection to index 0 without emitting
+            # current_changed; re-apply the filter so section visibility
+            # cannot drift from the tab bar selection after a language switch.
+            self._on_info_tab_changed(self._tab_bar.currentIndex())
         self._meta_grp.setTitle(tr("info.title"))
         self._tags_grp.setTitle(tr("info.tags"))
         self._notes_grp.setTitle(tr("info.notes"))
@@ -521,10 +589,14 @@ class InfoPanel(PanelContent):
                 btn.setAccessibleName(tr("info.rating_star").format(n=i))
         self._open_btn.setText(tr("info.open"))
         self._open_btn.setAccessibleName(tr("info.open"))
-        self._open_btn.setToolTip(tr("info.open_tooltip"))
+        self._open_btn.setToolTip(
+            tr("info.open_tooltip") if self._open_btn.isEnabled() else tr("info.select_file_first")
+        )
         self._copy_btn.setText(tr("info.copy_path"))
         self._copy_btn.setAccessibleName(tr("info.copy_path"))
-        self._copy_btn.setToolTip(tr("info.copy_tooltip"))
+        self._copy_btn.setToolTip(
+            tr("info.copy_tooltip") if self._copy_btn.isEnabled() else tr("info.select_file_first")
+        )
         labels = ("info.field_type", "info.field_size", "info.field_contains", "info.field_modified", "info.field_path")
         for key, label_key in zip(("type", "size", "summary", "date", "path"), labels, strict=True):
             field = self._fields[key]
@@ -869,7 +941,9 @@ class InfoPanel(PanelContent):
         ]:
             a = menu.addAction(label)
             a.setCheckable(True)
-            a.setChecked(not widget.isHidden())
+            # Read the preference (not isHidden()) so the checkmark reflects
+            # the persisted toggle even while a micro-tab filters the view.
+            a.setChecked(self._section_preference.get(key, True))
             a.toggled.connect(lambda v, k=key, w=widget: self._set_section_visible(k, w, v))
         btn = self.sender()
         if isinstance(btn, QWidget):
@@ -886,8 +960,41 @@ class InfoPanel(PanelContent):
             ("actions", self._act_bar),
         ]
 
+    def _on_info_tab_changed(self, index: int) -> None:
+        """Filter section visibility based on selected micro-tab."""
+        self._apply_section_visibility()
+
+    def _apply_section_visibility(self) -> None:
+        """Single source of truth for section visibility.
+
+        The micro-tab selects which sections are candidates; the persisted
+        per-section preference (gear menu) gates each candidate. Tab switches
+        and menu toggles are both just inputs that re-run this, so the two
+        controls can never disagree about the final visible state.
+        """
+        index = self._tab_bar.currentIndex() if hasattr(self, "_tab_bar") else 0
+        for key, widget in (
+            ("meta", self._meta_grp),
+            ("tags", self._tags_grp),
+            ("notes", self._notes_grp),
+        ):
+            candidate = index == 0 or index == {"meta": 1, "tags": 2, "notes": 3}[key]
+            widget.setVisible(candidate and self._section_preference.get(key, True))
+
+        if hasattr(self, "_details_scroll"):
+            widget = self._details_scroll.widget()
+            if widget is not None and widget.layout() is not None:
+                widget.layout().activate()
+            self._details_scroll.verticalScrollBar().setValue(0)
+
     def _set_section_visible(self, key: str, widget: QWidget, visible: bool) -> None:
-        widget.setVisible(visible)
+        if hasattr(self, "_section_preference"):
+            self._section_preference[key] = visible
+        self._apply_section_visibility()
+        # preview/actions are not tab candidates, so make sure the direct
+        # toggle still lands even when _apply_section_visibility skipped them.
+        if key in ("preview", "actions"):
+            widget.setVisible(visible)
         self._save_layout_state()
 
     def _restore_layout_state(self) -> None:
@@ -896,12 +1003,17 @@ class InfoPanel(PanelContent):
 
     def save_state(self) -> dict:
         """Snapshot section visibility and splitter sizes for PanelState."""
+        sizes = list(self._splitter.sizes())
+        if len(sizes) == 2 and sizes[0] > 0 and sizes[1] > 0:
+            self._saved_splitter_sizes = list(sizes)
+        else:
+            sizes = getattr(self, "_saved_splitter_sizes", [160, 400])
         return {
             # isHidden() reflects the explicit per-section preference even
             # before the panel itself has been shown (isVisible() would
             # report False for every section in that case).
             "sections": {key: not widget.isHidden() for key, widget in self._section_widgets()},
-            "splitter": list(self._splitter.sizes()),
+            "splitter": list(sizes),
         }
 
     def restore_state(self, state: dict) -> None:
@@ -913,13 +1025,16 @@ class InfoPanel(PanelContent):
             for key, widget in self._section_widgets():
                 saved = sections.get(key)
                 if isinstance(saved, bool):
+                    if hasattr(self, "_section_preference"):
+                        self._section_preference[key] = saved
                     widget.setVisible(saved)
         sizes = state.get("splitter")
         if isinstance(sizes, (list, tuple)) and len(sizes) == 2:
             try:
-                width, height = int(sizes[0]), int(sizes[1])
-                if width > 0 and height > 0:
-                    self._splitter.setSizes([width, height])
+                top, bottom = int(sizes[0]), int(sizes[1])
+                if top > 0 and bottom > 0:
+                    self._saved_splitter_sizes = [top, bottom]
+                    self._splitter.setSizes([top, bottom])
             except (TypeError, ValueError):
                 pass
 
@@ -988,7 +1103,7 @@ class InfoPanel(PanelContent):
         if hasattr(self, '_preview_anim') and self._preview_anim:
             self._preview_anim.stop()
         anim = QPropertyAnimation(self._preview, b"windowOpacity")
-        anim.setDuration(200)
+        anim.setDuration(themes.motion("normal"))
         anim.setStartValue(0.0)
         anim.setEndValue(1.0)
         anim.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -1039,6 +1154,7 @@ class InfoPanel(PanelContent):
             self.view_fullscreen.emit(target)
 
     def _show_empty_state(self):
+        self._current_path = ""
         # Persist pending notes and stop the debounce timer so a stale save
         # cannot overwrite the notes of a newly focused asset.
         self._flush_notes_save()
@@ -1061,6 +1177,14 @@ class InfoPanel(PanelContent):
         self._empty_preview_label.setText(tr("info.no_file_selected"))
         self._empty_preview_label.setStyleSheet(
             sk.muted_css(int(themes.prop('font_size', 'sm'))) + " QLabel { border: none; }")
+        if hasattr(self, "_palette_strip"):
+            self._palette_strip.hide()
+        if hasattr(self, "_open_btn"):
+            self._open_btn.setEnabled(False)
+            self._open_btn.setToolTip(tr("info.select_file_first"))
+        if hasattr(self, "_copy_btn"):
+            self._copy_btn.setEnabled(False)
+            self._copy_btn.setToolTip(tr("info.select_file_first"))
 
     # ── Preview loader ─────────────────────────────────────────
 
@@ -1329,7 +1453,7 @@ class InfoPanel(PanelContent):
         if generation != self._tag_render_generation:
             return
         anim = QPropertyAnimation(chip, b"windowOpacity")
-        anim.setDuration(150)
+        anim.setDuration(themes.motion("fast"))
         anim.setStartValue(0.0)
         anim.setEndValue(1.0)
         anim.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -1627,6 +1751,10 @@ class InfoPanel(PanelContent):
 
     def update_info(self, info):
         from PySide6.QtCore import QFileInfo
+        if not info:
+            self._current_path = ""
+            self._show_empty_state()
+            return
         if self._controller is None or self._scoped_services is None:
             _log.debug("update_info skipped: controller=%s lib_root=%s",
                        bool(self._controller), repr(self._library_root))
@@ -1765,6 +1893,13 @@ class InfoPanel(PanelContent):
         if file_info.is_dir and os.path.exists(self._current_path):
             self._start_async_dir_size(request)
 
+        # Dominant color palette (if available)
+        palette = getattr(file_info, "palette", None)
+        if palette and hasattr(self, "_palette_strip"):
+            self._palette_strip.set_colors(palette)
+        elif hasattr(self, "_palette_strip"):
+            self._palette_strip.hide()
+
         # Plugin fields
         self._render_plugin_fields(file_info.plugin_fields)
 
@@ -1781,6 +1916,14 @@ class InfoPanel(PanelContent):
 
         # Rating
         self._set_rating(file_info.rating)
+
+        # Action buttons
+        if hasattr(self, "_open_btn"):
+            self._open_btn.setEnabled(True)
+            self._open_btn.setToolTip(tr("info.open_tooltip"))
+        if hasattr(self, "_copy_btn"):
+            self._copy_btn.setEnabled(True)
+            self._copy_btn.setToolTip(tr("info.copy_tooltip"))
 
     def _on_file_info_ready(self, request, file_info):
         """Called on main thread when async file-info load completes."""
@@ -1887,10 +2030,18 @@ class InfoPanel(PanelContent):
         self._scoped_services = None
 
     def shutdown(self):
+        if hasattr(self, "_layout_save_timer") and self._layout_save_timer is not None:
+            if self._layout_save_timer.isActive():
+                self._layout_save_timer.stop()
+            self._save_layout_state()
         self.prepare_library_switch()
         self._invalidate_async_requests()
         super().shutdown()
 
     def closeEvent(self, event):
+        if hasattr(self, "_layout_save_timer") and self._layout_save_timer is not None:
+            if self._layout_save_timer.isActive():
+                self._layout_save_timer.stop()
+            self._save_layout_state()
         self.prepare_library_switch()
         super().closeEvent(event)

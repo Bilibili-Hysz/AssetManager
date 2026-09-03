@@ -73,6 +73,14 @@ class EndpointPageMixin:
         header.setStyleSheet(sk.label_css("heading", size=13, bold=True) + "QLabel { border: none; }")
         outer.addWidget(header)
 
+        # Register for theme refresh (audit B2⑥) — widget-level sheets here
+        # do not follow the app stylesheet automatically.
+        if not hasattr(self, "_endpoint_card_frames"):
+            self._endpoint_card_frames = []
+            self._endpoint_card_headers = []
+        self._endpoint_card_frames.append(frame)
+        self._endpoint_card_headers.append(header)
+
         content = QVBoxLayout()
         content.setSpacing(scaled_px(8))
         outer.addLayout(content)
@@ -167,6 +175,7 @@ class EndpointPageMixin:
         self._activity_list.setWordWrap(True)
         self._activity_list.setStyleSheet(sk.muted_css(11))
         activity_cl.addWidget(self._activity_list)
+        self._apply_endpoint_theme()
         layout.addWidget(activity_card)
         layout.addStretch()
 
@@ -180,4 +189,43 @@ class EndpointPageMixin:
         val.setStyleSheet(sk.label_css("heading", size=12, bold=True))
         layout.addWidget(lbl)
         layout.addWidget(val)
+        if not hasattr(self, "_endpoint_info_labels"):
+            self._endpoint_info_labels = []
+            self._endpoint_value_labels = []
+        self._endpoint_info_labels.append(lbl)
+        self._endpoint_value_labels.append(val)
         return layout, val
+
+    def _apply_endpoint_theme(self):
+        """Re-derive widget-level overview styles from current tokens (B2⑥)."""
+        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
+        card_qss = (
+            f"QFrame {{ background: {sk.token('panel')}; border: {scaled_px(1)}px solid {sk.token('border_subtle')}; "
+            f"border-radius: {sk.px(int(sk.prop('border_radius', 'md')))}px; }}")
+        header_qss = sk.label_css("heading", size=13, bold=True) + "QLabel { border: none; }"
+        for frame in getattr(self, "_endpoint_card_frames", []):
+            try:
+                frame.setStyleSheet(card_qss)
+            except RuntimeError:
+                pass
+        for header in getattr(self, "_endpoint_card_headers", []):
+            try:
+                header.setStyleSheet(header_qss)
+            except RuntimeError:
+                pass
+        for lbl in getattr(self, "_endpoint_info_labels", []):
+            try:
+                lbl.setStyleSheet(sk.muted_css(10))
+            except RuntimeError:
+                pass
+        for val in getattr(self, "_endpoint_value_labels", []):
+            try:
+                val.setStyleSheet(sk.label_css("heading", size=12, bold=True))
+            except RuntimeError:
+                pass
+        activity = getattr(self, "_activity_list", None)
+        if activity is not None:
+            try:
+                activity.setStyleSheet(sk.muted_css(11))
+            except RuntimeError:
+                pass

@@ -26,7 +26,6 @@ from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.timers import TimerHandle
 from AssetsManager.panels.tag_tree import TagTreePanel
 from AssetsManager.panels.image_viewer import ImageViewer
-from AssetsManager.widgets.tab_container import TabContainer
 from AssetsManager import i18n
 from AssetsManager.core import icons
 from AssetsManager.core import themes
@@ -36,7 +35,6 @@ tr = i18n.tr
 
 PANELS = {
     "sidebar":       ("dock.sidebar",      SidebarPanel),
-    "file_list_tabs": ("dock.file_list",   TabContainer),
     "info":          ("dock.info",         InfoPanel),
     "tag_tree":      ("dock.tag_tree",     TagTreePanel),
     "image_viewer":  ("dock.image_viewer", ImageViewer),
@@ -82,6 +80,7 @@ def create(title: str = "Panel", parent: QMainWindow | None = None, area=Qt.Dock
         i18n_key = ""
 
     dock = QDockWidget(title, parent)
+    dock.setObjectName(f"dock_{panel_type}")
     dock.setWidget(widget)
     dock.setMinimumWidth(scaled_px(120))
     dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable |
@@ -117,6 +116,7 @@ def _build_title_bar(dock_title: str, dock: QDockWidget,
     t = themes.get()
     bar_radius = scaled_px(int(themes.prop("border_radius", "md")))
     spacing_xs = scaled_px(int(themes.prop("spacing", "xs")))
+    spacing_sm = scaled_px(int(themes.prop("spacing", "sm")))
     spacing_md = scaled_px(int(themes.prop("spacing", "md")))
     bar = QWidget()
     bar.setProperty("is_custom_title", True)
@@ -129,12 +129,12 @@ def _build_title_bar(dock_title: str, dock: QDockWidget,
     layout.setContentsMargins(spacing_md, spacing_xs, spacing_md, spacing_xs)
     layout.setSpacing(scaled_px(4))
 
-    title_label = QLabel(f"  {dock_title}")
+    title_label = QLabel(dock_title)
     title_label.setStyleSheet(
-        f"color: {t['heading']}; font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; "
+        f"color: {themes.color('heading')}; font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; "
         f"font-weight: bold; "
         f"background: transparent; border: none; "
-        f"padding: {spacing_xs}px {scaled_px(4)}px;")
+        f"padding: {spacing_xs}px {spacing_sm}px;")
     layout.addWidget(title_label)
 
     # ── Panel extension slot ─────────────────────────────────
@@ -147,21 +147,26 @@ def _build_title_bar(dock_title: str, dock: QDockWidget,
 
     btn_radius = scaled_px(int(themes.prop("border_radius", "sm")))
     btn_hover = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
+    btn_pressed = alpha(t["accent"], 0.18)
     btn_style = (
         f"color: {t['heading']}; font-size: {scaled_pt(themes.font_size('lg'))}px; font-weight: bold; "
-        f"padding: 0; background: transparent; border: none; border-radius: {btn_radius}px;")
-    btn_style += (
-        f" QPushButton:hover {{ background: {btn_hover}; }} "
-        f"QPushButton:pressed {{ background: {alpha(t['accent'], 0.18)}; }}")
+        f"padding: 0; background: transparent; border: none; border-radius: {btn_radius}px;"
+        f" QPushButton:hover {{ background: {btn_hover}; border-radius: {btn_radius}px; }} "
+        f"QPushButton:pressed {{ background: {btn_pressed}; border-radius: {btn_radius}px; }}")
+
+    btn_size = scaled_px(themes.metrics("hit_area"))
+    icon_size = scaled_px(themes.metrics("icon_sm"))
+    q_icon_size = QSize(icon_size, icon_size)
 
     # Extra panel buttons (e.g. settings gears) share the dock's title-bar
     # presentation so theme and UI-scale refresh always rebuild them coherently.
     for btn in extra_buttons:
-        semantic_icon = btn.property("semanticIcon")
-        if isinstance(btn, QPushButton) and semantic_icon:
-            btn.setIcon(icons.icon(semantic_icon, color="icon_primary", size=scaled_px(15)))
-            btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
-            btn.setFixedSize(scaled_px(20), scaled_px(20))
+        if isinstance(btn, QPushButton):
+            semantic_icon = btn.property("semanticIcon")
+            if semantic_icon:
+                btn.setIcon(icons.icon(semantic_icon, color="icon_primary", size=icon_size))
+            btn.setIconSize(q_icon_size)
+            btn.setFixedSize(btn_size, btn_size)
             btn.setFlat(True)
             themes.set_button_variant(btn, "ghost")
             btn.setStyleSheet(btn_style)
@@ -174,11 +179,11 @@ def _build_title_bar(dock_title: str, dock: QDockWidget,
 
     _dock = dock
     float_btn = QPushButton()
-    float_btn.setIcon(icons.icon("maximize", color="icon_primary", size=scaled_px(15)))
-    float_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+    float_btn.setIcon(icons.icon("maximize", color="icon_primary", size=icon_size))
+    float_btn.setIconSize(q_icon_size)
     float_btn.setToolTip(tr("dock.float"))
     float_btn.setAccessibleName(tr("dock.float"))
-    float_btn.setFixedSize(scaled_px(20), scaled_px(20))
+    float_btn.setFixedSize(btn_size, btn_size)
     float_btn.setFlat(True)
     themes.set_button_variant(float_btn, "ghost")
     float_btn.setStyleSheet(btn_style)
@@ -187,11 +192,11 @@ def _build_title_bar(dock_title: str, dock: QDockWidget,
     layout.addWidget(float_btn)
 
     close_btn = QPushButton()
-    close_btn.setIcon(icons.icon("close", color="icon_primary", size=scaled_px(15)))
-    close_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+    close_btn.setIcon(icons.icon("close", color="icon_primary", size=icon_size))
+    close_btn.setIconSize(q_icon_size)
     close_btn.setToolTip(tr("dock.close"))
     close_btn.setAccessibleName(tr("dock.close"))
-    close_btn.setFixedSize(scaled_px(20), scaled_px(20))
+    close_btn.setFixedSize(btn_size, btn_size)
     close_btn.setFlat(True)
     themes.set_button_variant(close_btn, "ghost")
     close_btn.setStyleSheet(btn_style)
@@ -288,3 +293,13 @@ def install_dock_refresh_handlers():
     bus().language_changed.connect(_schedule_dock_refresh)
     bus().ui_scale_changed.connect(_schedule_dock_refresh)
     _dock_refresh_handlers_installed = True
+
+
+def request_refresh():
+    """Public hook: coalesce one dock-chrome rebuild on the next frame.
+
+    For restyle triggers that are not bus signals (e.g. the background
+    opacity change path) so ``_build_title_bar`` remains the single
+    construction point for dock chrome QSS (audit A3).
+    """
+    _schedule_dock_refresh()

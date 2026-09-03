@@ -20,6 +20,7 @@ from PySide6.QtCore import (
 from PySide6.QtWidgets import QWidget
 
 from AssetsManager.core.signal_bus import get as bus
+from AssetsManager.core import themes
 from AssetsManager.core.ui_scale import scaled_px
 from AssetsManager import i18n
 
@@ -572,7 +573,7 @@ class EventsMixin:
             anim.finished.connect(self._on_smooth_scroll_finished)
             self._scroll_anim = anim
         self._scroll_anim_generation = generation
-        anim.setDuration(120)
+        anim.setDuration(themes.motion("micro"))
         anim.setStartValue(sb.value())
         anim.setEndValue(target)
         anim.start()
@@ -790,3 +791,50 @@ class EventsMixin:
         if not ent:
             return
         self._rename_path(ent.path, new_name)
+
+    def _open_quick_look(self) -> None:
+        """Open the QuickLook modal overlay for current directory assets."""
+        import os
+        from AssetsManager.widgets.quick_look_overlay import QuickLookOverlay
+
+        if getattr(self, "_view_mode", "") == "Details":
+            detail_model = getattr(self, "_detail_model", None)
+            entries = getattr(detail_model, "entries", []) if detail_model else []
+        else:
+            model = getattr(self, "_model", None)
+            entries = getattr(model, "entries", []) if model else []
+
+        file_paths: list[str] = []
+        for e in entries:
+            try:
+                p = getattr(e, "path", None)
+                if p:
+                    is_f = False
+                    is_file_fn = getattr(e, "is_file", None)
+                    if callable(is_file_fn):
+                        is_f = is_file_fn()
+                    else:
+                        is_f = os.path.isfile(p)
+                    if is_f:
+                        file_paths.append(str(p))
+            except OSError:
+                continue
+
+        if not file_paths:
+            selected_fn = getattr(self, "_selected_paths", None)
+            selected = selected_fn() if callable(selected_fn) else []
+            file_paths = [str(p) for p in selected if os.path.isfile(p)]
+
+        if not file_paths:
+            return
+
+        current_index = 0
+        selected_fn = getattr(self, "_selected_paths", None)
+        selected = selected_fn() if callable(selected_fn) else []
+        if selected and selected[0] in file_paths:
+            current_index = file_paths.index(selected[0])
+
+        win = self.window() if hasattr(self, "window") else None
+        overlay = QuickLookOverlay(file_paths, current_index=current_index, parent=win)
+        self._quick_look_overlay = overlay
+        overlay.exec()

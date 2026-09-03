@@ -18,6 +18,7 @@ from PySide6.QtCore import Qt, QSize, QPoint
 from PySide6.QtWidgets import (
     QHBoxLayout, QComboBox, QLabel, QWidget, QMenu,
     QSizePolicy, QTreeView, QAbstractItemView, QHeaderView,
+    QLineEdit,
 )
 
 from AssetsManager.core import icons
@@ -102,33 +103,92 @@ class LayoutMixin:
 
     def _build_ui(self) -> None:
         """Build header, toolbar, breadcrumb, status bar, grid and detail views."""
-        # ── Panel header ─────────────────────────────────────────
+        # ── Tier-1: Address & Navigation Band (36px Horizon) ─────
 
         self._header = QWidget()
+        self._header.setFixedHeight(scaled_px(36))
         header_layout = QHBoxLayout(self._header)
-        header_layout.setContentsMargins(scaled_px(10), scaled_px(3), scaled_px(6), scaled_px(3))
-        header_layout.setSpacing(scaled_px(4))
+        header_layout.setContentsMargins(scaled_px(8), 0, scaled_px(8), 0)
+        header_layout.setSpacing(scaled_px(8))
 
         self._header_title = QLabel(tr("filelist.header"))
+        self._header_title.hide()  # Title integrated with breadcrumbs
         header_layout.addWidget(self._header_title)
-        header_layout.addStretch()
-        self.content_layout.addWidget(self._header)
 
-        # ── Toolbar ─────────────────────────────────────────────
-
-        tb = QHBoxLayout()
-        tb.setContentsMargins(scaled_px(4), scaled_px(4), scaled_px(4), scaled_px(2))
-        tb.setSpacing(scaled_px(3))
-
+        # 1. Zone 1: Navigation Cluster [←] [→] [↑]
         self._nav_buttons = []
         self._nav_tooltip_keys = ("filelist.back", "filelist.forward", "filelist.up")
         self._nav_buttons.append(self._make_nav_button("arrow_left", tr("filelist.back"), self._go_back))
         self._nav_buttons.append(self._make_nav_button("arrow_right", tr("filelist.forward"), self._go_forward))
         self._nav_buttons.append(self._make_nav_button("arrow_up", tr("filelist.up"), self._go_up))
         for b in self._nav_buttons:
-            tb.addWidget(b)
+            header_layout.addWidget(b)
+
+        # 2. Zone 2: Enclosed Address Bar Capsule [📁 Breadcrumbs... ↻]
+        self._address_container = QWidget()
+        self._address_container.setObjectName("addressBarCapsule")
+        self._address_container.setFixedHeight(scaled_px(28))
+        addr_layout = QHBoxLayout(self._address_container)
+        addr_layout.setContentsMargins(scaled_px(6), 0, scaled_px(4), 0)
+        addr_layout.setSpacing(scaled_px(4))
+
+        self._addr_icon = QLabel()
+        self._addr_icon.setPixmap(icons.icon("folder", color="icon_secondary", size=scaled_px(14)).pixmap(QSize(scaled_px(14), scaled_px(14))))
+        addr_layout.addWidget(self._addr_icon)
+
+        self._breadcrumb = QWidget()
+        self._breadcrumb.setStyleSheet("background: transparent;")
+        self._bc_layout = QHBoxLayout(self._breadcrumb)
+        self._bc_layout.setContentsMargins(0, 0, 0, 0)
+        self._bc_layout.setSpacing(0)
+        addr_layout.addWidget(self._breadcrumb, 1)
+
+        self._refresh_btn = self._make_nav_button("refresh", tr("filelist.refresh"), self._do_refresh)
+        self._refresh_btn.setFixedSize(scaled_px(22), scaled_px(22))
+        addr_layout.addWidget(self._refresh_btn)
+
+        header_layout.addWidget(self._address_container, 1)
+
+        # 3. Zone 3: Scoped Search Box [🔍 Search...]
+        self._search = QLineEdit()
+        self._search.setPlaceholderText(tr("filelist.filter_placeholder"))
+        self._search.setClearButtonEnabled(True)
+        self._search.installEventFilter(cast(QWidget, self))
+        self._setup_search_history(self._search)
+        self._search.setFixedHeight(scaled_px(28))
+        self._search.setFixedWidth(scaled_px(200))
+        header_layout.addWidget(self._search)
+
+        # Tier-2 disclosure toggle (chrome 退让: collapsible command band)
+        self._toolbar_toggle_btn = self._make_nav_button(
+            "chevron_down", tr("filelist.toolbar.collapse"), self._toggle_toolbar)
+        header_layout.addWidget(self._toolbar_toggle_btn)
+
+        self.content_layout.addWidget(self._header)
+
+        # ── Tier-2: View & Command Band (32px Horizon) ───────────
+
+        self._toolbar_widget = QWidget()
+        self._toolbar_widget.setFixedHeight(scaled_px(32))
+        tb = QHBoxLayout(self._toolbar_widget)
+        tb.setContentsMargins(scaled_px(6), 0, scaled_px(6), 0)
+        tb.setSpacing(scaled_px(6))
+
+        # Group 1: Filter
+        self._filter_combo = QComboBox()
+        self._filter_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self._populate_filter_combo()
+        self._filter_combo.setToolTip(tr("filelist.filter_tooltip"))
+        self._filter_combo.setAccessibleName(tr("filelist.filter_tooltip"))
+        tb.addWidget(self._filter_combo)
+
+        # Group 2: Sort
+        sort_layout = QHBoxLayout()
+        sort_layout.setContentsMargins(0, 0, 0, 0)
+        sort_layout.setSpacing(scaled_px(2))
 
         self._sort_combo = QComboBox()
+        self._sort_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         for key, label in (
             ("name", tr("filelist.sort.name")),
             ("date", tr("filelist.sort.date")),
@@ -138,62 +198,54 @@ class LayoutMixin:
             self._sort_combo.addItem(label, key)
         self._sort_combo.setToolTip(tr("filelist.sort_tooltip"))
         self._sort_combo.setAccessibleName(tr("filelist.sort_tooltip"))
-        tb.addWidget(self._sort_combo)
+        sort_layout.addWidget(self._sort_combo)
 
         self._sort_btn = self._make_nav_button("arrow_up_down", tr("filelist.sort_dir"), self._toggle_sort_dir)
-        tb.addWidget(self._sort_btn)
+        sort_layout.addWidget(self._sort_btn)
+        tb.addLayout(sort_layout)
 
-        self._filter_combo = QComboBox()
-        self._populate_filter_combo()
-        self._filter_combo.setToolTip(tr("filelist.filter_tooltip"))
-        self._filter_combo.setAccessibleName(tr("filelist.filter_tooltip"))
-        tb.addWidget(self._filter_combo)
+        # Group 3: View & Zoom
+        view_layout = QHBoxLayout()
+        view_layout.setContentsMargins(0, 0, 0, 0)
+        view_layout.setSpacing(scaled_px(2))
 
         self._view_combo = QComboBox()
+        self._view_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self._view_combo.addItem(tr("filelist.view.grid"), userData="Grid")
         self._view_combo.addItem(tr("filelist.view.details"), userData="Details")
         self._view_combo.setToolTip(tr("filelist.view_tooltip"))
         self._view_combo.setAccessibleName(tr("filelist.view_tooltip"))
-        tb.addWidget(self._view_combo)
+        view_layout.addWidget(self._view_combo)
 
         self._zoom_combo = QComboBox()
+        self._zoom_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         for sz in ZOOM_PRESETS:
             self._zoom_combo.addItem(f"{sz}px")
         self._zoom_combo.setCurrentIndex(2)
         self._zoom_combo.setToolTip(tr("filelist.zoom_tooltip"))
         self._zoom_combo.setAccessibleName(tr("filelist.zoom_tooltip"))
-        tb.addWidget(self._zoom_combo)
+        view_layout.addWidget(self._zoom_combo)
+        tb.addLayout(view_layout)
 
         tb.addStretch()
-        self._hidden_btn = self._make_nav_button("eye", tr("filelist.hidden"), self._toggle_hidden)
-        tb.addWidget(self._hidden_btn)
-        self._refresh_btn = self._make_nav_button("refresh", tr("filelist.refresh"), self._do_refresh)
-        tb.addWidget(self._refresh_btn)
 
-        # Search — inline at end of toolbar
-        from PySide6.QtWidgets import QLineEdit
+        # Group 4: Utilities (Hidden toggle & Advanced filter)
+        utils_layout = QHBoxLayout()
+        utils_layout.setContentsMargins(0, 0, 0, 0)
+        utils_layout.setSpacing(scaled_px(2))
+
+        self._hidden_btn = self._make_nav_button("eye", tr("filelist.hidden"), self._toggle_hidden)
+        utils_layout.addWidget(self._hidden_btn)
+
         self._advanced_btn = self._make_nav_button(
             "settings", tr("filelist.advanced.tooltip"), self._toggle_advanced_filter)
-        tb.addWidget(self._advanced_btn)
-        self._search = QLineEdit()
-        self._search.setPlaceholderText(tr("filelist.filter_placeholder"))
-        self._search.setClearButtonEnabled(True)
-        self._search.installEventFilter(cast(QWidget, self))
-        self._setup_search_history(self._search)
-        tb.addWidget(self._search, stretch=1)
-        self.content_layout.addLayout(tb)
+        utils_layout.addWidget(self._advanced_btn)
+        tb.addLayout(utils_layout)
+
+        self.content_layout.addWidget(self._toolbar_widget)
         self._build_advanced_filter_popup()
         self._refresh_state_icons()
         self._apply_chrome_style()
-
-        # ── Breadcrumb ──────────────────────────────────────────
-
-        self._breadcrumb = QWidget()
-        self._breadcrumb.setStyleSheet("background: transparent;")
-        self._bc_layout = QHBoxLayout(self._breadcrumb)
-        self._bc_layout.setContentsMargins(scaled_px(4), 0, scaled_px(4), 0)
-        self._bc_layout.setSpacing(0)
-        self.content_layout.addWidget(self._breadcrumb)
 
         self.setFocusProxy(self._search)
 
@@ -275,25 +327,37 @@ class LayoutMixin:
 
 
     def _fst_status_style(self):
-        t = themes.get()
         self._status_bar.setStyleSheet(
             f"background: transparent; "
-            f"border-top: {scaled_px(1)}px solid {t['border_subtle']};")
+            f"border-top: {scaled_px(1)}px solid {themes.color('border_subtle')};")
         self._status.setStyleSheet(
-            f"color: {t['muted']}; font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; "
+            f"color: {themes.color('muted')}; font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; "
             f"background: transparent; "
             f"padding: {scaled_px(int(themes.prop('spacing', 'xs')))}px 0;")
         self._operation_feedback.setStyleSheet(
-            f"color: {t['muted']}; font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; "
+            f"color: {themes.color('muted')}; font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; "
             f"background: transparent; "
             f"padding: {scaled_px(int(themes.prop('spacing', 'xs')))}px 0;")
 
     @staticmethod
     def _header_css(t: dict) -> str:
+        r_sm = scaled_px(int(themes.prop("border_radius", "sm")))
+        hover = alpha(t["hover_overlay"], themes.prop("opacity", "hover"))
         return (
-            f"background: {themes.header_for_dock()}; border: {scaled_px(1)}px solid {t['border_subtle']}; "
-            f"border-top-left-radius: {scaled_px(int(themes.prop('border_radius', 'md')))}px; "
-            f"border-top-right-radius: {scaled_px(int(themes.prop('border_radius', 'md')))}px; "
+            f"background: {themes.header_for_dock()}; "
+            f"border-bottom: {scaled_px(1)}px solid {t['border_subtle']}; "
+            f"border-top: none; border-left: none; border-right: none; "
+            f"#addressBarCapsule {{"
+            f"  background: {t['input_bg']}; "
+            f"  border: {scaled_px(1)}px solid {t['border_subtle']}; "
+            f"  border-radius: {r_sm}px; "
+            f"}}"
+            f"#addressBarCapsule:hover {{"
+            f"  border-color: {t['accent']}; "
+            f"}}"
+            f"#addressBarCapsule QLabel {{ background: transparent; border: none; }}"
+            f"#addressBarCapsule QPushButton {{ background: transparent; border: none; padding: 0; min-width: {scaled_px(22)}px; }}"
+            f"#addressBarCapsule QPushButton:hover {{ background: {hover}; border-radius: {r_sm}px; }}"
         )
 
     @staticmethod
@@ -328,8 +392,18 @@ class LayoutMixin:
         if hasattr(self, "_nav_buttons"):
             for btn in self._nav_buttons:
                 btn.setStyleSheet(self._nav_button_css(t))
+        if hasattr(self, "_addr_icon"):
+            self._addr_icon.setPixmap(
+                icons.icon("folder", color="icon_secondary", size=scaled_px(14)).pixmap(
+                    QSize(scaled_px(14), scaled_px(14))
+                )
+            )
         if hasattr(self, "_status_bar"):
             self._fst_status_style()
+        if hasattr(self, "_bc_layout"):
+            # The breadcrumb re-renders from current navigation state; without
+            # this its buttons keep the previous theme's colors (audit B2③).
+            self._render_bc()
         self._style_advanced_popup()
 
     def refresh_header(self):
@@ -398,6 +472,7 @@ class LayoutMixin:
         self._search.setPlaceholderText(tr("filelist.filter_placeholder"))
         self._advanced_btn.setToolTip(tr("filelist.advanced.tooltip"))
         self._advanced_btn.setAccessibleName(tr("filelist.advanced.tooltip"))
+        self._set_toolbar_visible(not self._toolbar_widget.isHidden())
         if hasattr(self, "_advanced_popup"):
             self._adv_title.setText(tr("filelist.advanced.title"))
             self._adv_mtime_after_label.setText(tr("filelist.advanced.modified_after"))
@@ -555,14 +630,14 @@ class LayoutMixin:
         ):
             label.setStyleSheet(f"color: {label_color}; background: transparent; {label_font}")
         self._adv_title.setStyleSheet(
-            f"color: {t['heading']}; background: transparent; {label_font} font-weight: bold;"
+            f"color: {themes.color('heading')}; background: transparent; {label_font} font-weight: bold;"
         )
         self._advanced_popup.setStyleSheet(
-            f"QDialog {{ background: {t['panel']}; "
-            f"border: {scaled_px(1)}px solid {t['border']}; "
+            f"QDialog {{ background: {themes.color('panel')}; "
+            f"border: {scaled_px(1)}px solid {themes.color('border')}; "
             f"border-radius: {scaled_px(int(themes.prop('border_radius', 'md')))}px; }}"
-            f"QLineEdit, QSpinBox, QDateEdit {{ background: {t['input_bg']}; "
-            f"color: {t['input_text']}; border: {scaled_px(1)}px solid {t['border']}; "
+            f"QLineEdit, QSpinBox, QDateEdit {{ background: {themes.color('input_bg')}; "
+            f"color: {themes.color('input_text')}; border: {scaled_px(1)}px solid {themes.color('border')}; "
             f"border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px; "
             f"padding: {scaled_px(2)}px {scaled_px(6)}px; }}"
         )
@@ -619,14 +694,30 @@ class LayoutMixin:
         """Keep stateful toolbar controls icon-only across every refresh path."""
         sort_icon = "arrow_up" if self._model.sort_ascending else "arrow_down"
         hidden_icon = "eye" if self._model.show_hidden else "eye_off"
+        chevron = "chevron_down" if not self._toolbar_widget.isHidden() else "chevron_right"
         for button, icon_name in (
             (self._sort_btn, sort_icon),
             (self._hidden_btn, hidden_icon),
+            (self._toolbar_toggle_btn, chevron),
         ):
             button.setIcon(icons.icon(icon_name, color="icon_secondary", size=scaled_px(16)))
             button.setIconSize(QSize(scaled_px(16), scaled_px(16)))
             button.setProperty("semanticIcon", icon_name)
             button.setText("")
+
+    def _toggle_toolbar(self) -> None:
+        """Expand/collapse the Tier-2 command band (sort/filter/view/zoom)."""
+        self._set_toolbar_visible(self._toolbar_widget.isHidden())
+
+    def _set_toolbar_visible(self, visible: bool) -> None:
+        self._toolbar_widget.setVisible(visible)
+        chevron = "chevron_down" if visible else "chevron_right"
+        self._toolbar_toggle_btn.setIcon(
+            icons.icon(chevron, color="icon_secondary", size=scaled_px(16)))
+        self._toolbar_toggle_btn.setProperty("semanticIcon", chevron)
+        tip = tr("filelist.toolbar.collapse" if visible else "filelist.toolbar.expand")
+        self._toolbar_toggle_btn.setToolTip(tip)
+        self._toolbar_toggle_btn.setAccessibleName(tip)
 
     @staticmethod
     def _make_nav_button(icon_name, tooltip, callback):
@@ -646,42 +737,32 @@ class LayoutMixin:
         return _always(_context)
 
     def _apply_detail_theme(self):
-        """Apply theme styling to the detail view (QTreeView)."""
-        t = themes.get()
-        self._detail_view.header().setStyleSheet(
-            f"QHeaderView::section {{"
-            f"  background: {t['header']}; color: {t['heading']}; "
-            f"  border: none; border-right: {scaled_px(1)}px solid {alpha(t['border'], 0.25)}; "
-            f"  padding: {scaled_px(int(themes.prop('spacing', 'xs')))}px {scaled_px(int(themes.prop('spacing', 'sm')))}px; "
-            f"  font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; font-weight: bold; "
-            f"}}"
-            f"QHeaderView::down-arrow, QHeaderView::up-arrow {{ "
-            f"  width: {scaled_px(10)}px; height: {scaled_px(10)}px; "
-            f"}}"
-            f"QHeaderView::section:hover {{"
-            f"  background: {alpha(t['hover_overlay'], themes.prop('opacity', 'hover'))}; "
-            f"}}")
+        """Apply theme styling to the detail view (QTreeView).
+
+        The header is styled by the central ``QHeaderView::section`` rule
+        (themes.py, audit B1/I4) — the per-widget copy was removed.
+        """
         self._detail_view.setStyleSheet(
             f"QTreeView {{"
-            f"  background: {t['panel']}; color: {t['body']}; "
-            f"  alternate-background-color: {alpha(t['header'], 0.24)}; "
-            f"  selection-background-color: {alpha(t['accent'], 0.28)}; "
-            f"  selection-color: {t['heading']}; "
+            f"  background: {themes.color('panel')}; color: {themes.color('body')}; "
+            f"  alternate-background-color: {alpha(themes.color('header'), 0.24)}; "
+            f"  selection-background-color: {alpha(themes.color('accent'), 0.28)}; "
+            f"  selection-color: {themes.color('heading')}; "
             f"  border: none; outline: none; font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; "
             f"}}"
             f"QTreeView::item {{"
             f"  padding: {scaled_px(int(themes.prop('spacing', 'xs')))}px {scaled_px(int(themes.prop('spacing', 'sm')))}px; "
-            f"  border: none; border-bottom: {scaled_px(1)}px solid {t['border_subtle']}; "
+            f"  border: none; border-bottom: {scaled_px(1)}px solid {themes.color('border_subtle')}; "
             f"}}"
             f"QTreeView::item:alternate {{"
-            f"  background: {alpha(t['header'], 0.24)}; "
+            f"  background: {alpha(themes.color('header'), 0.24)}; "
             f"}}"
             f"QTreeView::item:hover {{"
-            f"  background: {alpha(t['hover_overlay'], themes.prop('opacity', 'hover'))}; "
+            f"  background: {alpha(themes.color('hover_overlay'), themes.prop('opacity', 'hover'))}; "
             f"}}"
             f"QTreeView::item:selected {{"
-            f"  background: {alpha(t['accent'], 0.28)}; color: {t['heading']}; "
-            f"  border-left: {scaled_px(2)}px solid {t['accent']}; "
+            f"  background: {alpha(themes.color('accent'), 0.28)}; color: {themes.color('heading')}; "
+            f"  border-left: {scaled_px(2)}px solid {themes.color('accent')}; "
             f"}}")
 
     def _build_context_menu(self, paths: list[str], global_pos: QPoint) -> QMenu:

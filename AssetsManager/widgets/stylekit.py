@@ -39,10 +39,10 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QWidget, QLabel, QHBoxLayout, QGraphicsOpacityEffect, QPushButton,
+    QWidget, QLabel, QHBoxLayout, QPushButton,
 )
 
 
@@ -167,55 +167,6 @@ class StyleKit:
         except Exception:
             return False
 
-    def make_fade_in(self, widget: QWidget, duration: int = 150,
-                     on_done: Callable | None = None) -> QPropertyAnimation:
-        """Create a fade-in animation on widget opacity."""
-        effect = widget.graphicsEffect()
-        if not isinstance(effect, QGraphicsOpacityEffect):
-            effect = QGraphicsOpacityEffect(widget)
-            widget.setGraphicsEffect(effect)
-        effect.setOpacity(0.0)
-        anim = QPropertyAnimation(effect, b"opacity")
-        anim.setDuration(duration)
-        anim.setStartValue(0.0)
-        anim.setEndValue(1.0)
-        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        if on_done:
-            anim.finished.connect(on_done)
-        return anim
-
-    def make_fade_out(self, widget: QWidget, duration: int = 300,
-                      on_done: Callable | None = None) -> QPropertyAnimation:
-        """Create a fade-out animation on widget opacity."""
-        effect = widget.graphicsEffect()
-        if not isinstance(effect, QGraphicsOpacityEffect):
-            effect = QGraphicsOpacityEffect(widget)
-            widget.setGraphicsEffect(effect)
-        effect.setOpacity(1.0)
-        anim = QPropertyAnimation(effect, b"opacity")
-        anim.setDuration(duration)
-        anim.setStartValue(1.0)
-        anim.setEndValue(0.0)
-        anim.setEasingCurve(QEasingCurve.Type.InQuad)
-        if on_done:
-            anim.finished.connect(on_done)
-        return anim
-
-    def make_pulse(self, widget: QWidget, duration: int = 1200,
-                   low: float = 0.3, high: float = 1.0) -> QPropertyAnimation:
-        """Create a looping pulse animation (for loading indicators)."""
-        effect = widget.graphicsEffect()
-        if not isinstance(effect, QGraphicsOpacityEffect):
-            effect = QGraphicsOpacityEffect(widget)
-            widget.setGraphicsEffect(effect)
-        effect.setOpacity(high)
-        anim = QPropertyAnimation(effect, b"opacity")
-        anim.setDuration(duration)
-        anim.setStartValue(high)
-        anim.setEndValue(low)
-        anim.setEasingCurve(QEasingCurve.Type.InOutSine)
-        anim.setLoopCount(-1)
-        return anim
 
     # ── QSS: label ────────────────────────────────────────────
 
@@ -263,11 +214,6 @@ class StyleKit:
         """Return the theme color for a given state."""
         _, color_key = _STATES.get(state, _STATES["idle"])
         return self.token(color_key, self.token("body"))
-
-    def state_icon(self, state: str = "idle") -> str:
-        """Return the semantic SVG icon name for a given state."""
-        icon_name, _ = _STATES.get(state, _STATES["idle"])
-        return icon_name
 
     # ── QSS: dialog chrome ────────────────────────────────────
 
@@ -475,15 +421,26 @@ class StyleKit:
                 f"color: {self.token('heading', self.token('body'))}; "
                 f"border: 1px solid {self.token('border_subtle', self.token('border'))};")
             hover_rule = f"background: {hover};"
+        elif normalized == "danger":
+            base = (
+                f"background: {self.token('danger', self.token('accent'))}; "
+                f"color: {self.token('on_accent', self.token('heading'))}; border: none;")
+            hover_rule = f"background: {self._lighter('danger', 110)};"
+            pressed = self._darker("danger", 115)
         else:
+            # Primary (and unknown variants fall back to primary): hover and
+            # pressed use the canonical opaque HSV lighter/darker recipe so
+            # every accent button in the app feels identical (audit B4/D1).
             base = (
                 f"background: {self.token('accent', self.token('base'))}; "
                 f"color: {self.token('on_accent', self.token('heading'))}; border: none;")
-            hover_rule = f"background: {hover};"
+            hover_rule = f"background: {self._lighter('accent', 110)};"
+            pressed = self._darker("accent", 115)
         return (
             f"QPushButton {{ {base} border-radius: {radius}px; "
             f"padding: {pad_y}px {pad_x}px; font-size: {size}px; font-weight: bold; }}"
             f"QPushButton:hover {{ {hover_rule} }}"
+            f"QPushButton:focus {{ border: 1px solid {self.token('border_focus', self.token('accent'))}; }}"
             f"QPushButton:pressed {{ background: {pressed}; }}"
             f"QPushButton:disabled {{ background: {self._alpha('muted', 0.25)}; "
             f"color: {self.token('muted', self.token('body'))}; }}"
@@ -526,6 +483,38 @@ class StyleKit:
             f"QPushButton:pressed {{ background: {pressed}; }}"
             f"QPushButton:focus {{ background: {hover}; border: 1px solid {focus}; }}"
             f"QPushButton:checked {{ background: {accent}; color: {on_accent}; font-weight: bold; }}"
+        )
+
+    def tree_css(self) -> str:
+        """Compact, theme-aware QTreeWidget QSS shared by sidebar/tag panels."""
+        font_size = self.pt(self.font_size("sm"))
+        pad_xs = self.px(int(self.prop("spacing", "xs", 4)))
+        pad_sm = self.px(int(self.prop("spacing", "sm", 8)))
+        radius_sm = self.px(int(self.prop("border_radius", "sm", 8)))
+        hover = self._alpha("hover_overlay", self.prop("opacity", "hover", 0.15))
+        selected = self._alpha("selected_overlay", 0.28)
+        body = self.token("body", self.token("heading", ""))
+        heading = self.token("heading", body)
+        muted = self.token("muted", body)
+        return (
+            f"QTreeWidget {{"
+            f"  background: transparent; color: {body}; border: none; outline: none; "
+            f"  font-size: {font_size}px; "
+            f"}}"
+            f"QTreeWidget::item {{"
+            f"  padding: {pad_xs}px {pad_sm}px; "
+            f"  border: none; border-radius: {radius_sm}px; "
+            f"}}"
+            f"QTreeWidget::item:hover {{"
+            f"  background: {hover}; "
+            f"}}"
+            f"QTreeWidget::item:selected {{"
+            f"  background: {selected}; color: {heading}; "
+            f"}}"
+            f"QTreeWidget::item:selected:focus {{"
+            f"  background: {selected}; color: {heading}; "
+            f"}}"
+            f"QTreeWidget::item:disabled {{ color: {muted}; }}"
         )
 
     def status_bar_css(self) -> str:
@@ -589,8 +578,14 @@ class StyleKit:
 
     # ── Internal helpers ──────────────────────────────────────
 
-    def _alpha(self, color_or_token: str, opacity: float) -> str:
-        """Return rgba() for either a theme token name or an already resolved color."""
+    def alpha(self, color_or_token: str, opacity: float) -> str:
+        """Return rgba() for either a theme token name or an already resolved color.
+
+        Public derived-color API (Design System audit 2026-09-03, I1): the
+        sanctioned dialect for state fills in presentation code. Consumers
+        must use ``sk.alpha/lighter/darker`` — not token dict access or
+        private names.
+        """
         resolved = self.token(color_or_token) if color_or_token in self.t else color_or_token
         color = QColor(resolved)
         if not color.isValid():
@@ -603,13 +598,27 @@ class StyleKit:
             f"{clamped_opacity:.2f})"
         )
 
-    def _lighter(self, color_or_token: str, factor: int = 110) -> str:
-        """Return an opaque lighter variant suitable for a QSS state fill."""
+    def lighter(self, color_or_token: str, factor: int = 110) -> str:
+        """Return an opaque lighter variant suitable for a QSS state fill.
+
+        Canonical hover algorithm — same HSV formula as
+        ``AssetsManager.core.color_utils.lighter``.
+        """
         return self._adjust_lightness(color_or_token, factor, lighter=True)
 
-    def _darker(self, color_or_token: str, factor: int = 115) -> str:
-        """Return an opaque darker variant suitable for a QSS state fill."""
+    def darker(self, color_or_token: str, factor: int = 115) -> str:
+        """Return an opaque darker variant suitable for a QSS state fill.
+
+        Canonical pressed algorithm — see :meth:`lighter`.
+        """
         return self._adjust_lightness(color_or_token, factor, lighter=False)
+
+    # Deprecated private spellings kept for in-class callers during the
+    # gradual migration to the public derived-color API; do not use in new
+    # code (G3 will forbid them outside stylekit).
+    _alpha = alpha
+    _lighter = lighter
+    _darker = darker
 
     def _adjust_lightness(
         self,

@@ -12,6 +12,7 @@ from unittest.mock import Mock
 from PySide6.QtWidgets import QApplication
 
 from AssetsManager.i18n import tr
+from AssetsManager.panels.base import StandardPanel
 from AssetsManager.panels.sidebar import (
     _COLLECTION_ID_ROLE,
     _COLLECTION_KIND_ROLE,
@@ -55,6 +56,25 @@ def _manual_collection(tmp_path):
         {"file_path": str(tmp_path / "gone.png"), "added_at": 2.0, "exists": False},
     ]
     return service
+
+
+def test_sidebar_uses_standard_panel_slot_contract():
+    """SidebarPanel routes chrome through the StandardPanel slots (Track A)."""
+    panel = SidebarPanel()
+    try:
+        assert isinstance(panel, StandardPanel)
+        # Toolbar slot hosts the search bar; body slot hosts the tree;
+        # footer slot hosts the status bar.
+        assert panel._toolbar_widget is not None
+        assert panel._search.parentWidget() is panel._toolbar_widget
+        assert panel._body_widget is panel._tree
+        assert panel._footer_widget is panel._status_bar
+        assert panel.content_layout.itemAt(panel.content_layout.count() - 1).widget() \
+            is panel._status_bar
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        _app.processEvents()
 
 
 def test_collections_group_renders_manual_and_smart_rows(tmp_path):

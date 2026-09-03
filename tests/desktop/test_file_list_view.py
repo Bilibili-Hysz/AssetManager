@@ -85,6 +85,41 @@ def test_file_list_toolbar_combos_have_tooltips_and_accessible_names(plain_panel
         assert combo.accessibleName() == combo.toolTip()
 
 
+def test_file_list_tier2_toolbar_micro_groups_and_spacing(plain_panel):
+    panel = plain_panel
+    from AssetsManager.core.ui_scale import scaled_px
+
+    tb = panel._toolbar_widget.layout()
+    assert tb.spacing() == scaled_px(6)
+    margins = tb.contentsMargins()
+    assert margins.left() == scaled_px(6)
+    assert margins.right() == scaled_px(6)
+
+    # Item 0: filter combo
+    assert tb.itemAt(0).widget() is panel._filter_combo
+
+    # Item 1: sort micro-group layout (2px spacing)
+    sort_layout = tb.itemAt(1).layout()
+    assert sort_layout is not None
+    assert sort_layout.spacing() == scaled_px(2)
+    assert sort_layout.itemAt(0).widget() is panel._sort_combo
+    assert sort_layout.itemAt(1).widget() is panel._sort_btn
+
+    # Item 2: view & zoom micro-group layout (2px spacing)
+    view_layout = tb.itemAt(2).layout()
+    assert view_layout is not None
+    assert view_layout.spacing() == scaled_px(2)
+    assert view_layout.itemAt(0).widget() is panel._view_combo
+    assert view_layout.itemAt(1).widget() is panel._zoom_combo
+
+    # Item 4: utilities micro-group layout (2px spacing)
+    utils_layout = tb.itemAt(4).layout()
+    assert utils_layout is not None
+    assert utils_layout.spacing() == scaled_px(2)
+    assert utils_layout.itemAt(0).widget() is panel._hidden_btn
+    assert utils_layout.itemAt(1).widget() is panel._advanced_btn
+
+
 def test_file_list_status_bar_uses_border_subtle_hairline(plain_panel):
     panel = plain_panel
     from AssetsManager.core import themes

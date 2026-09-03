@@ -19,6 +19,17 @@ _LEVELS = {
 }
 
 
+def shadow_params(level: int = 1) -> tuple[int, int, int, int]:
+    """Return ``(blur, offset_x, offset_y, alpha)`` for a depth level.
+
+    Data-only counterpart to :func:`apply_elevation` for custom-painted
+    widgets that cannot carry a QGraphicsEffect (e.g. the thumbnail grid
+    canvas).  Custom painters must draw their shadows from these values so
+    every surface in the app shares one depth vocabulary.
+    """
+    return _LEVELS.get(int(level), _LEVELS[1])
+
+
 def apply_elevation(widget: QWidget, level: int = 1) -> QGraphicsDropShadowEffect:
     """Apply or update a theme-neutral shadow on a top-level surface.
 

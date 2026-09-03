@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QMessageBox, QProgressBar, QVBoxLayout, QHBoxLayout, QWidget,
     QRadioButton, QFrame, QPushButton, QFileDialog, QSlider,
     QInputDialog, QLabel, QComboBox, QListWidget, QListWidgetItem,
-    QCheckBox, QSpinBox, QLineEdit,
+    QCheckBox, QSpinBox, QLineEdit, QStackedWidget,
 )
 from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
 from AssetsManager.core.constants import (
@@ -24,7 +24,8 @@ from AssetsManager.core.settings import AppSettings
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core import themes
 from AssetsManager.core import icons
-from AssetsManager.core.ui_scale import scaled_px
+from AssetsManager.core.ui_scale import scaled_px, scaled_pt
+from AssetsManager.widgets.stylekit import StyleKit
 from AssetsManager import i18n
 tr = i18n.tr
 
@@ -73,6 +74,114 @@ class _ThumbnailHost(Protocol):
     file_list: _FileListHost
 
 
+class _SettingsNavShell(QWidget):
+    """``QTabWidget``-compatible left-rail navigation shell.
+
+    Mirrors SharingSettingsDialog's shell grammar (rail + stacked pages,
+    compact top-nav fallback below a width threshold) so the two settings
+    centers share one navigation paradigm
+    (design-language-unification-2026-09-03, P1-6).
+    """
+
+    _COMPACT_BELOW = 760  # logical px shell width; same spirit as sharing
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        self._top_nav = QWidget()
+        self._top_nav_layout = QHBoxLayout(self._top_nav)
+        self._top_nav_layout.setContentsMargins(0, 0, 0, 0)
+        self._top_nav_layout.setSpacing(scaled_px(6))
+
+        self._rail = QFrame()
+        self._rail.setFixedWidth(scaled_px(216))
+        self._rail_layout = QVBoxLayout(self._rail)
+        self._rail_layout.setContentsMargins(
+            scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8))
+        self._rail_layout.setSpacing(scaled_px(4))
+
+        self._stack = QStackedWidget()
+        self._rail_buttons: list[QPushButton] = []
+        self._top_buttons: list[QPushButton] = []
+
+        root.addWidget(self._top_nav)
+        self._top_nav.setVisible(False)  # compact fallback; enabled by resizeEvent
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(scaled_px(16))
+        body.addWidget(self._rail)
+        body.addWidget(self._stack, 1)
+        root.addLayout(body, 1)
+
+    # ── QTabWidget-compatible surface (used by TabbedDialog._add_tab) ──
+
+    def addTab(self, widget, label) -> int:  # noqa: N802 (Qt naming)
+        index = self._stack.addWidget(widget)
+        self._rail_buttons.append(self._make_button(label, index, self._rail_layout))
+        self._top_buttons.append(self._make_button(label, index, self._top_nav_layout))
+        return index
+
+    def setTabText(self, index, text) -> None:  # noqa: N802 (Qt naming)
+        for button in (self._rail_buttons[index], self._top_buttons[index]):
+            button.setText(text)
+            button.setToolTip(text)
+            button.setAccessibleName(text)
+
+    def setStyleSheet(self, style_sheet: str) -> None:  # noqa: N802 (Qt naming)
+        """Absorb TabbedDialog's tab QSS and apply the rail grammar instead."""
+        if hasattr(self, "_rail"):
+            nav = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt).nav_css()
+            self._rail.setStyleSheet(nav)
+            self._top_nav.setStyleSheet(nav)
+
+    def setCurrentIndex(self, index) -> None:  # noqa: N802 (Qt naming)
+        self.select_page(index)
+
+    def currentIndex(self) -> int:  # noqa: N802 (Qt naming)
+        return self._stack.currentIndex()
+
+    def tabText(self, index) -> str:  # noqa: N802 (Qt naming)
+        return self._rail_buttons[index].text()
+
+    def count(self) -> int:  # noqa: N802 (Qt naming)
+        return self._stack.count()
+
+    def widget(self, index) -> QWidget:  # noqa: N802 (Qt naming)
+        return self._stack.widget(index)
+
+    def select_page(self, index: int) -> None:
+        self._stack.setCurrentIndex(index)
+        for button in self._rail_buttons + self._top_buttons:
+            button.setChecked(
+                button in (self._rail_buttons[index], self._top_buttons[index]))
+
+    def current_index(self) -> int:
+        return self._stack.currentIndex()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        super().resizeEvent(event)
+        if not hasattr(self, "_rail"):
+            return
+        compact = self.width() < scaled_px(self._COMPACT_BELOW)
+        self._rail.setVisible(not compact)
+        self._top_nav.setVisible(compact)
+
+    def _make_button(self, label: str, index: int, layout) -> QPushButton:
+        button = QPushButton(label)
+        button.setCheckable(True)
+        button.setChecked(index == 0)
+        button.setAccessibleName(label)
+        button.setToolTip(label)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setMinimumHeight(scaled_px(36))
+        button.clicked.connect(lambda _checked=False, page=index: self.select_page(page))
+        layout.addWidget(button)
+        return button
+
+
 class _ProgressSignals(QObject):
     updated = Signal(int, int)
     finished = Signal(int)
@@ -83,6 +192,10 @@ class _ProgressSignals(QObject):
 
 class SettingsDialog(TabbedDialog):
     supports_runtime_refresh = True
+
+    def _create_tab_container(self):
+        """Left-rail navigation shell instead of top tabs (P1-6)."""
+        return _SettingsNavShell(self)
 
     def __init__(self, parent=None):
         self._logical_min_size = (460, 520)

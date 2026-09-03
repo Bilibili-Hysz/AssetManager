@@ -136,7 +136,6 @@ class SharingSettingsDialog(
     def _build_ui(self):
         """Build a desktop navigation shell with a compact top-nav fallback."""
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
-        self.setStyleSheet(self._dialog_qss())
         root = QVBoxLayout(self)
         root.setContentsMargins(scaled_px(16), scaled_px(16), scaled_px(16), scaled_px(12))
         root.setSpacing(scaled_px(12))
@@ -188,6 +187,11 @@ class SharingSettingsDialog(
         apply_btn.clicked.connect(lambda: self._apply_configuration_changes(force=True))
         btn_box.accepted.connect(self._accept_configuration_changes)
         btn_box.rejected.connect(self.reject)
+        themes.set_button_variant(
+            btn_box.button(QDialogButtonBox.StandardButton.Ok), "primary")
+        themes.set_button_variant(apply_btn, "secondary")
+        themes.set_button_variant(
+            btn_box.button(QDialogButtonBox.StandardButton.Cancel), "ghost")
         root.addWidget(btn_box)
         self._select_page(self._initial_page)
         self._update_navigation_mode()
@@ -271,6 +275,12 @@ class SharingSettingsDialog(
         self._apply_table_theme()
         if hasattr(self, "_configuration_nav"):
             self._apply_configuration_theme()
+        # Page-level widget sheets do not follow the app stylesheet — each
+        # page re-derives its own (audit B2⑥⑦⑧).
+        for apply_page in (self._apply_endpoint_theme, self._apply_links_theme,
+                           self._apply_access_theme):
+            if callable(apply_page):
+                apply_page()
 
     # ══════════════════════════════════════════════════════════
     # Configuration state & persistence

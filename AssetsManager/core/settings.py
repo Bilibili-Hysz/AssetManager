@@ -45,6 +45,13 @@ DEFAULT_TRUSTED_NETWORK_CONFIRMED = False
 DEFAULT_SHARE_LAST_SUCCESSFUL_BIND = None
 DEFAULT_SHARE_LAST_SUCCESSFUL_AUTH = None
 
+# Old-generation (~/.assetmanager) keys the current application still
+# consumes.  That file format predates any key registry — real-world copies
+# carry arbitrary leftovers (unit-test keys, dead keys such as tab_state) —
+# so the legacy migration carries ONLY these keys into a fresh profile and
+# drops everything else instead of inheriting foreign content.
+_LEGACY_MIGRATABLE_KEYS = frozenset({"theme", "recent_libraries"})
+
 
 def _valid_http_url(value) -> bool:
     """True for an absolute http(s) URL with a host."""
@@ -253,8 +260,19 @@ class AppSettings:
             # The current settings file is authoritative. Legacy values only
             # fill keys absent from it so an old profile cannot overwrite a
             # user change that was already persisted in the new location.
-            for key, value in data.items():
-                self._data.setdefault(key, value)
+            # The legacy file format predates the current schema: only
+            # explicitly recognized keys migrate (_LEGACY_MIGRATABLE_KEYS),
+            # everything else is foreign content and must not leak into a
+            # fresh profile.  _cfg_version is schema metadata, carried so the
+            # migrated profile is not re-derived as v0 on the next load.
+            for key in sorted(_LEGACY_MIGRATABLE_KEYS | {"_cfg_version"}):
+                if key in data:
+                    self._data.setdefault(key, data[key])
+            dropped = sorted(set(data) - _LEGACY_MIGRATABLE_KEYS - {"_cfg_version"})
+            if dropped:
+                _log.info(
+                    "Legacy settings: dropped unknown keys: %s", ", ".join(dropped)
+                )
             self._data["_legacy_migrated"] = True
             self._dirty = True
             self.save()

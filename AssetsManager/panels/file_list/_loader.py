@@ -414,7 +414,8 @@ class ThumbnailLoader(QObject):
         self._lib_root: str = ""
         self._cache_epoch = 0
         self._cache_io_lock = threading.Lock()
-        self._last_touch: dict[str, float] = {}  # key -> monotonic timestamp (touch throttle)
+        self._last_touch: OrderedDict[str, float] = OrderedDict()  # key -> monotonic timestamp (touch throttle)
+        self._last_touch_max: int = 8192
         self._pool = QThreadPool()
         self._pool.setMaxThreadCount(3)
         self._regen_cancel = False
@@ -1604,7 +1605,10 @@ class ThumbnailLoader(QObject):
             last = self._last_touch.get(key)
             if last is not None and now - last < _TOUCH_THROTTLE_SECONDS:
                 return
+            while len(self._last_touch) >= self._last_touch_max:
+                self._last_touch.popitem(last=False)
             self._last_touch[key] = now
+            self._last_touch.move_to_end(key)
         finally:
             self._mutex.unlock()
         service.touch_cache_metadata(lib_root, key)

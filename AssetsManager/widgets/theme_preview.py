@@ -420,7 +420,9 @@ class ThemePreviewWidget(QWidget):
 
     def _get_current_color(self, color_name: str) -> QColor:
         colors = {k: self._theme_data[k] for k in self._theme_data if k != "properties"}
-        hex_val = colors.get(color_name, "#888888")
+        # Fall back to the active theme so a missing swatch never shows an
+        # arbitrary gray that does not exist anywhere in the product.
+        hex_val = colors.get(color_name, themes.color(color_name))
         return QColor(hex_val)
 
     def _open_color_picker(self, color_name: str) -> None:
@@ -459,24 +461,29 @@ class ThemePreviewRenderer:
         fs = properties.get("font_size", {})
         op = properties.get("opacity", {})
 
-        r_sm = scaled_px(br.get("sm", 4))
-        r_md = scaled_px(br.get("md", 6))
-        r_lg = scaled_px(br.get("lg", 10))
+        # Radius fallbacks mirror core/themes.py canonical defaults (8/10/14),
+        # NOT arbitrary values — the preview must agree with the real renderer.
+        r_sm = scaled_px(br.get("sm", 8))
+        r_md = scaled_px(br.get("md", 10))
+        r_lg = scaled_px(br.get("lg", 14))
         hover_op = op.get("hover", 0.15)
-        hov = alpha(c.get("hover_overlay", "#ffffff"), hover_op)
+        hov = alpha(c.get("hover_overlay", themes.color("hover_overlay")), hover_op)
 
-        base = c.get("base", "#1a1a1a")
-        panel = c.get("panel", "#252525")
-        header = c.get("header", "#2d2d2d")
-        border = c.get("border", "#3a3a3a")
-        heading = c.get("heading", "#e0e0e0")
-        body = c.get("body", "#b0b0b0")
-        muted = c.get("muted", "#666666")
-        accent = c.get("accent", "#4a60b0")
-        on_accent = c.get("on_accent", "#ffffff")
-        success = c.get("success", "#4caf50")
-        warning = c.get("warning", "#ff9800")
-        danger = c.get("danger", "#f44336")
+        # Color fallbacks resolve against the *currently active* theme so a
+        # partially-edited preview inherits coherent values instead of the
+        # legacy arbitrary-gray hexes.
+        base = c.get("base", themes.color("base"))
+        panel = c.get("panel", themes.color("panel"))
+        header = c.get("header", themes.color("header"))
+        border = c.get("border", themes.color("border"))
+        heading = c.get("heading", themes.color("heading"))
+        body = c.get("body", themes.color("body"))
+        muted = c.get("muted", themes.color("muted"))
+        accent = c.get("accent", themes.color("accent"))
+        on_accent = c.get("on_accent", themes.color("on_accent"))
+        success = c.get("success", themes.color("success"))
+        warning = c.get("warning", themes.color("warning"))
+        danger = c.get("danger", themes.color("danger"))
         input_bg = c.get("input_bg", panel)
         input_text = c.get("input_text", heading)
         border_focus = c.get("border_focus", accent)

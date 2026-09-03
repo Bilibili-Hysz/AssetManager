@@ -1608,8 +1608,10 @@ SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {
             "invalidated_at": {"type": "REAL", "not_null": False},
         },
         "checks": (
-            "kind IN ('viewer_image', 'video_poster', 'contact_sheet', "
-            "'audio_waveform', 'extracted_palette', 'sequence_manifest')",
+            (
+                "kind IN ('viewer_image', 'video_poster', 'contact_sheet', "
+                "'audio_waveform', 'extracted_palette', 'sequence_manifest')"
+            ),
             "status IN ('ready', 'failed')",
         ),
     },

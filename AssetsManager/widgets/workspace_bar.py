@@ -13,7 +13,7 @@ Each tab represents a different asset library root. Provides:
 from pathlib import Path
 import logging
 
-from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QRect, QSize, Property, QSignalBlocker
+from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QRectF, QSize, Property, QSignalBlocker
 from PySide6.QtWidgets import (
     QTabBar, QMenu, QLineEdit, QPushButton, QWidget, QHBoxLayout,
     QFrame,
@@ -52,11 +52,11 @@ class WorkspaceBar(QTabBar):
         self._indicator_pos = 0
         self._indicator_width = 0
         self._indicator_anim = QPropertyAnimation(self, b"indicator_pos")
-        self._indicator_anim.setDuration(200)
+        self._indicator_anim.setDuration(themes.motion("normal"))
         self._indicator_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
 
         self._indicator_width_anim = QPropertyAnimation(self, b"indicator_width")
-        self._indicator_width_anim.setDuration(200)
+        self._indicator_width_anim.setDuration(themes.motion("normal"))
         self._indicator_width_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
 
         self._apply_style()
@@ -104,43 +104,42 @@ class WorkspaceBar(QTabBar):
         self.setStyleSheet(
             f"QTabBar {{ background: transparent; }}"
             f"QTabBar::tab {{ "
-            f"  background: transparent; color: {t['muted']}; "
+            f"  background: transparent; color: {themes.color('muted')}; "
             f"  border: {scaled_px(1)}px solid transparent; "
             f"  border-top-left-radius: {radius_md}px; border-top-right-radius: {radius_md}px; "
             f"  padding: {scaled_px(2)}px {spacing_sm}px; margin-right: {scaled_px(1)}px; "
             f"  font-size: {font_caption}px; min-width: {scaled_px(22)}px; max-width: {scaled_px(140)}px;"
             f"}} "
             f"QTabBar::tab:selected {{ "
-            f"  color: {t['heading']}; "
-            f"  background: {alpha(t['accent'], 0.25)}; "
-            f"  border: {scaled_px(1)}px solid {alpha(t['accent'], 0.50)}; "
-            f"  border-bottom: {scaled_px(2)}px solid {t['accent']};"
+            f"  color: {themes.color('heading')}; "
+            f"  background: {alpha(themes.color('accent'), 0.18)}; "
+            f"  border: {scaled_px(1)}px solid {alpha(themes.color('accent'), 0.40)}; "
             f"}} "
             f"QTabBar::tab:hover:!selected {{ "
-            f"  color: {t['body']}; "
+            f"  color: {themes.color('body')}; "
             f"  background: {hover}; "
-            f"  border: {scaled_px(1)}px solid {t['border_subtle']}; "
+            f"  border: {scaled_px(1)}px solid {themes.color('border_subtle')}; "
             f"}} "
             f"QTabBar::tab:pressed:!selected {{ "
-            f"  color: {t['heading']}; "
+            f"  color: {themes.color('heading')}; "
             f"  background: {pressed}; "
-            f"  border: {scaled_px(1)}px solid {t['border_subtle']}; "
+            f"  border: {scaled_px(1)}px solid {themes.color('border_subtle')}; "
             f"}} "
             f"QTabBar::close-button {{ "
             f"  background: transparent;"
             f"  margin: 0px; padding: 0px;"
             f"}} "
             f"QTabBar::close-button:hover {{ "
-            f"  background: {alpha(t['accent'], 0.375)}; border-radius: {radius_sm}px;"
+            f"  background: {alpha(themes.color('accent'), 0.375)}; border-radius: {radius_sm}px;"
             f"}} "
             f"QTabBar QToolButton {{ "
-            f"  color: {t['muted']}; background: transparent; border: none;"
+            f"  color: {themes.color('muted')}; background: transparent; border: none;"
             f"}} "
             f"QTabBar QToolButton:hover {{ "
-            f"  color: {t['heading']}; background: {hover}; border-radius: {radius_sm}px;"
+            f"  color: {themes.color('heading')}; background: {hover}; border-radius: {radius_sm}px;"
             f"}} "
             f"QTabBar QToolButton:pressed {{ "
-            f"  color: {t['heading']}; background: {pressed}; border-radius: {radius_sm}px;"
+            f"  color: {themes.color('heading')}; background: {pressed}; border-radius: {radius_sm}px;"
             f"}} "
         )
 
@@ -246,14 +245,20 @@ class WorkspaceBar(QTabBar):
         t = themes.get()
         color = QColor(t['accent'])
 
-        # Draw indicator bar at bottom of tab
-        indicator_rect = QRect(
-            int(self._indicator_pos),
-            self.height() - 3,
-            int(self._indicator_width),
-            3
+        # Draw modern rounded pill indicator bar at bottom of tab
+        bar_h = max(2.0, float(scaled_px(3)))
+        radius = bar_h / 2.0
+        pad = float(scaled_px(4))
+        w = max(float(scaled_px(12)), float(self._indicator_width) - pad * 2.0)
+        indicator_rect = QRectF(
+            float(self._indicator_pos) + pad,
+            float(self.height()) - bar_h - float(scaled_px(1)),
+            w,
+            bar_h,
         )
-        painter.fillRect(indicator_rect, color)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(color)
+        painter.drawRoundedRect(indicator_rect, radius, radius)
         painter.end()
 
     def _on_close(self, idx):
@@ -358,7 +363,7 @@ class WorkspaceSection(QWidget):
 
         # Add button
         self._add_btn = QPushButton()
-        self._add_btn.setFixedSize(scaled_px(22), scaled_px(22))
+        self._add_btn.setFixedSize(scaled_px(themes.metrics("hit_area")), scaled_px(themes.metrics("hit_area")))
         self._add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._add_btn.setToolTip(tr("workspace.add_library"))
         self._add_btn.setAccessibleName(tr("workspace.add_library"))
@@ -372,17 +377,17 @@ class WorkspaceSection(QWidget):
         radius_md = scaled_px(int(themes.prop("border_radius", "md")))
         pressed = alpha(t["accent"], 0.18)
         self._sep.setStyleSheet(
-            f"QFrame {{ color: {t['border_subtle']}; background: {t['border_subtle']}; }}")
+            f"QFrame {{ color: {themes.color('border_subtle')}; background: {themes.color('border_subtle')}; }}")
         themes.set_button_variant(self._add_btn, "primary")
         self._add_btn.setIcon(icons.icon("plus", color="icon_primary", size=scaled_px(12)))
         self._add_btn.setIconSize(QSize(scaled_px(12), scaled_px(12)))
         self._add_btn.setStyleSheet(
-            f"QPushButton {{ background: {alpha(t['accent'], 0.753)}; color: {t['heading']}; "
-            f"border: {scaled_px(1)}px solid {t['accent']}; border-radius: {radius_md}px; }} "
-            f"QPushButton:hover {{ background: {t['accent']}; color: {t['on_accent']}; "
-            f"border: {scaled_px(1)}px solid {t['accent']}; }} "
-            f"QPushButton:pressed {{ background: {pressed}; color: {t['on_accent']}; "
-            f"border: {scaled_px(1)}px solid {t['accent']}; }} ")
+            f"QPushButton {{ background: {alpha(themes.color('accent'), 0.753)}; color: {themes.color('heading')}; "
+            f"border: {scaled_px(1)}px solid {themes.color('accent')}; border-radius: {radius_md}px; }} "
+            f"QPushButton:hover {{ background: {themes.color('accent')}; color: {themes.color('on_accent')}; "
+            f"border: {scaled_px(1)}px solid {themes.color('accent')}; }} "
+            f"QPushButton:pressed {{ background: {pressed}; color: {themes.color('on_accent')}; "
+            f"border: {scaled_px(1)}px solid {themes.color('accent')}; }} ")
         self._tabs._apply_style()
 
     def add_library(self, path: str):

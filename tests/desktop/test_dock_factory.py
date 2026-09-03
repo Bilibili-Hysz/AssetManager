@@ -63,3 +63,50 @@ def test_custom_widget_dock_keeps_title_on_refresh():
         dock_factory._DOCK_TITLES.pop(dock, None)
         dock.deleteLater()
         app.processEvents()
+
+
+def test_dock_title_bar_standardization():
+    from PySide6.QtCore import QSize
+    from PySide6.QtWidgets import QLabel, QPushButton
+    from AssetsManager.core import themes
+    from AssetsManager.core.ui_scale import scaled_px
+
+    app = _app()
+    widget = QWidget()
+    gear_btn = QPushButton()
+    gear_btn.setProperty("semanticIcon", "settings")
+    widget.title_bar_buttons = lambda: [gear_btn]
+
+    dock = dock_factory.create("Inspector", None, widget=widget)
+    try:
+        title_bar = dock.titleBarWidget()
+        assert title_bar is not None
+
+        labels = title_bar.findChildren(QLabel)
+        assert len(labels) >= 1
+        title_label = labels[0]
+        # 1. No hardcoded double space in dock title
+        assert title_label.text() == "Inspector"
+        assert not title_label.text().startswith("  ")
+
+        # 2. Standardized buttons
+        buttons = title_bar.findChildren(QPushButton)
+        assert len(buttons) >= 3
+        expected_btn_size = QSize(
+            scaled_px(themes.metrics("hit_area")),
+            scaled_px(themes.metrics("hit_area")),
+        )
+        expected_icon_size = QSize(
+            scaled_px(themes.metrics("icon_sm")),
+            scaled_px(themes.metrics("icon_sm")),
+        )
+        r_sm = scaled_px(int(themes.prop("border_radius", "sm")))
+        for btn in buttons:
+            assert btn.size() == expected_btn_size
+            assert btn.iconSize() == expected_icon_size
+            assert f"border-radius: {r_sm}px" in btn.styleSheet()
+    finally:
+        dock_factory._DOCK_TITLES.pop(dock, None)
+        dock.deleteLater()
+        app.processEvents()
+

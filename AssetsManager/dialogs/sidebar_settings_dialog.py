@@ -9,17 +9,17 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout,
     QCheckBox, QGroupBox, QLabel, QSpinBox, QScrollArea,
-    QWidget, QDialogButtonBox,
+    QWidget,
 )
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core import icons, themes
-from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
+from AssetsManager.dialogs.modal_dialog import StandardModalDialog
 from AssetsManager.widgets.stylekit import StyleKit
 from AssetsManager import i18n
 tr = i18n.tr
 
 
-class SidebarSettingsDialog(TabbedDialog):
+class SidebarSettingsDialog(StandardModalDialog):
     def __init__(self, parent=None, root_paths=None, show_favs=True, show_recs=True,
                  show_filter=True, global_depth=2, branch_depths=None):
         self._root_paths = root_paths or []
@@ -30,14 +30,11 @@ class SidebarSettingsDialog(TabbedDialog):
         self._global_depth_init = global_depth
         super().__init__(parent, title=tr("sidebar_settings.title"),
                          min_size=(scaled_px(420), scaled_px(560)))
+        self._ok_btn.setToolTip(tr("sidebar_settings.ok_tooltip"))
+        self._cancel_btn.setToolTip(tr("sidebar_settings.cancel_tooltip"))
 
-    def _build_ui(self):
-        self.setStyleSheet(self._dialog_qss())
+    def setup_content(self, layout: QVBoxLayout) -> None:
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12))
-        layout.setSpacing(scaled_px(10))
 
         # ── Sections ───────────────────────────────────────────────
         sections = QGroupBox(tr("sidebar_settings.sections"))
@@ -77,6 +74,7 @@ class SidebarSettingsDialog(TabbedDialog):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setMaximumHeight(scaled_px(200))
+        # Existing sanctioned site: tokenized scroll chrome.
         scroll.setStyleSheet(f"QScrollArea {{ background: {sk.token('panel')}; border: none; }}"
                              f"QScrollArea > QWidget {{ background: transparent; }}")
         branch_widget = QWidget()
@@ -140,16 +138,6 @@ class SidebarSettingsDialog(TabbedDialog):
         reset_btn = self.make_secondary_btn(tr("sidebar_settings.reset"), self._reset_branches)
         branches_layout.addWidget(reset_btn)
         layout.addWidget(branches_grp)
-
-        # ── Buttons ────────────────────────────────────────────────
-        btns = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok |
-            QDialogButtonBox.StandardButton.Cancel)
-        btns.accepted.connect(self.accept)
-        btns.rejected.connect(self.reject)
-        btns.button(QDialogButtonBox.StandardButton.Ok).setToolTip(tr("sidebar_settings.ok_tooltip"))
-        btns.button(QDialogButtonBox.StandardButton.Cancel).setToolTip(tr("sidebar_settings.cancel_tooltip"))
-        layout.addWidget(btns)
 
     def _reset_branches(self):
         default = self._global_depth.value()

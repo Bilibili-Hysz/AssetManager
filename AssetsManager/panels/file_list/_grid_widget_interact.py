@@ -469,23 +469,28 @@ class InteractMixin:
         elif key == Qt.Key.Key_Down:
             self._step_mod_arrow(cols, mods)
         elif key == Qt.Key.Key_Left:
-            if self._selection:
-                row = next(iter(self._selection))
-                if row % cols > 0:
-                    self._step_mod_arrow(-1, mods)
+            self._step_mod_arrow(-1, mods)
         elif key == Qt.Key.Key_Right:
-            if self._selection:
-                row = next(iter(self._selection))
-                if row % cols < cols - 1:
-                    self._step_mod_arrow(1, mods)
+            self._step_mod_arrow(1, mods)
         elif key == Qt.Key.Key_A and mods & Qt.KeyboardModifier.ControlModifier:
             self.select_all()
         else:
             QWidget.keyPressEvent(cast(QWidget, self), event)
 
     def _step_mod_arrow(self, delta: int, mods):
-        if not self._selection:
+        if self._model_rows <= 0:
             return
+        if not self._selection:
+            # When selection is empty, Down/Right selects first item (0),
+            # Up/Left selects last item (_model_rows - 1), preventing deadlock.
+            target = 0 if delta > 0 else (self._model_rows - 1)
+            self._selection = {target}
+            self._last_click_row = target
+            self.scroll_to(target)
+            self._emit_selection_changed()
+            self._request_frame(full=True)
+            return
+
         # Anchor on the last clicked row, clamping the never-clicked (-1) case.
         base_row = max(0, self._last_click_row)
         new_row = max(0, min(self._model_rows - 1, base_row + delta))

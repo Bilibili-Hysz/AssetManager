@@ -61,13 +61,13 @@ class UndoPanelDialog(TabbedDialog):
         self._undo_service = services.undo_service
         self._file_operations = services.file_operation_service
         super().__init__(
-            parent, title=tr("undo_panel.title"), min_size=(640, 420))
+            parent, title=tr("undo_panel.title"),
+            min_size=(scaled_px(640), scaled_px(420)))
         self.setObjectName("UndoPanelDialog")
 
     # ── UI ───────────────────────────────────────────────────────
 
     def _build_ui(self):
-        self.setStyleSheet(self._dialog_qss())
         root = QVBoxLayout(self)
         root.setContentsMargins(
             scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12))
