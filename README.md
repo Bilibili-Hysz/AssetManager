@@ -6,7 +6,7 @@
 
 AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用,内置 aiohttp 局域网分享服务器。用户可以通过桌面端管理文件资产库(元数据、标签、缩略图),也可以通过局域网内的浏览器远程浏览和下载资产。仓库名 `AssetsManager_old-bak` 仅为目录命名,项目包名为 `AssetsManager`。
 
-<!-- stats: app_services=52 controllers=4 core=34 dialogs=23 domain_events=15 e2e_specs=6 hooks=16 i18n_en=1007 i18n_ja=1007 i18n_zh=1007 icons=56 pages=10 python_test_files=310 repos=12 routes=72 routes_modules=22 schema_version=46 stores=2 themes=24 ts=99 webui_test_files=85 widgets=14 -->
+<!-- stats: app_services=52 controllers=4 core=34 dialogs=24 domain_events=15 e2e_specs=6 hooks=17 i18n_en=1051 i18n_ja=1051 i18n_zh=1051 icons=56 pages=10 python_test_files=322 repos=12 routes=72 routes_modules=22 schema_version=46 stores=2 themes=24 ts=105 webui_test_files=89 widgets=18 -->
 > **验证边界（2026-08-21）**：README 的结构统计由 `scripts/check_doc_stats.py` 从当前工作树测量；测试、构建、浏览器、真实 LAN、依赖和发布结果只在带 commit、精确命令、平台、工具版本与 artifact digest 的日期化证据中成立。历史全量数字（包括 2026-08-17 的 3778/7 和此前 WebUI/E2E 数字）保留在 dated 文档中，不作为当前 release 或 `verified-fixed` 声明。当前 C6-C10 收敛与剩余限制见 [`docs/full-review/c6-c10-convergence-2026-08-21.md`](docs/full-review/c6-c10-convergence-2026-08-21.md)。
 > **工作区实况索引**：2026-08-27 的结构/机制/数据流/弱点地图见 [`docs/overview-2026-08-27.md`](docs/overview-2026-08-27.md)（dated snapshot）；当前架构/功能/可靠性复核见 [`docs/reports/architecture-function-and-reliability-review-2026-09-01.md`](docs/reports/architecture-function-and-reliability-review-2026-09-01.md)。已移入归档的文档溯源见 [`docs/archive/INDEX.md`](docs/archive/INDEX.md)。
 
@@ -88,11 +88,11 @@ AssetsManager_old-bak/
 │   ├── lan/                    # LAN 服务器：核心 16 模块 + routes/ 22 模块（72 条路由）
 │   │                           #  （12 个 SQL 仓库）+ 统一 for_session/SAVEPOINT/CAS
 │   ├── panels/                 # 桌面面板（file_list 27 文件 mixin 星系 + sidebar/info/tag_tree/image_viewer）
-│   ├── dialogs/                # Qt 对话框（23 个）+ sharing_settings 分包（外壳 1347 行 + 分页 1119 行）
-│   ├── widgets/                # 可复用 Qt 组件（14 个）
+│   ├── dialogs/                # Qt 对话框（24 个）+ sharing_settings 分包（外壳 1347 行 + 分页 1119 行）
+│   ├── widgets/                # 可复用 Qt 组件（18 个）
 │   ├── di/  i18n/  plugin_api/
-├── webui/                      # React 18 + Vite + TS（99 ts/tsx 生产源码；
-│   │                           #  api 15 工厂 / pages(10) / hooks(16) / stores(2 Context)；
+├── webui/                      # React 18 + Vite + TS（105 ts/tsx 生产源码；
+│   │                           #  api 15 工厂 / pages(10) / hooks(17) / stores(2 Context)；
 │   │                           #  103 Vitest 文件 + 6 个 spec E2E）
 ├── tests/                      # 283 个 test_*.py（unit 106/integration 55/lan 54/
 │   │                           #  desktop 35/core 17/plugins 12/e2e 2/performance 2）
@@ -224,7 +224,7 @@ python build.py --clean --build --optimize --report   # → dist/AssetManager/As
 
 | 语言 | 状态 |
 |---|---|
-| English / 中文 / 日本語 | ✅ 完整（en 1007 / zh 1007 / ja 1007 keys，桌面 + Web） |
+| English / 中文 / 日本語 | ✅ 完整（en 1051 / zh 1051 / ja 1051 keys，桌面 + Web） |
 
 添加语言：复制 `AssetsManager/i18n/en.json` → 翻译 → 在 `i18n/__init__.py` 注册。
 
