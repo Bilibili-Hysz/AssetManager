@@ -328,8 +328,8 @@ class InfoPanel(PanelContent):
         act_layout.setSpacing(scaled_px(8))
         act_layout.addStretch()
         self._open_btn = QPushButton(tr("info.open"))
-        self._open_btn.setIcon(icons.icon("folder", color="icon_primary", size=scaled_px(15)))
-        self._open_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+        self._open_btn.setIcon(icons.icon("folder", color="icon_primary", size=scaled_px(themes.metrics("icon_sm"))))
+        self._open_btn.setIconSize(QSize(scaled_px(themes.metrics("icon_sm")), scaled_px(themes.metrics("icon_sm"))))
         self._open_btn.setAccessibleName(tr("info.open"))
         self._open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._open_btn.setEnabled(False)
@@ -340,8 +340,8 @@ class InfoPanel(PanelContent):
             padding_x=sk.px(int(themes.prop("spacing", "md")))))
         self._open_btn.clicked.connect(lambda: self.open_requested.emit(self._current_path))
         self._copy_btn = QPushButton(tr("info.copy_path"))
-        self._copy_btn.setIcon(icons.icon("file", color="icon_secondary", size=scaled_px(15)))
-        self._copy_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+        self._copy_btn.setIcon(icons.icon("file", color="icon_secondary", size=scaled_px(themes.metrics("icon_sm"))))
+        self._copy_btn.setIconSize(QSize(scaled_px(themes.metrics("icon_sm")), scaled_px(themes.metrics("icon_sm"))))
         self._copy_btn.setAccessibleName(tr("info.copy_path"))
         self._copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._copy_btn.setEnabled(False)
@@ -465,7 +465,7 @@ class InfoPanel(PanelContent):
         if hasattr(self, "_field_link"):
             for btn in self._field_link.findChildren(QPushButton):
                 btn.setFixedSize(scaled_px(18), scaled_px(18))
-                btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+                btn.setIconSize(QSize(scaled_px(themes.metrics("icon_sm")), scaled_px(themes.metrics("icon_sm"))))
         layout = self.layout()
         if layout is not None:
             layout.invalidate()
@@ -498,8 +498,8 @@ class InfoPanel(PanelContent):
         self._act_bar.setStyleSheet(
             f"background: transparent; border-top: {scaled_px(1)}px solid {sk.token('border')}; "
             f"padding: {sk.px(4)}px {sk.px(8)}px;")
-        self._open_btn.setIcon(icons.icon("folder", color="icon_primary", size=scaled_px(15)))
-        self._open_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+        self._open_btn.setIcon(icons.icon("folder", color="icon_primary", size=scaled_px(themes.metrics("icon_sm"))))
+        self._open_btn.setIconSize(QSize(scaled_px(themes.metrics("icon_sm")), scaled_px(themes.metrics("icon_sm"))))
         self._open_btn.setStyleSheet(sk.button_css(
             "primary", font_size_key="md",
             padding_y=sk.px(int(themes.prop("spacing", "xs"))),
@@ -508,8 +508,8 @@ class InfoPanel(PanelContent):
             "secondary", font_size_key="sm",
             padding_y=sk.px(int(themes.prop("spacing", "xs"))),
             padding_x=sk.px(int(themes.prop("spacing", "md")))))
-        self._copy_btn.setIcon(icons.icon("file", color="icon_secondary", size=scaled_px(15)))
-        self._copy_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+        self._copy_btn.setIcon(icons.icon("file", color="icon_secondary", size=scaled_px(themes.metrics("icon_sm"))))
+        self._copy_btn.setIconSize(QSize(scaled_px(themes.metrics("icon_sm")), scaled_px(themes.metrics("icon_sm"))))
         self._refresh_empty_preview_state()
         if self._current_path:
             self._open_btn.setEnabled(True)
@@ -664,8 +664,8 @@ class InfoPanel(PanelContent):
             icon_name = button.property("semanticIcon")
             if not icon_name:
                 continue
-            button.setIcon(icons.icon(str(icon_name), color="icon_muted", size=scaled_px(15)))
-            button.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+            button.setIcon(icons.icon(str(icon_name), color="icon_muted", size=scaled_px(themes.metrics("icon_sm"))))
+            button.setIconSize(QSize(scaled_px(themes.metrics("icon_sm")), scaled_px(themes.metrics("icon_sm"))))
             button.setAccessibleName(button.toolTip())
         self._style_link_buttons()
 
@@ -852,8 +852,8 @@ class InfoPanel(PanelContent):
     def _make_link_button(property_icon, icon_name, tooltip, callback) -> QPushButton:
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
         btn = QPushButton()
-        btn.setIcon(icons.icon(icon_name, color="icon_muted", size=scaled_px(15)))
-        btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+        btn.setIcon(icons.icon(icon_name, color="icon_muted", size=scaled_px(themes.metrics("icon_sm"))))
+        btn.setIconSize(QSize(scaled_px(themes.metrics("icon_sm")), scaled_px(themes.metrics("icon_sm"))))
         btn.setProperty("semanticIcon", property_icon)
         btn.setToolTip(tooltip)
         btn.setAccessibleName(tooltip)

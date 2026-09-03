@@ -103,8 +103,8 @@ class SidebarSettingsDialog(StandardModalDialog):
                 row = QHBoxLayout()
                 icon_lbl = QLabel()
                 icon_lbl.setPixmap(
-                    icons.icon("folder", color="icon_secondary", size=scaled_px(15))
-                    .pixmap(scaled_px(15), scaled_px(15))
+                    icons.icon("folder", color="icon_secondary", size=scaled_px(themes.metrics("icon_sm")))
+                    .pixmap(scaled_px(themes.metrics("icon_sm")), scaled_px(themes.metrics("icon_sm")))
                 )
                 icon_lbl.setAccessibleName(name)
                 row.addWidget(icon_lbl)

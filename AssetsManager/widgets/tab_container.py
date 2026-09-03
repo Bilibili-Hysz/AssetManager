@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QTabWidget, QPushButton, QMenu,
 )
 from AssetsManager.core.ui_scale import scaled_px
+from AssetsManager.core import themes
 from AssetsManager.panels.file_list import FileListPanel
 from AssetsManager.panels.base import PanelContent
 from AssetsManager import i18n
@@ -68,8 +69,10 @@ class TabContainer(PanelContent):
 
     def _new_tab_button(self):
         btn = QPushButton("+")
+        # Width 26 is a chip-glyph exemption (no metric token; audit F-5);
+        # height rides the hit_area a11y floor.
         btn.setMaximumWidth(scaled_px(26))
-        btn.setMaximumHeight(scaled_px(24))
+        btn.setMaximumHeight(scaled_px(themes.metrics("hit_area")))
         btn.setFlat(True)
         btn.clicked.connect(lambda: self._add_tab())
         return btn

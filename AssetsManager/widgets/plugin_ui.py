@@ -372,8 +372,8 @@ class PluginDetailPanel(QWidget):
             icon_name = "check"
         self._toggle_btn.setText(label)
         self._toggle_btn.setIcon(
-            icons.icon(icon_name, color="icon_on_accent", size=scaled_px(15)))
-        self._toggle_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+            icons.icon(icon_name, color="icon_on_accent", size=scaled_px(themes.metrics("icon_sm"))))
+        self._toggle_btn.setIconSize(QSize(scaled_px(themes.metrics("icon_sm")), scaled_px(themes.metrics("icon_sm"))))
         self._toggle_btn.setAccessibleName(label)
         self._toggle_btn.setToolTip(label)
 

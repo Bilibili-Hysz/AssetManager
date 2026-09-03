@@ -123,8 +123,8 @@ class TagEditorDialog(StandardModalDialog):
             (self._done_btn, "check", t["on_accent"], tr("tageditor.done")),
         )
         for button, icon_name, color, label in buttons:
-            button.setIcon(icons.icon(icon_name, color=color, size=scaled_px(15)))
-            button.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+            button.setIcon(icons.icon(icon_name, color=color, size=scaled_px(themes.metrics("icon_sm"))))
+            button.setIconSize(QSize(scaled_px(themes.metrics("icon_sm")), scaled_px(themes.metrics("icon_sm"))))
             button.setAccessibleName(label)
 
     def _on_theme_changed(self, name):

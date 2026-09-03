@@ -340,8 +340,8 @@ class TabbedDialog(QDialog):
                 continue
             color_name = str(button.property("semanticIconColor") or "heading")
             color = t.get(color_name, t["heading"])
-            button.setIcon(icons.icon(str(icon_name), color=color, size=scaled_px(15)))
-            button.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+            button.setIcon(icons.icon(str(icon_name), color=color, size=scaled_px(themes.metrics("icon_sm"))))
+            button.setIconSize(QSize(scaled_px(themes.metrics("icon_sm")), scaled_px(themes.metrics("icon_sm"))))
 
     def _refresh_static_labels(self):
         sk = self._sk
@@ -568,8 +568,8 @@ class TabbedDialog(QDialog):
         btn = self.make_secondary_btn(tr("dialog.browse"), callback)
         btn.setProperty("semanticIcon", "folder")
         btn.setProperty("semanticIconColor", "heading")
-        btn.setIcon(icons.icon("folder", color="icon_primary", size=scaled_px(15)))
-        btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+        btn.setIcon(icons.icon("folder", color="icon_primary", size=scaled_px(themes.metrics("icon_sm"))))
+        btn.setIconSize(QSize(scaled_px(themes.metrics("icon_sm")), scaled_px(themes.metrics("icon_sm"))))
         btn.setAccessibleName(f"{label_text}: {tr('dialog.browse')}")
         btn.setToolTip(tr("dialog.browse"))
         btn.setFixedWidth(scaled_px(60))

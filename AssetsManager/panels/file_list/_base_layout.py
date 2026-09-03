@@ -144,7 +144,10 @@ class LayoutMixin:
         addr_layout.addWidget(self._breadcrumb, 1)
 
         self._refresh_btn = self._make_nav_button("refresh", tr("filelist.refresh"), self._do_refresh)
-        self._refresh_btn.setFixedSize(scaled_px(22), scaled_px(22))
+        # hit_area (24) is the a11y floor for square icon-button hot zones (audit F-5).
+        self._refresh_btn.setFixedSize(
+            scaled_px(themes.metrics("hit_area")), scaled_px(themes.metrics("hit_area"))
+        )
         addr_layout.addWidget(self._refresh_btn)
 
         header_layout.addWidget(self._address_container, 1)

@@ -107,9 +107,9 @@ class _DetailPanel(QFrame):
         self._remove_cb = None
 
     def _refresh_button_icons(self):
-        icon_size = QSize(scaled_px(15), scaled_px(15))
-        self._open_btn.setIcon(icons.icon("folder", color="icon_on_accent", size=scaled_px(15)))
-        self._remove_btn.setIcon(icons.icon("close", color="icon_muted", size=scaled_px(15)))
+        icon_size = QSize(scaled_px(themes.metrics("icon_sm")), scaled_px(themes.metrics("icon_sm")))
+        self._open_btn.setIcon(icons.icon("folder", color="icon_on_accent", size=scaled_px(themes.metrics("icon_sm"))))
+        self._remove_btn.setIcon(icons.icon("close", color="icon_muted", size=scaled_px(themes.metrics("icon_sm"))))
         self._open_btn.setIconSize(icon_size)
         self._remove_btn.setIconSize(icon_size)
         self._open_btn.setAccessibleName(tr("startup.open_btn"))
@@ -604,8 +604,8 @@ class StartupWindow(QMainWindow):
         self._browse_btn.setStyleSheet(sk.button_css(
             "secondary", font_size_key="sm",
             padding_y=scaled_px(6), padding_x=scaled_px(14)))
-        self._browse_btn.setIcon(icons.icon("folder", color="icon_secondary", size=scaled_px(15)))
-        self._browse_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+        self._browse_btn.setIcon(icons.icon("folder", color="icon_secondary", size=scaled_px(themes.metrics("icon_sm"))))
+        self._browse_btn.setIconSize(QSize(scaled_px(themes.metrics("icon_sm")), scaled_px(themes.metrics("icon_sm"))))
         self._browse_btn.setAccessibleName(tr("startup.browse_btn"))
         self._browse_btn.setToolTip(tr("startup.browse_btn"))
         self._browse_btn.clicked.connect(self._browse)
@@ -638,8 +638,8 @@ class StartupWindow(QMainWindow):
         self._open_existing_card.retranslate(
             tr("startup.open_existing_title"), tr("startup.open_existing_sub"))
         self._detail._refresh_button_icons()
-        self._browse_btn.setIcon(icons.icon("folder", color="icon_secondary", size=scaled_px(15)))
-        self._browse_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+        self._browse_btn.setIcon(icons.icon("folder", color="icon_secondary", size=scaled_px(themes.metrics("icon_sm"))))
+        self._browse_btn.setIconSize(QSize(scaled_px(themes.metrics("icon_sm")), scaled_px(themes.metrics("icon_sm"))))
         self._browse_btn.setAccessibleName(tr("startup.browse_btn"))
         self._browse_btn.setToolTip(tr("startup.browse_btn"))
         self._populate()
@@ -828,8 +828,8 @@ class StartupWindow(QMainWindow):
             f"background: transparent; border: none;")
         self._new_library_card._apply_style()
         self._open_existing_card._apply_style()
-        self._browse_btn.setIcon(icons.icon("folder", color="icon_secondary", size=scaled_px(15)))
-        self._browse_btn.setIconSize(QSize(scaled_px(15), scaled_px(15)))
+        self._browse_btn.setIcon(icons.icon("folder", color="icon_secondary", size=scaled_px(themes.metrics("icon_sm"))))
+        self._browse_btn.setIconSize(QSize(scaled_px(themes.metrics("icon_sm")), scaled_px(themes.metrics("icon_sm"))))
 
         # Hero text
         self._hero_title.setStyleSheet(
