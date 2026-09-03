@@ -7,7 +7,7 @@ interface AmbientBackdropProps {
 
 export const AmbientBackdrop = memo(function AmbientBackdrop({
   primaryAccent = 'var(--color-accent, #6366f1)',
-  secondaryAccent = '#a78bfa',
+  secondaryAccent = '#a78bfa', // inline-color: exempt — decorative default; no second accent token exists (check_web_token_usage forbids undefined var refs)
 }: AmbientBackdropProps) {
   return (
     <div

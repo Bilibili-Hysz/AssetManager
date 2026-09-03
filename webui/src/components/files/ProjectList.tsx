@@ -114,7 +114,7 @@ export function ProjectList({ items, selected, onSelect, onZipSelect = onSelect,
                         style={{
                           backgroundColor: isSelected ? 'var(--color-accent)' : 'transparent',
                           borderColor: isSelected ? 'var(--color-accent)' : 'var(--color-border-strong)',
-                          color: isSelected ? '#ffffff' : 'transparent',
+                          color: isSelected ? 'var(--color-text-inverse)' : 'transparent',
                         }}
                         onClick={e => {
                           e.stopPropagation();

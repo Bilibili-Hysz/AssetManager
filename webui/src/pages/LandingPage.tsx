@@ -45,7 +45,7 @@ const backgroundFields = [
   ['itemOpacity', 'item_opacity', 10, 100, '%'],
 ] as const;
 
-const fallbackAccent = '#6366f1';
+const fallbackAccent = '#6366f1'; // inline-color: exempt — JS runtime value (storage key + style.setProperty), var() would break semantics
 function isValidAccent(value: string | undefined): value is string {
   return Boolean(value && /^#[\da-f]{6}$/i.test(value));
 }

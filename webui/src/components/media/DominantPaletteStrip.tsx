@@ -58,7 +58,7 @@ export function DominantPaletteStrip({
         {displayColors.map(hex => {
           const isLight = getLuminance(hex) > 0.52;
           const isCopied = copiedHex === hex;
-          const textColor = isLight ? '#0f172a' : '#ffffff';
+          const textColor = isLight ? '#0f172a' : '#ffffff'; // inline-color: exempt — data-driven contrast pair over user-image-extracted palette hex
 
           return (
             <div

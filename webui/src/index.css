@@ -35,6 +35,13 @@
    ═══════════════════════════════════════════════════════ */
 :root {
   --color-accent-text: #8296f2; /* 5.3:1 on --color-elevated (dark) */
+
+  /* Static semantic icon accents (theme-independent hues, webui-governance W2).
+     Referenced from MasonryView grid chrome; defined here (not
+     themes.generated.css) because they do not vary per theme palette. */
+  --color-icon-folder: #f59e0b;
+  --color-icon-file: #64748b;
+  --color-star: #fbbf24;
 }
 
 html.light {

@@ -46,12 +46,12 @@
 
 ## 5. 路线
 
-| 阶段 | 内容 | 规模 |
-|---|---|---|
-| W0 | 按本方案 §3 落账本初版（现值即额度） | S |
-| W1 | 门禁脚本 + CI 接入 | S |
-| W2 | C 类 9 处迁移 + 新增 3-4 个语义 token | M |
-| W3（可选） | EmptyState 插画渐变改从 props/css 变量取 accent（插画与主题联动），随后把其额度从账本剥离 | M |
+| 阶段 | 内容 | 规模 | 状态 |
+|---|---|---|---|
+| W0 | 按本方案 §3 落账本初版（现值即额度） | S | ✅ 2026-09-03：`webui/webui-style-ledger.json`，唯一额度 EmptyState 113（A 类插画，`_notes` 登记），其余文件全部清零 |
+| W1 | 门禁脚本 + CI 接入 | S | ✅ 2026-09-03：`webui/scripts/check-inline-colors.mjs`（var-fallback 不计 / `inline-color: exempt` 行标记不计 / 测试文件排除 / `--update` 只降不升）+ `npm run check:colors` + CI webui job 步骤；红灯自测通过 |
+| W2 | C 类 9 处迁移 + 新增 3-4 个语义 token | M | ✅ 2026-09-03：MasonryView 4 处（folder/file/star → `--color-icon-folder`/`--color-icon-file`/`--color-star`，新增于 index.css `:root`）；NotFound/ErrorBoundary/ProjectList 5 处 → `--color-accent` + `--color-text-inverse`；Star 的 `fill` 属性改走 `style.fill`（SVG 表现属性不支持 var()）。B 类 3 文件登记行内豁免（DominantPaletteStrip 对比色对、LandingPage JS 运行时值、AmbientBackdrop 次级默认值——因 check_web_token_usage 禁止未定义 var 引用，放弃引入 `--color-accent-2`） |
+| W3（可选） | EmptyState 插画渐变改从 props/css 变量取 accent（插画与主题联动），随后把其额度从账本剥离 | M | 挂账待排期 |
 
 ## 6. DoD
 

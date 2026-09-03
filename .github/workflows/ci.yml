@@ -119,6 +119,8 @@ jobs:
       - run: npm ci
       - name: Audit npm dependencies
         run: npm audit --audit-level=moderate
+      - name: Verify inline hex colors only decrease (webui ratchet)
+        run: npm run check:colors
       - run: npm test
       - name: Coverage thresholds (istanbul)
         run: npm run coverage

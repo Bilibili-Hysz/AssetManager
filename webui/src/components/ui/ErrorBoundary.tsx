@@ -57,7 +57,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
             type="button"
             onClick={this.handleRetry}
             className="rounded-lg px-4 py-2 font-medium transition-theme hover:opacity-90"
-            style={{ backgroundColor: '#4f46e5', color: '#ffffff' }}
+            style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-inverse)' }}
           >
             {t('landing.retry')}
           </button>

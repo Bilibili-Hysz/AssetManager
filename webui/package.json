@@ -11,6 +11,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "node scripts/run-vitest.mjs",
+    "check:colors": "node scripts/check-inline-colors.mjs",
     "test:e2e": "npx playwright test",
     "typecheck": "tsc --noEmit",
     "coverage": "node scripts/run-vitest.mjs --coverage"

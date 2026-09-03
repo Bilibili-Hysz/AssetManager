@@ -1,0 +1,9 @@
+{
+  "_comment": "WebUI inline-hex-color ratchet (webui-style-governance-2026-09, W0): per-file #hex literal allowance in webui/src/**/*.{ts,tsx}. Counts may only DECREASE via CSS-variable migration; new literals fail check-inline-colors.mjs. Not counted: hex inside var(--name, #fallback), lines marked 'inline-color: exempt' (each must state a reason), test files. Lower allowances with: node scripts/check-inline-colors.mjs --update.",
+  "_notes": {
+    "src/components/ui/EmptyState.tsx": "A-class illustration asset: 113 hex are inline SVG gradient stops (stopColor/stopOpacity) — artwork palette, not UI chrome. W3 (optional) may bind accent stops to theme tokens, then drop this allowance to 0."
+  },
+  "entries": {
+    "src/components/ui/EmptyState.tsx": 113
+  }
+}

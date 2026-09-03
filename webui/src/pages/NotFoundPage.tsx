@@ -19,7 +19,7 @@ export default function NotFoundPage() {
       <Link
         to="/"
         className="mt-2 rounded-lg px-4 py-2 font-medium transition-theme hover:opacity-90"
-        style={{ backgroundColor: '#4f46e5', color: '#ffffff' }}
+        style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-inverse)' }}
       >
         {t('gallery.back_to_gallery')}
       </Link>
