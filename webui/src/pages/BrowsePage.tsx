@@ -14,6 +14,10 @@ import { MasonryView } from '../components/files/MasonryView';
 import { ContextMenu } from '../components/ui/ContextMenu';
 import { Skeleton } from '../components/ui/Skeleton';
 import { ShareDialog } from '../components/shares/ShareDialog';
+import { AmbientBackdrop } from '../components/layout/AmbientBackdrop';
+import { EmptyState } from '../components/ui/EmptyState';
+import { QuickLookOverlay } from '../components/viewer/QuickLookOverlay';
+import { useQuickLook } from '../hooks/useQuickLook';
 import { useAuth } from '../hooks/useAuth';
 import { useCachedQuery } from '../hooks/useCachedQuery';
 import { useInvalidation } from '../hooks/useInvalidation';
@@ -554,6 +558,41 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
   // search-result view (those have their own truncation notices).
   const showLoadMore = !nameResults && !tagResults && Boolean(canLoadMore);
 
+  const quickLookIndex = useMemo(() => {
+    if (!selectedItem) return 0;
+    const idx = visibleItems.findIndex(i => i.path === selectedItem.path);
+    return idx >= 0 ? idx : 0;
+  }, [selectedItem, visibleItems]);
+
+  const handleQuickLookNavigateIndex = useCallback((newIndex: number) => {
+    const item = visibleItems[newIndex];
+    if (item) {
+      setSelectedItem(item);
+    }
+  }, [visibleItems]);
+
+  const quickLook = useQuickLook({
+    items: visibleItems,
+    selectedIndex: quickLookIndex,
+    onNavigateIndex: handleQuickLookNavigateIndex,
+    onOpenDetail: item => handleNavigateDetail(item.path),
+  });
+
+  // QuickLook preview source: /api/image is the unmetered original-image
+  // preview route; /api/download consumes the free daily quota on every
+  // successful response, so spacebar previews must not use it for images.
+  // Video has no preview endpoint, so it keeps the download URL.
+  const quickLookMediaUrl = useCallback((item: BrowsableItem) => {
+    const isImage =
+      item.category === 'image' ||
+      /\.(jpg|jpeg|png|gif|webp|svg|avif)$/i.test(item.extension);
+    return api.buildUrl(
+      isImage
+        ? `image?path=${encodeURIComponent(item.path)}`
+        : `download/${encodeURIComponent(item.path)}`,
+    );
+  }, []);
+
   const handleCopyPath = useCallback((path: string) => {
     navigator.clipboard.writeText(path).catch(() => {});
   }, []);
@@ -744,7 +783,8 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
         setSelected(new Set());
       }}
     >
-      <div data-testid="browse-workspace" ref={workspaceRef} className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
+      <div data-testid="browse-workspace" ref={workspaceRef} className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden relative">
+        <AmbientBackdrop />
        <h1 className="sr-only">{t('browse.workspace')}</h1>
        <div data-testid="file-list-header" className="flex-shrink-0">
         <Breadcrumb
@@ -887,9 +927,19 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
           </button>
         </div>
       ) : visibleItems.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-64 text-slate-500">
-          <p className="text-base">{activeQuery ? t('browse.search_no_results') : t('browse.empty')}</p>
-        </div>
+        <EmptyState
+          type={activeQuery ? 'search' : 'directory'}
+          title={activeQuery ? t('browse.search_no_results') : t('browse.empty')}
+          primaryAction={activeQuery ? {
+            label: t('browse.search_clear'),
+            onClick: handleClearNameSearch,
+            variant: 'secondary',
+          } : currentPath ? {
+            label: t('browse.back_to_root'),
+            onClick: () => handleNavigate(''),
+            variant: 'secondary',
+          } : undefined}
+        />
       ) : viewMode === 'masonry' ? (
         <MasonryView
           items={visibleItems}
@@ -904,6 +954,7 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
           onDoubleClick={handleItemOpen}
           onDownload={item => handleDownload(item.path)}
           isMobile={isMobile}
+          onDirectoryVisible={handleDirectoryVisible}
         />
       ) : viewMode === 'grid' ? (
         <ProjectGrid
@@ -990,6 +1041,21 @@ export default function BrowsePage({ onOpenPalette }: BrowsePageProps) {
           returnFocusTo={shareDialogTrigger}
         />
       )}
+
+      {/* QuickLook Spacebar Lightbox Overlay */}
+      <QuickLookOverlay
+        isOpen={quickLook.isOpen}
+        item={quickLook.currentItem}
+        currentIndex={quickLookIndex}
+        totalCount={visibleItems.length}
+        thumbnailPlaceholder={quickLook.currentItem ? thumbnailMap[quickLook.currentItem.path] : undefined}
+        originalMediaUrl={quickLook.currentItem ? quickLookMediaUrl(quickLook.currentItem) : undefined}
+        onClose={quickLook.close}
+        onNext={quickLook.next}
+        onPrev={quickLook.prev}
+        onOpenFullDetail={item => handleNavigateDetail(item.path)}
+        onDownload={item => handleDownload(item.path)}
+      />
     </AppLayout>
   );
 }

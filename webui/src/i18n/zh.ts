@@ -357,6 +357,7 @@ const zh: I18nDict = {
     focus_search: '聚焦搜索框',
     toggle_view: '切换网格 / 列表视图',
     toggle_select: '切换选择模式',
+    quick_look: '快速即览',
     escape: '关闭浮层 / 清除选择',
     palette_navigate: '在结果间移动',
     palette_open: '打开选中的结果',

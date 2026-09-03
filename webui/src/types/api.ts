@@ -228,6 +228,10 @@ export interface ProjectDetail {
   thumbnail_url: string | null;
   modified: number;
   download_url: string;
+  palette?: {
+    colors: string[];
+    dominant?: string;
+  } | null;
 }
 
 // ============ Tree ============

@@ -51,7 +51,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+      <div className="fixed bottom-16 inset-x-4 sm:inset-x-auto sm:bottom-4 sm:right-4 z-50 flex flex-col gap-2 pointer-events-none">
         {toasts.map(toast => (
           <div
             key={toast.id}
@@ -59,7 +59,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             aria-live={toast.type === 'error' ? 'assertive' : 'polite'}
             onMouseEnter={() => clearDismissTimer(toast.id)}
             onMouseLeave={() => armDismissTimer(toast.id, toast.type)}
-            className="flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg backdrop-blur-sm transition-theme"
+            className="pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl backdrop-blur-md transition-all duration-200"
             style={{
               backgroundColor: toast.type === 'success' ? 'var(--color-success-subtle)' :
                 toast.type === 'error' ? 'var(--color-danger-subtle)' : 'var(--color-surface)',

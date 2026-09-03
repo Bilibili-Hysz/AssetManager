@@ -1,0 +1,226 @@
+/* ═══════════════════════════════════════════════════════
+   EmptyState.css - Dark Archive Minimalist Vector System
+   ═══════════════════════════════════════════════════════ */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  width: 100%;
+  min-height: 280px;
+  padding: var(--space-8, 32px) var(--space-4, 16px);
+  box-sizing: border-box;
+  color: var(--color-text, #e8ecf8);
+}
+
+.empty-state-illustration {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--space-5, 20px);
+  user-select: none;
+  pointer-events: none;
+}
+
+.empty-state-illustration svg {
+  display: block;
+  width: 240px;
+  height: 180px;
+  max-width: 100%;
+  overflow: visible;
+  color: unset;
+  opacity: 1;
+}
+
+.empty-state-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  max-width: 460px;
+}
+
+.empty-state-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--color-text, #e8ecf8);
+  letter-spacing: -0.01em;
+}
+
+.empty-state-description {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-muted, #8492a5);
+}
+
+.empty-state-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3, 12px);
+  margin-top: var(--space-5, 20px);
+  flex-wrap: wrap;
+}
+
+.empty-state-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 16px;
+  border-radius: var(--radius-md, 6px);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--transition-fast, 120ms ease),
+              border-color var(--transition-fast, 120ms ease),
+              color var(--transition-fast, 120ms ease),
+              box-shadow var(--transition-fast, 120ms ease);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.empty-state-btn:focus-visible {
+  outline: 2px solid var(--color-accent, #5b7cf0);
+  outline-offset: 2px;
+}
+
+.empty-state-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.empty-state-btn-primary {
+  background: var(--color-accent, #5b7cf0);
+  color: #ffffff;
+  border: 1px solid transparent;
+}
+
+.empty-state-btn-primary:hover:not(:disabled) {
+  background: var(--color-accent-hover, #4a6ee0);
+}
+
+.empty-state-btn-secondary {
+  background: var(--color-surface, #1a1d28);
+  color: var(--color-text, #e8ecf8);
+  border: 1px solid var(--color-border, #5f6695);
+}
+
+.empty-state-btn-secondary:hover:not(:disabled) {
+  background: var(--color-surface-hover, #242838);
+  border-color: var(--color-border-focus, #5b7cf0);
+  color: var(--color-text, #ffffff);
+}
+
+.empty-state-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Dark Archive SVG Keyframes & Animations
+   ═══════════════════════════════════════════════════════ */
+
+/* 1. Directory Floating Cube */
+@keyframes dark-archive-float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes dark-archive-float-shadow {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.45;
+  }
+  50% {
+    transform: scale(0.8);
+    opacity: 0.2;
+  }
+}
+
+.dark-archive-float {
+  animation: dark-archive-float 3.2s ease-in-out infinite;
+}
+
+.dark-archive-float-shadow {
+  transform-origin: 120px 115px;
+  animation: dark-archive-float-shadow 3.2s ease-in-out infinite;
+}
+
+/* 2. Radar Scan Sweep */
+@keyframes dark-archive-radar-sweep {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.dark-archive-radar-sweep {
+  transform-origin: 120px 100px;
+  animation: dark-archive-radar-sweep 4s linear infinite;
+}
+
+/* 3. Offline Pulse Wave */
+@keyframes dark-archive-pulse {
+  0% {
+    transform: scale(0.65);
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
+
+.dark-archive-pulse {
+  transform-origin: 120px 100px;
+  animation: dark-archive-pulse 2.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.dark-archive-pulse-1 {
+  animation-delay: 0s;
+}
+
+.dark-archive-pulse-2 {
+  animation-delay: 0.8s;
+}
+
+.dark-archive-pulse-3 {
+  animation-delay: 1.6s;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Accessibility: Prefers-Reduced-Motion Standard
+   ═══════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  .dark-archive-float,
+  .dark-archive-float-shadow,
+  .dark-archive-radar-sweep,
+  .dark-archive-pulse,
+  .dark-archive-pulse-1,
+  .dark-archive-pulse-2,
+  .dark-archive-pulse-3,
+  .empty-state * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

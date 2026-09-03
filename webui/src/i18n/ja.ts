@@ -357,6 +357,7 @@ const ja: I18nDict = {
     focus_search: '検索にフォーカス',
     toggle_view: 'グリッド / リスト表示を切り替え',
     toggle_select: '選択モードを切り替え',
+    quick_look: 'クイックルック プレビュー',
     escape: 'オーバーレイを閉じる / 選択を解除',
     palette_navigate: '結果間を移動',
     palette_open: '選択した結果を開く',

@@ -362,6 +362,7 @@ const en = {
     focus_search: 'Focus search',
     toggle_view: 'Toggle grid / list view',
     toggle_select: 'Toggle selection mode',
+    quick_look: 'Quick look preview',
     escape: 'Close overlays / clear selection',
     palette_navigate: 'Navigate results',
     palette_open: 'Open selected result',

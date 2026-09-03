@@ -296,8 +296,37 @@ img {
 
 @layer components {
   .skeleton {
-    background: var(--skeleton-bg);
-    @apply rounded animate-pulse;
+    position: relative;
+    overflow: hidden;
+    background: var(--skeleton-bg, rgba(255, 255, 255, 0.06));
+    border-radius: var(--radius-md, 6px);
+  }
+
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in srgb, var(--color-text, #ffffff) 8%, transparent) 50%,
+      transparent 100%
+    );
+    animation: skeleton-shimmer 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+
+  @keyframes skeleton-shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton::after {
+      animation: none;
+      display: none;
+    }
   }
 }
 
@@ -323,3 +352,47 @@ img {
     min-height: 44px;
   }
 }
+
+/* ═══════════════════════════════════════════════════════
+   Spotlight card border reflection (Linear/Raycast style)
+   ═══════════════════════════════════════════════════════ */
+[data-spotlight-card] {
+  position: relative;
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 180ms ease;
+}
+
+[data-spotlight-card]::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: radial-gradient(
+    280px circle at var(--mouse-x, -999px) var(--mouse-y, -999px),
+    color-mix(in srgb, var(--color-accent, #6366f1) 40%, white 10%),
+    transparent 75%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 220ms ease;
+  z-index: 2;
+}
+
+[data-spotlight-card]:hover::before {
+  opacity: 1;
+}
+
+[data-spotlight-card]:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-spotlight-card]:hover {
+    transform: none;
+  }
+}
+

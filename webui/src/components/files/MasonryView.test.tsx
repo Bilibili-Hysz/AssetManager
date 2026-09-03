@@ -93,4 +93,50 @@ describe('MasonryView', () => {
     expect(onDoubleClick).toHaveBeenCalledWith(fileItem);
     expect(onInspect).not.toHaveBeenCalled();
   });
+
+  it('hydrates visible directories and renders their cover thumbnails', () => {
+    // Regression: masonry mode never received onDirectoryVisible, so with a
+    // summaries=false listing directory cards had no cover and no size — the
+    // only view whose cards stayed empty.
+    class FakeIntersectionObserver {
+      static instances: FakeIntersectionObserver[] = [];
+      callback: IntersectionObserverCallback;
+      observed: Element[] = [];
+      constructor(callback: IntersectionObserverCallback) {
+        this.callback = callback;
+        FakeIntersectionObserver.instances.push(this);
+      }
+      observe(target: Element) {
+        this.observed.push(target);
+        this.callback(
+          this.observed.map(entry => ({ isIntersecting: true, target: entry }) as unknown as IntersectionObserverEntry),
+          this as unknown as IntersectionObserver,
+        );
+      }
+      disconnect() { this.observed = []; }
+      unobserve() {}
+    }
+    vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
+
+    const onDirectoryVisible = vi.fn();
+    render(
+      <MasonryView
+        items={[fileItem, dirItem]}
+        getThumbnail={path => (path === 'projects/assets' ? '/api/thumbnails/projects/assets' : undefined)}
+        onDirectoryVisible={onDirectoryVisible}
+      />,
+    );
+
+    const observedPaths = FakeIntersectionObserver.instances
+      .flatMap(instance => instance.observed)
+      .map(node => node.getAttribute('data-directory-path'));
+    expect(observedPaths).toEqual(['projects/assets']);
+    expect(onDirectoryVisible).toHaveBeenCalledWith('projects/assets');
+
+    // alt="" images map to the presentation role; assert on src instead.
+    const sources = Array.from(document.querySelectorAll('img')).map(img => img.getAttribute('src'));
+    expect(sources).toContain('/api/thumbnails/projects/assets');
+
+    vi.unstubAllGlobals();
+  });
 });

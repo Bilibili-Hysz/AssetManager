@@ -196,4 +196,36 @@ describe('ProjectGrid', () => {
     vi.advanceTimersByTime(SINGLE_CLICK_DELAY_MS);
     expect(onInspect).toHaveBeenCalledTimes(1);
   });
+
+  it('renders initial batch and shows sentinel for large collections', () => {
+    const mockObserver = vi.fn().mockImplementation(() => ({
+      observe: vi.fn(),
+      disconnect: vi.fn(),
+    }));
+    vi.stubGlobal('IntersectionObserver', mockObserver);
+
+    const largeItems = Array.from({ length: 150 }, (_, i) => ({
+      name: `item-${i}.png`,
+      path: `item-${i}.png`,
+      type: 'file' as const,
+      extension: '.png',
+      category: 'image',
+    }));
+
+    render(
+      <ProjectGrid
+        items={largeItems}
+        selected={new Set()}
+        onSelect={vi.fn()}
+        thumbnailMap={{}}
+      />,
+    );
+
+    expect(screen.getByTestId('project-grid-sentinel')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'item-0.png' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'item-79.png' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'item-80.png' })).toBeNull();
+
+    vi.unstubAllGlobals();
+  });
 });

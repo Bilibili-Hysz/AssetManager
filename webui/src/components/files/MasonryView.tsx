@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Download, Eye, File, Folder, FolderOpen, MoreHorizontal, Star } from 'lucide-react';
 import type { BrowsableItem } from '../../types/api';
 import { useI18n } from '../../hooks/useI18n';
@@ -18,6 +18,7 @@ interface MasonryViewProps {
   onToggleFavorite?: (path: string) => void;
   isFavorite?: (path: string) => boolean;
   isMobile?: boolean;
+  onDirectoryVisible?: (path: string) => void;
 }
 
 function MasonryItem({
@@ -35,6 +36,7 @@ function MasonryItem({
   onDoubleClick,
   onDownload,
   isMobile,
+  nodeRef,
 }: {
   item: BrowsableItem;
   selected?: boolean;
@@ -50,15 +52,24 @@ function MasonryItem({
   onDoubleClick?: (item: BrowsableItem) => void;
   onDownload?: (item: BrowsableItem) => void;
   isMobile?: boolean;
+  nodeRef?: (node: HTMLDivElement | null) => void;
 }) {
   const { t } = useI18n();
   const [failedThumb, setFailedThumb] = useState<string | null>(null);
+  const [thumbLoaded, setThumbLoaded] = useState(false);
   const [hover, setHover] = useState(false);
   const isDir = item.type === 'dir';
   const thumb = getThumbnail?.(item.path) ?? item.thumbnail_url;
-  const showImage = Boolean(thumb) && failedThumb !== thumb && !isDir;
+  // Directories show a hydrated cover thumbnail when one exists (parity with
+  // the grid view); the folder icon stays the fallback until it arrives.
+  const showImage = Boolean(thumb) && failedThumb !== thumb;
   const fav = isFavorite?.(item.path) ?? false;
   const canFavorite = isDir || item.category === 'image';
+
+  useEffect(() => {
+    setFailedThumb(null);
+    setThumbLoaded(false);
+  }, [thumb]);
 
   const handlePrimaryClick = () => {
     if (selectionMode) {
@@ -78,6 +89,8 @@ function MasonryItem({
 
   return (
     <div
+      ref={nodeRef}
+      data-directory-path={isDir ? item.path : undefined}
       style={{
         breakInside: 'avoid',
         marginBottom: '12px',
@@ -102,14 +115,35 @@ function MasonryItem({
       >
         <div style={{ position: 'relative', width: '100%', aspectRatio: isDir ? '4/3' : undefined, background: 'var(--color-surface-hover)' }}>
           {showImage ? (
-            <img
-              src={thumb}
-              alt=""
-              loading="lazy"
-              draggable={false}
-              onError={() => setFailedThumb(thumb ?? null)}
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-            />
+            <>
+              {!thumbLoaded && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    backgroundColor: 'var(--color-surface-hover)',
+                  }}
+                  className="animate-pulse"
+                  aria-hidden="true"
+                />
+              )}
+              <img
+                src={thumb}
+                alt=""
+                loading="lazy"
+                draggable={false}
+                onLoad={() => setThumbLoaded(true)}
+                onError={() => setFailedThumb(thumb ?? null)}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  display: 'block',
+                  transition: 'opacity 200ms ease',
+                  opacity: thumbLoaded ? 1 : 0,
+                }}
+              />
+            </>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '120px', gap: '6px' }}>
               {isDir ? <Folder size={32} aria-hidden="true" style={{ color: '#f59e0b' }} /> : <File size={32} aria-hidden="true" style={{ color: '#64748b' }} />}
@@ -168,8 +202,26 @@ export function MasonryView({
   items, selected, selectionMode, onSelect, onInspect, onNavigate,
   getThumbnail, onContextMenu, onTagClick, onDoubleClick,
   onDownload, isMobile,
-  onToggleFavorite, isFavorite,
+  onToggleFavorite, isFavorite, onDirectoryVisible,
 }: MasonryViewProps) {
+  // Hydration trigger parity with ProjectGrid/ProjectList: the listing is
+  // fetched with summaries=false, so directory covers and sizes only arrive
+  // after a card scrolls into view and requests its summary.
+  const dirNodes = useRef(new Map<string, HTMLDivElement>());
+  useEffect(() => {
+    if (!onDirectoryVisible || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      entries => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) onDirectoryVisible(entry.target.getAttribute('data-directory-path') ?? '');
+        }
+      },
+      { rootMargin: '160px' },
+    );
+    for (const node of dirNodes.current.values()) observer.observe(node);
+    return () => observer.disconnect();
+  }, [items, onDirectoryVisible]);
+
   return (
     <div
       data-testid="masonry-view"
@@ -196,6 +248,10 @@ export function MasonryView({
            isMobile={isMobile}
           onToggleFavorite={onToggleFavorite}
           isFavorite={isFavorite}
+          nodeRef={node => {
+            if (node && item.type === 'dir') dirNodes.current.set(item.path, node);
+            else dirNodes.current.delete(item.path);
+          }}
         />
       ))}
       <style>{`

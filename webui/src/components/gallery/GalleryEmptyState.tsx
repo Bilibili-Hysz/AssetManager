@@ -1,6 +1,7 @@
-import { Images, RefreshCw, Wrench } from 'lucide-react';
+import { RefreshCw, Wrench } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useI18n } from '../../hooks/useI18n';
+import { EmptyState } from '../ui/EmptyState';
 
 interface GalleryEmptyStateProps {
   title: string;
@@ -10,21 +11,28 @@ interface GalleryEmptyStateProps {
 
 export function GalleryEmptyState({ title, description, onRetry }: GalleryEmptyStateProps) {
   const { t } = useI18n();
+
   return (
-    <div className="gallery-empty-state">
-      <Images size={32} />
-      <h2>{title}</h2>
-      <p>{description}</p>
-      <div className="gallery-empty-actions">
-        {onRetry && (
-          <button type="button" onClick={onRetry} className="gallery-secondary-button">
-            <RefreshCw size={15} /> {t('gallery.retry')}
-          </button>
-        )}
-        <Link to="/browse" className="gallery-secondary-button">
+    <EmptyState
+      type="directory"
+      title={title}
+      description={description}
+      className="gallery-empty-state"
+      primaryAction={
+        onRetry
+          ? {
+              label: t('gallery.retry'),
+              onClick: onRetry,
+              icon: <RefreshCw size={15} />,
+              className: 'gallery-secondary-button',
+            }
+          : undefined
+      }
+      secondaryAction={
+        <Link to="/browse" className="empty-state-btn empty-state-btn-secondary gallery-secondary-button">
           <Wrench size={15} /> {t('gallery.open_workspace_action')}
         </Link>
-      </div>
-    </div>
+      }
+    />
   );
 }

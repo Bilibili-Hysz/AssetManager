@@ -31,6 +31,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
   // ── Workspace (only while the file list has focus) ──
   { keys: ['g'], scope: 'workspace', descriptionKey: 'shortcuts.toggle_view' },
   { keys: ['s'], scope: 'workspace', descriptionKey: 'shortcuts.toggle_select' },
+  { keys: ['Space'], scope: 'workspace', descriptionKey: 'shortcuts.quick_look' },
   // ── Dialogs & viewer ──
   { keys: ['↑', '↓'], scope: 'dialog', descriptionKey: 'shortcuts.palette_navigate' },
   { keys: ['Enter'], scope: 'dialog', descriptionKey: 'shortcuts.palette_open' },

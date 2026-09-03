@@ -418,7 +418,7 @@
 .gallery-error-state, .gallery-empty-state { display: flex; min-height: 300px; align-items: center; justify-content: center; flex-direction: column; text-align: center; color: var(--color-text-muted); }
 .gallery-empty-state { gap: 8px; }
 .gallery-empty-actions { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
-.gallery-empty-state svg { color: var(--color-accent); opacity: .7; }
+.gallery-empty-state > svg { color: var(--color-accent); opacity: .7; }
 .gallery-empty-state h2, .gallery-error-state h2 { margin: 6px 0 0; color: var(--color-text); font-size: 18px; }
 .gallery-empty-state p, .gallery-error-state p { max-width: 420px; margin: 0 0 12px; font-size: 13px; }
 

@@ -62,6 +62,7 @@ export function ProjectCard({
 
   return (
     <div
+      data-spotlight-card="true"
       className="relative rounded-lg transition-all duration-200 cursor-pointer group"
       style={{
         ...cardStyle,

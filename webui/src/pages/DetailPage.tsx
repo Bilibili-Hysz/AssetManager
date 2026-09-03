@@ -8,6 +8,7 @@ import { ApiError } from '../api/errors';
 import type { ProjectDetail } from '../types/api';
 import { ImageViewer } from '../components/viewer/ImageViewer';
 import { Skeleton } from '../components/ui/Skeleton';
+import { DominantPaletteStrip } from '../components/media/DominantPaletteStrip';
 import { useI18n } from '../hooks/useI18n';
 import { useTheme } from '../hooks/useTheme';
 import { useInvalidation } from '../hooks/useInvalidation';
@@ -214,6 +215,16 @@ export default function DetailPage({ onOpenPalette }: DetailPageProps) {
                 </div>
               </div>
             </div>
+
+            {/* Dominant Palette Strip */}
+            {data.palette && data.palette.colors?.length > 0 && (
+              <div className="mb-6">
+                <DominantPaletteStrip
+                  palette={data.palette}
+                  onSearchByTone={tone => navigate(`/browse?tone=${encodeURIComponent(tone)}`)}
+                />
+              </div>
+            )}
 
             {/* Tags */}
             {data.tags && data.tags.length > 0 && (

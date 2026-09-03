@@ -4,6 +4,7 @@ import { useDialogFocus } from '../../hooks/useDialogFocus';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useI18n } from '../../hooks/useI18n';
 import { StatusBar } from './StatusBar';
+import { BottomSheet } from '../ui/BottomSheet';
 import './Workspace.css';
 
 interface AppLayoutProps {
@@ -138,28 +139,13 @@ export function AppLayout({
         )}
 
         {infoPanel && mobileDialog === 'info' && (
-          <>
-            <div
-              className="fixed inset-0 z-[var(--z-overlay)]"
-              style={{ backgroundColor: 'var(--color-overlay)' }}
-              onClick={onInfoToggle}
-              aria-hidden="true"
-            />
-            <div
-              ref={mobileDialogRef}
-              role="dialog"
-              aria-modal="true"
-              aria-label={t('info.title')}
-              tabIndex={-1}
-              className="fixed inset-x-0 bottom-0 z-[var(--z-drawer)] max-h-[55vh] overflow-hidden transition-theme"
-              style={{
-                borderTop: '1px solid var(--color-border)',
-                backgroundColor: 'var(--color-surface)',
-              }}
-            >
-              {infoPanel}
-            </div>
-          </>
+          <BottomSheet
+            isOpen={true}
+            onClose={() => onInfoToggle?.()}
+            title={t('info.title')}
+          >
+            {infoPanel}
+          </BottomSheet>
         )}
       </div>
 
@@ -169,8 +155,10 @@ export function AppLayout({
       {/* ── Mobile Bottom Bar ── */}
       {isMobile && (
         <div
-          className="flex-shrink-0 flex items-center justify-around h-12 transition-theme"
+          className="flex-shrink-0 flex items-center justify-around transition-theme z-30"
           style={{
+            minHeight: 'calc(48px + env(safe-area-inset-bottom, 0px))',
+            paddingBottom: 'env(safe-area-inset-bottom, 0px)',
             borderTop: '1px solid var(--color-border)',
             backgroundColor: 'var(--color-surface)',
           }}
