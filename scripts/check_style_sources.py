@@ -44,6 +44,10 @@ SCOPED_FILES = [
     "AssetsManager/window.py",
     "AssetsManager/window_coordinator.py",
     "AssetsManager/dock_factory.py",
+    # The central QSS generator joins the scan (audit E5): it is the token
+    # source for colors, but its own template must not carry raw unscaled
+    # pixel literals either. Legit hairlines are whitelisted below.
+    "AssetsManager/core/themes.py",
 ]
 
 # Single-entry generators and token sources are exempt; every panel,
@@ -92,6 +96,30 @@ FONT_SIZE_DECL_RE = re.compile(r"font-size\s*:\s*[^;{}]*", re.IGNORECASE)
 _PX_WHITELIST: dict[str, set[str]] = {
     # Zero-length never scales (scaled_px(0) == 1 would change visuals).
     "AssetsManager/widgets/workspace_bar.py": {"0px"},
+    # Central theme hairline borders ("1px solid") — a hairline stays one
+    # device pixel at every ui_scale by design. "2px" covers the slider
+    # groove/handle structural borders; whether they should scale is an M2
+    # token decision (audit E5), not a M0 gate violation.
+    "AssetsManager/core/themes.py": {"1px", "2px"},
+}
+
+# Per-file RULE exemptions: a file where a specific rule must not apply.
+# themes.py is the token SOURCE — the hex fallbacks in its derived-token
+# lambdas define the builtin fallback palette that the
+# hex-fallback-in-theme-lookup rule guards against in consumers. Its pixel
+# literals are still checked (see _PX_WHITELIST).
+_RULE_EXEMPT: dict[str, set[str]] = {
+    "AssetsManager/core/themes.py": {"hex-fallback-in-theme-lookup"},
+}
+
+# Hex string constants passed straight to QColor()/similar constructors in
+# non-QSS positions escape the QSS-string rules above. Only files whose
+# FUNCTION is editing colors (a color picker's default swatch) may list
+# values here, with a justification.
+_HEX_CONST_WHITELIST: dict[str, set[str]] = {
+    # ColorPickerDialog's factory-default swatch: the whole dialog exists to
+    # edit data-driven colors, so the default is data, not styling.
+    "AssetsManager/dialogs/color_picker_dialog.py": {"#ff6b6b"},
 }
 
 
@@ -223,14 +251,47 @@ def _check_joined_str(node: ast.JoinedStr, source: str, relative: str,
 
 def _check_token_lookup_lines(source_lines: list[str], relative: str,
                               violations: list[Violation]) -> None:
+    rule_exempt = _RULE_EXEMPT.get(relative, frozenset())
     for index, line in enumerate(source_lines, start=1):
         for pattern, rule in (
             (TOKEN_LOOKUP_HEX_RE, "hex-fallback-in-theme-lookup"),
             (THEMES_LOOKUP_HEX_RE, "hex-fallback-in-theme-lookup"),
         ):
+            if rule in rule_exempt:
+                continue
             for _match in pattern.finditer(line):
                 violations.append(Violation(
                     relative, index, rule, line.strip()[:160]))
+
+
+def _check_qcolor_hex_constants(tree: ast.AST, relative: str,
+                                violations: list[Violation]) -> None:
+    """Flag hex string literals handed straight to QColor() constructors.
+
+    A hex constant in ``QColor("#888888")`` is styling that bypasses both
+    the QSS-string rules and the token system (audit F3/G2).
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        name = ""
+        if isinstance(func, ast.Name):
+            name = func.id
+        elif isinstance(func, ast.Attribute):
+            name = func.attr
+        if name != "QColor":
+            continue
+        for arg in node.args:
+            if not (isinstance(arg, ast.Constant) and isinstance(arg.value, str)):
+                continue
+            value = arg.value.strip()
+            if not HEX_RE.fullmatch(value):
+                continue
+            if value in _HEX_CONST_WHITELIST.get(relative, frozenset()):
+                continue
+            violations.append(Violation(
+                relative, node.lineno, "hex-literal-in-qcolor", value))
 
 
 def collect_violations(root: Path = ROOT) -> list[Violation]:
@@ -251,6 +312,7 @@ def collect_violations(root: Path = ROOT) -> list[Violation]:
         except SyntaxError:
             continue
         _annotate_parents(tree)
+        _check_qcolor_hex_constants(tree, relative, violations)
         for node in ast.walk(tree):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 # Skip f-string static parts — `_check_joined_str` covers

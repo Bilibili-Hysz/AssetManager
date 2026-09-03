@@ -1,0 +1,4 @@
+{
+  "_comment": "G3 dialect ratchet (audit F3/I12): per-file count of setStyleSheet sites reading tokens via bare t[...]/t.get(...) instead of sk.token(). Counts may only DECREASE as sites migrate. Lower with --update; increases require --force with justification.",
+  "entries": {}
+}

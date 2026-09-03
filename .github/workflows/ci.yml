@@ -31,6 +31,10 @@ jobs:
         run: python scripts/check_boundaries.py
       - name: Verify local QSS sources colors/font sizes from theme tokens
         run: python scripts/check_style_sources.py
+      - name: Verify presentation setStyleSheet counts only decrease (G1 ratchet)
+        run: python scripts/check_inline_styles.py
+      - name: Verify bare token-dict QSS access only decreases (G3 dialect)
+        run: python scripts/check_style_dialects.py
       - name: Verify LAN write routes declare their authorization capability
         run: python scripts/check_route_capabilities.py
       - name: Verify pages use the shared data layer (no direct api factories)

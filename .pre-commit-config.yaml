@@ -75,6 +75,20 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      - id: check-inline-styles
+        name: setStyleSheet ratchet (counts only decrease)
+        entry: python scripts/check_inline_styles.py
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: check-style-dialects
+        name: bare t[...] QSS token access only decreases (G3)
+        entry: python scripts/check_style_dialects.py
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
       - id: check-route-capabilities
         name: LAN routes declare their capabilities
         entry: python scripts/check_route_capabilities.py
