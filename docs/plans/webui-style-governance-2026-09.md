@@ -51,7 +51,7 @@
 | W0 | 按本方案 §3 落账本初版（现值即额度） | S | ✅ 2026-09-03：`webui/webui-style-ledger.json`，唯一额度 EmptyState 113（A 类插画，`_notes` 登记），其余文件全部清零 |
 | W1 | 门禁脚本 + CI 接入 | S | ✅ 2026-09-03：`webui/scripts/check-inline-colors.mjs`（var-fallback 不计 / `inline-color: exempt` 行标记不计 / 测试文件排除 / `--update` 只降不升）+ `npm run check:colors` + CI webui job 步骤；红灯自测通过 |
 | W2 | C 类 9 处迁移 + 新增 3-4 个语义 token | M | ✅ 2026-09-03：MasonryView 4 处（folder/file/star → `--color-icon-folder`/`--color-icon-file`/`--color-star`，新增于 index.css `:root`）；NotFound/ErrorBoundary/ProjectList 5 处 → `--color-accent` + `--color-text-inverse`；Star 的 `fill` 属性改走 `style.fill`（SVG 表现属性不支持 var()）。B 类 3 文件登记行内豁免（DominantPaletteStrip 对比色对、LandingPage JS 运行时值、AmbientBackdrop 次级默认值——因 check_web_token_usage 禁止未定义 var 引用，放弃引入 `--color-accent-2`） |
-| W3（可选） | EmptyState 插画渐变改从 props/css 变量取 accent（插画与主题联动），随后把其额度从账本剥离 | M | 挂账待排期 |
+| W3（可选） | EmptyState 插画渐变改从 props/css 变量取 accent（插画与主题联动），随后把其额度从账本剥离 | M | ✅ 2026-09-03：TSX 内 113 处 hex 全部改为 `style={{ stopColor/stroke/fill: 'var(--illu-*)' }}`（SVG 表现属性不支持 var()，故走 style 对象）；调色板落 `EmptyState.css` 的 `--illu-*`（主 accent 绑 `var(--color-accent)`、hi 变体 `color-mix` 派生、amber 复用 `--color-icon-folder`、muted/contrast 绑生成 token，deep/ink/sky/purple 为插画内部固定 shading 并注释说明）；账本 EmptyState 额度 113→0。教训记录：SVG 属性→style 批量转换须处理多行标签的重复 style 合并（tsc TS17001 捕获 1 处） |
 
 ## 6. DoD
 

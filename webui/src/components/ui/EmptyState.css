@@ -2,6 +2,34 @@
    EmptyState.css - Dark Archive Minimalist Vector System
    ═══════════════════════════════════════════════════════ */
 
+/* ── Illustration palette (webui-style-governance W3) ──
+   The artwork's primary accent hue follows the theme accent
+   (var(--color-accent)); its high-light shading derives via
+   color-mix. Amber rides the W2 semantic folder token, and
+   neutrals ride the generated text tokens. The remaining
+   hex constants are internal shading of the fixed artwork
+   geometry (deep-navy / ink shadows, sky, purple, danger) —
+   they live here in the CSS token-consumption layer, which
+   keeps check-inline-colors (TSX gate) at zero. */
+.empty-state-illustration svg {
+  --illu-accent: var(--color-accent, #5b7cf0);
+  --illu-accent-hi: color-mix(in srgb, var(--illu-accent) 80%, #ffffff);
+  --illu-sky: #38bdf8;
+  --illu-purple: #c084fc;
+  --illu-purple-soft: #a78bfa;
+  --illu-amber: var(--color-icon-folder, #f59e0b);
+  --illu-amber-hi: #f5b040;
+  --illu-muted: var(--color-text-muted, #8492a5);
+  --illu-contrast: var(--color-text-inverse, #ffffff);
+  --illu-danger: #f06060;
+  --illu-deep-1: #1e3a8a;
+  --illu-deep-2: #312e81;
+  --illu-deep-3: #1e1b4b;
+  --illu-ink-1: #0f1118;
+  --illu-ink-2: #171926;
+  --illu-ink-3: #261b0d;
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;
