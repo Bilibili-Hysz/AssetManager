@@ -45,11 +45,14 @@ def webui_build(skip: bool = False):
     if not (WEBUI / 'package.json').is_file():
         print('webui/ not present; skipping SPA build.')
         return
-    if not shutil.which('npm'):
+    # npm ships as npm.cmd on Windows; shutil.which() resolves it via PATHEXT
+    # but a bare 'npm' in a list arg would not be found by CreateProcess.
+    npm = shutil.which('npm')
+    if not npm:
         sys.exit('npm not found on PATH; cannot build the WebUI SPA. '
                  'Install Node.js, or pass --skip-webui with a prebuilt webui/dist.')
-    subprocess.run(['npm', 'ci'], cwd=str(WEBUI), check=True)
-    subprocess.run(['npm', 'run', 'build'], cwd=str(WEBUI), check=True)
+    subprocess.run([npm, 'ci'], cwd=str(WEBUI), check=True)
+    subprocess.run([npm, 'run', 'build'], cwd=str(WEBUI), check=True)
 
 
 def _run_pyinstaller(bundle_mode: str):

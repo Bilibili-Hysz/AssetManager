@@ -1,4 +1,5 @@
 """AssetManager — click-to-run launcher with error display."""
+import faulthandler
 import sys
 import traceback
 from pathlib import Path
@@ -6,6 +7,17 @@ from pathlib import Path
 project_root = Path(__file__).resolve().parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
+
+# 与 main.py 相同的诊断：segfault 绕过 excepthook，全线程 Python 栈落盘。
+try:
+    _diag_dir = project_root / "RuntimeData" / "Shared"
+    _diag_dir.mkdir(parents=True, exist_ok=True)
+    faulthandler.enable(
+        file=open(_diag_dir / "faulthandler.log", "w", encoding="utf-8"),
+        all_threads=True,
+    )
+except Exception:
+    pass
 
 def _show_startup_error(message: str) -> None:
     """Display a startup failure without depending on tkinter.
