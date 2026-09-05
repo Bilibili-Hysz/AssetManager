@@ -179,7 +179,7 @@ export function ProjectList({ items, selected, onSelect, onZipSelect = onSelect,
                      {onDoubleClick && (
                        <button
                          type="button"
-                         className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] text-[var(--color-accent)] transition-colors hover:bg-[var(--color-accent-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+                         className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] text-[var(--color-accent-text)] transition-colors hover:bg-[var(--color-accent-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
                          aria-label={isDir ? t('action.open_folder', item.name) : t('action.open_item', item.name)}
                          title={isDir ? t('action.open_folder', item.name) : t('action.open_item', item.name)}
                          onClick={e => { e.stopPropagation(); clearInspectTimer(item.path); onDoubleClick(item); }}

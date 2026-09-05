@@ -1,9 +1,49 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import fs from 'node:fs';
 import path from 'path';
 
+// Vite 7.3.6 on Windows hard-deny: `isFileLoadingAllowed` rejects ANY path
+// containing `~` before consulting `server.fs.allow` (a path-confusion
+// guard, vite/dist/node/.../config.js `if (isWindows && filePath.includes("~"))`).
+// This repo lives under `D:\~Vibe-Coding\`, so every client-environment
+// file load fails — which vitest exercises through jsdom files
+// (`transformMode: "web"`): each forked worker first runs
+// `executeId('/@vite/env')` and then loads the jsdom test files through the
+// client pipeline. Before this workaround that surfaced as 68 unhandled
+// "Cannot find module '/@vite/env'" errors — and the 68 jsdom test files
+// silently never ran (only the 21 node-environment files, 95 tests,
+// actually executed).
+//
+// The hook below restores stock behaviour for `~`-rooted projects only: it
+// serves files the fs guard would reject, while re-implementing the guard's
+// remaining security checks (drive-letter colon confusion stays denied; the
+// file must resolve to a real file). Machines whose path has no `~` (or on
+// non-Windows platforms) keep the stock pipeline untouched.
+function tildePathLoader() {
+  return {
+    name: 'tilde-path-loader-workaround',
+    enforce: 'pre' as const,
+    load(id: string) {
+      if (process.platform !== 'win32' || !id.includes('~')) return undefined;
+      const clean = id.split('?')[0];
+      // Guard 1 (kept from upstream): deny `c:`-style colon confusion after
+      // the drive letter — only one drive colon is ever valid on Windows.
+      const withoutDrive = clean.replace(/^[A-Za-z]:/, '');
+      if (withoutDrive.includes(':')) return undefined;
+      try {
+        const resolved = path.resolve(clean);
+        if (!fs.statSync(resolved).isFile()) return undefined;
+        return fs.readFileSync(resolved, 'utf-8');
+      } catch {
+        return undefined;
+      }
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [tildePathLoader(), react()],
   base: '/',
   resolve: {
     preserveSymlinks: true,
