@@ -1,0 +1,1 @@
+i18n catalogs are aligned (en=1035, ja=1035, zh=1035; _meta.version=[2])

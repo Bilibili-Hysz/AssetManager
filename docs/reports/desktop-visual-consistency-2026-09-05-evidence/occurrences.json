@@ -1,0 +1,2534 @@
+[
+  {
+    "path": "AssetsManager/app.py",
+    "line": 156,
+    "kind": "qss",
+    "source": "app.setStyleSheet(themes.stylesheet())"
+  },
+  {
+    "path": "AssetsManager/app.py",
+    "line": 163,
+    "kind": "font_point",
+    "source": "font.setPointSize(scaled_pt(base_pt))"
+  },
+  {
+    "path": "AssetsManager/core/themes.py",
+    "line": 956,
+    "kind": "qss",
+    "source": "widget.setStyleSheet(style)"
+  },
+  {
+    "path": "AssetsManager/dialogs/color_picker_dialog.py",
+    "line": 96,
+    "kind": "fixed_geometry",
+    "source": "self._preview.setFixedSize(scaled_px(32), scaled_px(32))"
+  },
+  {
+    "path": "AssetsManager/dialogs/color_picker_dialog.py",
+    "line": 177,
+    "kind": "qss",
+    "source": "self._preview.setStyleSheet(\r\n            f\"background: {self._color.name()}; border: {scaled_px(1)}px solid {themes.color('border')}; border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px;\"\r\n        )"
+  },
+  {
+    "path": "AssetsManager/dialogs/generic_settings_dialog.py",
+    "line": 35,
+    "kind": "qss",
+    "source": "msg.setStyleSheet(sk.label_css(\"body\", size=int(sk.prop(\"font_size\", \"lg\", 14))))"
+  },
+  {
+    "path": "AssetsManager/dialogs/plugin_manager_dialog.py",
+    "line": 106,
+    "kind": "fixed_geometry",
+    "source": "self._left_panel.setFixedWidth(scaled_px(360))"
+  },
+  {
+    "path": "AssetsManager/dialogs/plugin_manager_dialog.py",
+    "line": 107,
+    "kind": "qss",
+    "source": "self._left_panel.setStyleSheet(f\"background: {sk.token('header')};\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/plugin_manager_dialog.py",
+    "line": 113,
+    "kind": "qss",
+    "source": "self._title_label.setStyleSheet(\r\n            f\"font-size: {scaled_pt(int(themes.prop('font_size', 'xl')))}px; font-weight: bold; color: {themes.color('heading')}; background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/plugin_manager_dialog.py",
+    "line": 115,
+    "kind": "qss",
+    "source": "self._count_label.setStyleSheet(\r\n            f\"font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; color: {themes.color('muted')}; background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/settings_dialog.py",
+    "line": 100,
+    "kind": "fixed_geometry",
+    "source": "self._rail.setFixedWidth(scaled_px(216))"
+  },
+  {
+    "path": "AssetsManager/dialogs/settings_dialog.py",
+    "line": 179,
+    "kind": "a11y_name",
+    "source": "button.setAccessibleName(label)"
+  },
+  {
+    "path": "AssetsManager/dialogs/settings_dialog.py",
+    "line": 237,
+    "kind": "a11y_name",
+    "source": "button.setAccessibleName(text)"
+  },
+  {
+    "path": "AssetsManager/dialogs/settings_dialog.py",
+    "line": 266,
+    "kind": "fixed_geometry",
+    "source": "swatch.setFixedSize(scaled_px(12), scaled_px(12))"
+  },
+  {
+    "path": "AssetsManager/dialogs/settings_dialog.py",
+    "line": 268,
+    "kind": "qss",
+    "source": "swatch.setStyleSheet(\r\n            f\"background: {accent}; border: {scaled_px(1)}px solid {accent}; border-radius: {radius_sm}px;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/settings_dialog.py",
+    "line": 797,
+    "kind": "a11y_name",
+    "source": "self._ai_endpoint_edit.setAccessibleName(tr(\"settings.ai_endpoint\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/settings_dialog.py",
+    "line": 807,
+    "kind": "a11y_name",
+    "source": "self._ai_model_edit.setAccessibleName(tr(\"settings.ai_model\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/settings_dialog.py",
+    "line": 819,
+    "kind": "a11y_name",
+    "source": "self._ai_max_tags_spin.setAccessibleName(tr(\"settings.ai_max_tags\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/settings_dialog.py",
+    "line": 1949,
+    "kind": "fixed_geometry",
+    "source": "self._bg_browse_btn.setFixedWidth(scaled_px(60))"
+  },
+  {
+    "path": "AssetsManager/dialogs/settings_dialog.py",
+    "line": 131,
+    "kind": "a11y_name",
+    "source": "button.setAccessibleName(text)"
+  },
+  {
+    "path": "AssetsManager/dialogs/settings_dialog.py",
+    "line": 137,
+    "kind": "qss",
+    "source": "self._rail.setStyleSheet(nav)"
+  },
+  {
+    "path": "AssetsManager/dialogs/settings_dialog.py",
+    "line": 138,
+    "kind": "qss",
+    "source": "self._top_nav.setStyleSheet(nav)"
+  },
+  {
+    "path": "AssetsManager/dialogs/share_link_dialog.py",
+    "line": 128,
+    "kind": "qss",
+    "source": "self._url_label.setStyleSheet(\r\n            f\"padding: {padding_sm}px; background: {self._t['panel']}; \"\r\n            f\"border: {scaled_px(1)}px solid {self._t['border_subtle']}; border-radius: {radius_sm}px;\"\r\n        )"
+  },
+  {
+    "path": "AssetsManager/dialogs/share_qr_dialog.py",
+    "line": 50,
+    "kind": "a11y_name",
+    "source": "self._image_label.setAccessibleName(tr(\"sharing.qr.image\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_access_page.py",
+    "line": 63,
+    "kind": "qss",
+    "source": "self._admin_user_label.setStyleSheet(sk.label_css(\"heading\", bold=True))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_access_page.py",
+    "line": 66,
+    "kind": "qss",
+    "source": "role_label.setStyleSheet(sk.label_css(\"accent\", bold=True))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_access_page.py",
+    "line": 100,
+    "kind": "a11y_name",
+    "source": "self._generate_code_btn.setAccessibleName(tr(\"sharing.access.generate_invitation\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_access_page.py",
+    "line": 220,
+    "kind": "qss",
+    "source": "label.setStyleSheet(sk.label_css(\r\n                    \"accent\" if label is self._access_role_label else \"heading\",\r\n                    bold=True))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_configuration_page.py",
+    "line": 101,
+    "kind": "fixed_geometry",
+    "source": "self._configuration_nav.setFixedWidth(scaled_px(170))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_configuration_page.py",
+    "line": 231,
+    "kind": "fixed_geometry",
+    "source": "reset_btn.setFixedWidth(scaled_px(60))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_configuration_page.py",
+    "line": 399,
+    "kind": "a11y_name",
+    "source": "button.setAccessibleName(label)"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_configuration_page.py",
+    "line": 431,
+    "kind": "qss",
+    "source": "self._configuration_nav.setStyleSheet(nav_style)"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_configuration_page.py",
+    "line": 432,
+    "kind": "qss",
+    "source": "self._configuration_summary.setStyleSheet(\r\n            f\"QFrame {{ background: {sk.token('panel')}; border: {scaled_px(1)}px solid {sk.token('border_subtle')}; \"\r\n            f\"border-radius: {radius}px; }}\"\r\n        )"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_configuration_page.py",
+    "line": 114,
+    "kind": "qss",
+    "source": "heading.setStyleSheet(sk.label_css(\"heading\", size=15))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_configuration_page.py",
+    "line": 370,
+    "kind": "qss",
+    "source": "self._settings_tunnel_url.setStyleSheet(sk.label_css(\"accent\", size=13))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_endpoint_page.py",
+    "line": 64,
+    "kind": "qss",
+    "source": "frame.setStyleSheet(\r\n            f\"QFrame {{ background: {sk.token('panel')}; border: {scaled_px(1)}px solid {sk.token('border_subtle')}; \"\r\n            f\"border-radius: {sk.px(int(sk.prop('border_radius', 'md')))}px; }}\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_endpoint_page.py",
+    "line": 73,
+    "kind": "qss",
+    "source": "header.setStyleSheet(sk.label_css(\"heading\", size=13, bold=True) + \"QLabel { border: none; }\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_endpoint_page.py",
+    "line": 102,
+    "kind": "fixed_geometry",
+    "source": "self._status_icon.setFixedSize(scaled_px(12), scaled_px(12))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_endpoint_page.py",
+    "line": 103,
+    "kind": "a11y_name",
+    "source": "self._status_icon.setAccessibleName(tr(\"sharing.endpoint.status_indicator\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_endpoint_page.py",
+    "line": 106,
+    "kind": "qss",
+    "source": "self._status_label.setStyleSheet(sk.label_css(\"heading\", size=20, bold=True))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_endpoint_page.py",
+    "line": 120,
+    "kind": "qss",
+    "source": "self._url_label.setStyleSheet(sk.label_css(\"accent\", size=15))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_endpoint_page.py",
+    "line": 176,
+    "kind": "qss",
+    "source": "self._activity_list.setStyleSheet(sk.muted_css(11))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_endpoint_page.py",
+    "line": 187,
+    "kind": "qss",
+    "source": "lbl.setStyleSheet(sk.muted_css(10))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_endpoint_page.py",
+    "line": 189,
+    "kind": "qss",
+    "source": "val.setStyleSheet(sk.label_css(\"heading\", size=12, bold=True))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_endpoint_page.py",
+    "line": 208,
+    "kind": "qss",
+    "source": "frame.setStyleSheet(card_qss)"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_endpoint_page.py",
+    "line": 213,
+    "kind": "qss",
+    "source": "header.setStyleSheet(header_qss)"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_endpoint_page.py",
+    "line": 218,
+    "kind": "qss",
+    "source": "lbl.setStyleSheet(sk.muted_css(10))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_endpoint_page.py",
+    "line": 223,
+    "kind": "qss",
+    "source": "val.setStyleSheet(sk.label_css(\"heading\", size=12, bold=True))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_endpoint_page.py",
+    "line": 229,
+    "kind": "qss",
+    "source": "activity.setStyleSheet(sk.muted_css(11))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_links_page.py",
+    "line": 154,
+    "kind": "fixed_geometry",
+    "source": "copy_btn.setFixedHeight(scaled_px(24))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_links_page.py",
+    "line": 156,
+    "kind": "qss",
+    "source": "copy_btn.setStyleSheet(sk.button_css(\r\n                \"primary\", font_size_key=\"xs\",\r\n                padding_y=sk.px(int(sk.prop(\"spacing\", \"xs\"))),\r\n                padding_x=sk.px(int(sk.prop(\"spacing\", \"sm\")))))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_links_page.py",
+    "line": 165,
+    "kind": "fixed_geometry",
+    "source": "delete_btn.setFixedHeight(scaled_px(24))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_links_page.py",
+    "line": 167,
+    "kind": "qss",
+    "source": "delete_btn.setStyleSheet(sk.button_css(\r\n                \"danger\", font_size_key=\"xs\",\r\n                padding_y=sk.px(int(sk.prop(\"spacing\", \"xs\"))),\r\n                padding_x=sk.px(int(sk.prop(\"spacing\", \"sm\")))))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_links_page.py",
+    "line": 186,
+    "kind": "qss",
+    "source": "btn.setStyleSheet(\r\n                    sk.button_css(\r\n                        \"primary\",\r\n                        font_size_key=font_size_key,\r\n                        padding_y=padding_y,\r\n                        padding_x=padding_x,\r\n                    )\r\n                )"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_links_page.py",
+    "line": 195,
+    "kind": "qss",
+    "source": "btn.setStyleSheet(\r\n                    sk.button_css(\r\n                        \"danger\",\r\n                        font_size_key=font_size_key,\r\n                        padding_y=padding_y,\r\n                        padding_x=padding_x,\r\n                    )\r\n                )"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings/_ui.py",
+    "line": 37,
+    "kind": "qss",
+    "source": "table.setStyleSheet(table_style)"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+    "line": 145,
+    "kind": "qss",
+    "source": "title.setStyleSheet(sk.label_css(\"heading\", size=18, bold=True))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+    "line": 155,
+    "kind": "fixed_geometry",
+    "source": "self._nav_rail.setFixedWidth(scaled_px(216))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+    "line": 202,
+    "kind": "a11y_name",
+    "source": "button.setAccessibleName(label)"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+    "line": 251,
+    "kind": "qss",
+    "source": "self._nav_rail.setStyleSheet(nav_style)"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+    "line": 252,
+    "kind": "qss",
+    "source": "self._top_nav.setStyleSheet(nav_style)"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+    "line": 289,
+    "kind": "qss",
+    "source": "self._status_label.setStyleSheet(sk.label_css(\"heading\", size=20, bold=True))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+    "line": 290,
+    "kind": "qss",
+    "source": "self._url_label.setStyleSheet(sk.label_css(\"accent\", size=15))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+    "line": 451,
+    "kind": "qss",
+    "source": "self._status_icon.setStyleSheet(\r\n            f\"background: {color}; border-radius: {sk.px(int(sk.prop('border_radius', 'sm')))}px; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+    "line": 457,
+    "kind": "qss",
+    "source": "self._toggle_btn.setStyleSheet(self.toggle_btn_style(action in {\"stop_server\", \"stop_tunnel\"}))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+    "line": 458,
+    "kind": "qss",
+    "source": "self._status_frame.setStyleSheet(self.status_style(state in {\"local\", \"public\"}))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+    "line": 292,
+    "kind": "qss",
+    "source": "self._tunnel_url_label.setStyleSheet(\r\n                f\"font-size: {sk.pt(int(sk.prop('font_size', 'md')))}px; color: {sk.token('accent')}; \"\r\n                f\"padding: {sk.px(int(sk.prop('spacing', 'sm')))}px; background: {sk.token('panel')}; \"\r\n                f\"border: {scaled_px(1)}px solid {sk.token('border_subtle')}; \"\r\n                f\"border-radius: {sk.px(int(sk.prop('border_radius', 'sm')))}px;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+    "line": 474,
+    "kind": "qss",
+    "source": "self._exposure_label.setStyleSheet(\r\n                f\"color: {sk.token('heading')}; background: {sk.token('warning')}; \"\r\n                f\"border-radius: {sk.px(int(sk.prop('border_radius', 'sm')))}px; \"\r\n                f\"padding: {sk.px(int(sk.prop('spacing', 'xs')))}px {sk.px(int(sk.prop('spacing', 'sm')))}px;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+    "line": 1043,
+    "kind": "qss",
+    "source": "self._tunnel_btn.setStyleSheet(self.primary_btn_style())"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+    "line": 1045,
+    "kind": "qss",
+    "source": "self._tunnel_status.setStyleSheet(sk.muted_css(12))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+    "line": 1056,
+    "kind": "qss",
+    "source": "self._tunnel_status.setStyleSheet(sk.muted_css(12))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+    "line": 1134,
+    "kind": "qss",
+    "source": "self._tunnel_status.setStyleSheet(\r\n                f\"color: {sk.state_color('success')}; font-size: {sk.pt(int(sk.prop('font_size', 'sm')))}px;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+    "line": 1140,
+    "kind": "qss",
+    "source": "self._tunnel_btn.setStyleSheet(self.toggle_btn_style(True))"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+    "line": 1149,
+    "kind": "qss",
+    "source": "self._tunnel_status.setStyleSheet(\r\n                f\"color: {sk.state_color('error')}; font-size: {sk.pt(int(sk.prop('font_size', 'sm')))}px;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+    "line": 1153,
+    "kind": "qss",
+    "source": "self._tunnel_btn.setStyleSheet(self.primary_btn_style())"
+  },
+  {
+    "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+    "line": 229,
+    "kind": "a11y_name",
+    "source": "button.setAccessibleName(text)"
+  },
+  {
+    "path": "AssetsManager/dialogs/sidebar_settings_dialog.py",
+    "line": 84,
+    "kind": "qss",
+    "source": "scroll.setStyleSheet(f\"QScrollArea {{ background: {sk.token('panel')}; border: none; }}\"\n                             f\"QScrollArea > QWidget {{ background: transparent; }}\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/sidebar_settings_dialog.py",
+    "line": 87,
+    "kind": "qss",
+    "source": "branch_widget.setStyleSheet(\"background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/sidebar_settings_dialog.py",
+    "line": 115,
+    "kind": "a11y_name",
+    "source": "icon_lbl.setAccessibleName(name)"
+  },
+  {
+    "path": "AssetsManager/dialogs/sidebar_settings_dialog.py",
+    "line": 122,
+    "kind": "a11y_name",
+    "source": "lbl.setAccessibleName(name)"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 52,
+    "kind": "qss",
+    "source": "self.setStyleSheet(self._card_qss(\"detailPanel\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 61,
+    "kind": "qss",
+    "source": "self._header.setStyleSheet(\r\n            f\"font-size: {_font('xxs')}px; font-weight: bold; color: {self._t['muted']}; \"\r\n            f\"letter-spacing: {scaled_px(1)}px; padding: 0; background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 69,
+    "kind": "qss",
+    "source": "self._name.setStyleSheet(\r\n            f\"font-size: {_font('xl')}px; font-weight: bold; color: {self._t['heading']}; \"\r\n            f\"padding: 0; line-height: 1.3; background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 77,
+    "kind": "qss",
+    "source": "self._path.setStyleSheet(\r\n            f\"font-size: {_font('xs')}px; color: {self._t['muted']}; \"\r\n            f\"padding: 0; background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 114,
+    "kind": "qss",
+    "source": "self._open_btn.setStyleSheet(self._primary_btn_qss())"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 121,
+    "kind": "qss",
+    "source": "self._remove_btn.setStyleSheet(self._ghost_btn_qss())"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 138,
+    "kind": "a11y_name",
+    "source": "self._open_btn.setAccessibleName(tr(\"startup.open_btn\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 139,
+    "kind": "a11y_name",
+    "source": "self._remove_btn.setAccessibleName(tr(\"startup.remove_btn\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 144,
+    "kind": "qss",
+    "source": "self.setStyleSheet(self._card_qss(\"detailPanel\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 145,
+    "kind": "qss",
+    "source": "self._header.setStyleSheet(\r\n            f\"font-size: {_font('xxs')}px; font-weight: bold; color: {themes.color('muted')}; \"\r\n            f\"letter-spacing: {scaled_px(1)}px; padding: 0; background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 148,
+    "kind": "qss",
+    "source": "self._name.setStyleSheet(\r\n            f\"font-size: {_font('xl')}px; font-weight: bold; color: {themes.color('heading')}; \"\r\n            f\"padding: 0; line-height: 1.3; background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 151,
+    "kind": "qss",
+    "source": "self._path.setStyleSheet(\r\n            f\"font-size: {_font('xs')}px; color: {themes.color('muted')}; \"\r\n            f\"padding: 0; background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 155,
+    "kind": "qss",
+    "source": "self._open_btn.setStyleSheet(self._primary_btn_qss())"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 156,
+    "kind": "qss",
+    "source": "self._remove_btn.setStyleSheet(self._ghost_btn_qss())"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 192,
+    "kind": "qss",
+    "source": "self.setStyleSheet(self._card_qss(\"detailPanel\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 263,
+    "kind": "fixed_geometry",
+    "source": "self.setFixedHeight(scaled_px(54))"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 274,
+    "kind": "fixed_geometry",
+    "source": "self._dot.setFixedSize(scaled_px(10), scaled_px(10))"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 287,
+    "kind": "a11y_name",
+    "source": "self.setAccessibleName(name)"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 303,
+    "kind": "a11y_name",
+    "source": "self._dot.setAccessibleName(\r\n            tr(\"startup.ready\" if self._exists else \"startup.missing\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 305,
+    "kind": "qss",
+    "source": "self._dot.setStyleSheet(\r\n            f\"background: {dot_bg}; border: {scaled_px(2)}px solid {dot_fg}; \"\r\n            f\"border-radius: {radius_sm}px; padding: 0;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 309,
+    "kind": "qss",
+    "source": "self._name_label.setStyleSheet(\r\n            f\"font-size: {_font('md')}px; font-weight: bold; color: {themes.color('heading')}; \"\r\n            f\"background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 312,
+    "kind": "qss",
+    "source": "self._path_label.setStyleSheet(\r\n            f\"font-size: {_font('xs')}px; color: {themes.color('muted')}; \"\r\n            f\"background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 323,
+    "kind": "qss",
+    "source": "self.setStyleSheet(\r\n            f\"#libraryCard {{\"\r\n            f\"  background: {bg}; \"\r\n            f\"  border: {scaled_px(1)}px solid {border}; border-radius: {radius_sm}px; \"\r\n            f\"}}\"\r\n            f\"#libraryCard:hover {{\"\r\n            f\"  background: {hover_bg}; \"\r\n            f\"}}\"\r\n            f\"#libraryCard:focus {{\"\r\n            f\"  background: {alpha(themes.color('accent'), 0.12)}; \"\r\n            f\"  border: {scaled_px(1)}px solid {focus_border}; \"\r\n            f\"}}\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 396,
+    "kind": "a11y_name",
+    "source": "self.setAccessibleName(title)"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 404,
+    "kind": "qss",
+    "source": "self.setStyleSheet(\r\n            f\"#firstRunCard {{\"\r\n            f\"  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, \"\r\n            f\"    stop:0 {themes.color('panel')}, stop:1 {themes.color('base')}); \"\r\n            f\"  border: {scaled_px(1)}px solid {themes.color('border_subtle')}; \"\r\n            f\"  border-radius: {radius_md}px; \"\r\n            f\"}}\"\r\n            f\"#firstRunCard:hover {{\"\r\n            f\"  background: {hover_bg}; \"\r\n            f\"}}\"\r\n            f\"#firstRunCard:focus {{\"\r\n            f\"  border: {scaled_px(1)}px solid {focus_border}; \"\r\n            f\"}}\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 417,
+    "kind": "qss",
+    "source": "self._title_label.setStyleSheet(\r\n            f\"font-size: {_font('lg')}px; font-weight: bold; color: {themes.color('heading')}; \"\r\n            f\"background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 420,
+    "kind": "qss",
+    "source": "self._subtitle_label.setStyleSheet(\r\n            f\"font-size: {_font('sm')}px; color: {themes.color('muted')}; \"\r\n            f\"background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 515,
+    "kind": "qss",
+    "source": "self._central.setStyleSheet(f\"background: {sk.token('base')};\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 523,
+    "kind": "qss",
+    "source": "self._hero_card.setStyleSheet(\r\n            f\"#heroCard {{\"\r\n            f\"  background: qlineargradient(x1:0, y1:0, x2:1, y2:0.7, \"\r\n            f\"    stop:0 {lighten(themes.color('panel'), 1.06)}, \"\r\n            f\"    stop:0.5 {themes.color('panel')}, \"\r\n            f\"    stop:1 {themes.color('panel')}); \"\r\n            f\"  border-bottom: {scaled_px(1)}px solid {themes.color('border_subtle')}; \"\r\n            f\"}}\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 536,
+    "kind": "qss",
+    "source": "self._hero_title.setStyleSheet(\r\n            f\"font-size: {_font('xxl')}px; font-weight: bold; color: {themes.color('heading')}; \"\r\n            f\"background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 542,
+    "kind": "qss",
+    "source": "self._hero_sub.setStyleSheet(\r\n            f\"font-size: {_font('sm')}px; color: {themes.color('muted')}; \"\r\n            f\"background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 549,
+    "kind": "qss",
+    "source": "self._hero_count.setStyleSheet(\r\n            f\"font-size: {_font('caption')}px; color: {lighten(themes.color('muted'), 1.4)}; \"\r\n            f\"background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 567,
+    "kind": "qss",
+    "source": "self._list_panel.setStyleSheet(\r\n            f\"#listPanel {{\"\r\n            f\"  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, \"\r\n            f\"    stop:0 {lighten(themes.color('panel'), 1.03)}, stop:1 {themes.color('base')}); \"\r\n            f\"  border: {scaled_px(1)}px solid {themes.color('border_subtle')}; \"\r\n            f\"  border-radius: {scaled_px(int(themes.prop('border_radius', 'md')))}px; \"\r\n            f\"}}\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 582,
+    "kind": "qss",
+    "source": "self._list_header.setStyleSheet(\r\n            f\"font-size: {_font('xxs')}px; font-weight: bold; color: {themes.color('muted')}; \"\r\n            f\"letter-spacing: {scaled_px(1)}px; padding: {scaled_px(10)}px 0 {scaled_px(4)}px {scaled_px(12)}px; \"\r\n            f\"background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 589,
+    "kind": "qss",
+    "source": "self._card_container.setStyleSheet(\"background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 599,
+    "kind": "qss",
+    "source": "self._empty_state.setStyleSheet(\"background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 605,
+    "kind": "qss",
+    "source": "self._first_run_header.setStyleSheet(\r\n            f\"font-size: {_font('xxs')}px; font-weight: bold; color: {themes.color('muted')}; \"\r\n            f\"letter-spacing: {scaled_px(1)}px; padding: 0; \"\r\n            f\"background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 642,
+    "kind": "qss",
+    "source": "self._browse_btn.setStyleSheet(sk.button_css(\r\n            \"secondary\", font_size_key=\"sm\",\r\n            padding_y=scaled_px(6), padding_x=scaled_px(14)))"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 647,
+    "kind": "a11y_name",
+    "source": "self._browse_btn.setAccessibleName(tr(\"startup.browse_btn\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 681,
+    "kind": "a11y_name",
+    "source": "self._browse_btn.setAccessibleName(tr(\"startup.browse_btn\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 689,
+    "kind": "qss",
+    "source": "self._menu_bar.setStyleSheet(\r\n            f\"QMenuBar {{ background: {themes.color('header')}; color: {themes.color('heading')}; \"\r\n            f\"border-bottom: {scaled_px(1)}px solid {alpha(themes.color('border'), 0.25)}; \"\r\n            f\"padding: {scaled_px(2)}px 0; font-size: {_font('sm')}px; }}\"\r\n            f\"QMenuBar::item {{ padding: {scaled_px(4)}px {scaled_px(10)}px; border-radius: {radius_sm}px; }}\"\r\n            f\"QMenuBar::item:selected {{ background: {alpha(themes.color('accent'), 0.313)}; }}\"\r\n            f\"QMenu {{ background: {themes.color('panel')}; color: {themes.color('heading')}; \"\r\n            f\"border: {scaled_px(1)}px solid {themes.color('border')}; \"\r\n            f\"border-radius: {radius_sm}px; padding: {scaled_px(4)}px; }}\"\r\n            f\"QMenu::item {{ padding: {scaled_px(5)}px {scaled_px(28)}px {scaled_px(5)}px {scaled_px(12)}px; border-radius: {radius_sm}px; }}\"\r\n            f\"QMenu::item:selected {{ background: {themes.color('accent')}; }}\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 835,
+    "kind": "qss",
+    "source": "self._central.setStyleSheet(f\"background: {sk.token('base')};\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 839,
+    "kind": "qss",
+    "source": "self._hero_card.setStyleSheet(\r\n            f\"#heroCard {{\"\r\n            f\"  background: qlineargradient(x1:0, y1:0, x2:1, y2:0.7, \"\r\n            f\"    stop:0 {lighten(themes.color('panel'), 1.06)}, \"\r\n            f\"    stop:0.5 {themes.color('panel')}, \"\r\n            f\"    stop:1 {themes.color('panel')}); \"\r\n            f\"  border-bottom: {scaled_px(1)}px solid {themes.color('border_subtle')}; \"\r\n            f\"}}\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 849,
+    "kind": "qss",
+    "source": "self._list_panel.setStyleSheet(\r\n            f\"#listPanel {{\"\r\n            f\"  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, \"\r\n            f\"    stop:0 {lighten(themes.color('panel'), 1.03)}, stop:1 {themes.color('base')}); \"\r\n            f\"  border: {scaled_px(1)}px solid {themes.color('border_subtle')}; \"\r\n            f\"  border-radius: {scaled_px(int(themes.prop('border_radius', 'md')))}px; \"\r\n            f\"}}\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 863,
+    "kind": "qss",
+    "source": "self._first_run_header.setStyleSheet(\r\n            f\"font-size: {_font('xxs')}px; font-weight: bold; color: {themes.color('muted')}; \"\r\n            f\"letter-spacing: {scaled_px(1)}px; padding: 0; \"\r\n            f\"background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 873,
+    "kind": "qss",
+    "source": "self._hero_title.setStyleSheet(\r\n            f\"font-size: {_font('xxl')}px; font-weight: bold; color: {themes.color('heading')}; \"\r\n            f\"background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 876,
+    "kind": "qss",
+    "source": "self._hero_sub.setStyleSheet(\r\n            f\"font-size: {_font('sm')}px; color: {themes.color('muted')}; \"\r\n            f\"background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 879,
+    "kind": "qss",
+    "source": "self._hero_count.setStyleSheet(\r\n            f\"font-size: {_font('caption')}px; color: {lighten(themes.color('muted'), 1.4)}; \"\r\n            f\"background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 882,
+    "kind": "qss",
+    "source": "self._list_header.setStyleSheet(\r\n            f\"font-size: {_font('xxs')}px; font-weight: bold; color: {themes.color('muted')}; \"\r\n            f\"letter-spacing: {scaled_px(1)}px; padding: {scaled_px(10)}px 0 {scaled_px(4)}px {scaled_px(12)}px; \"\r\n            f\"background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 888,
+    "kind": "qss",
+    "source": "self._browse_btn.setStyleSheet(sk.button_css(\r\n            \"secondary\", font_size_key=\"sm\",\r\n            padding_y=scaled_px(6), padding_x=scaled_px(14)))"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 177,
+    "kind": "qss",
+    "source": "self._status.setStyleSheet(\r\n                f\"font-size: {_font('caption')}px; font-weight: bold; padding: {scaled_px(2)}px {scaled_px(8)}px; \"\r\n                f\"border-radius: {radius_sm}px; color: {themes.color('success')}; \"\r\n                f\"background: {darken(themes.color('success'), 0.25)};\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 183,
+    "kind": "qss",
+    "source": "self._status.setStyleSheet(\r\n                f\"font-size: {_font('caption')}px; font-weight: bold; padding: {scaled_px(2)}px {scaled_px(8)}px; \"\r\n                f\"border-radius: {radius_sm}px; color: {themes.color('danger')}; \"\r\n                f\"background: {darken(themes.color('danger'), 0.25)};\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/startup.py",
+    "line": 750,
+    "kind": "qss",
+    "source": "indicator.setStyleSheet(\r\n                f\"font-size: {_font('xs')}px; color: {themes.color('muted')}; \"\r\n                f\"padding: {scaled_px(4)}px {scaled_px(12)}px; background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/tabbed_dialog.py",
+    "line": 179,
+    "kind": "qss",
+    "source": "self.setStyleSheet(self._dialog_qss())"
+  },
+  {
+    "path": "AssetsManager/dialogs/tabbed_dialog.py",
+    "line": 297,
+    "kind": "duration",
+    "source": "animation.setDuration(themes.motion(\"fast\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/tabbed_dialog.py",
+    "line": 308,
+    "kind": "qss",
+    "source": "self.setStyleSheet(self._dialog_qss())"
+  },
+  {
+    "path": "AssetsManager/dialogs/tabbed_dialog.py",
+    "line": 394,
+    "kind": "qss",
+    "source": "self._tabs.setStyleSheet(self._tab_qss())"
+  },
+  {
+    "path": "AssetsManager/dialogs/tabbed_dialog.py",
+    "line": 498,
+    "kind": "qss",
+    "source": "label.setStyleSheet(self._sk.heading_css())"
+  },
+  {
+    "path": "AssetsManager/dialogs/tabbed_dialog.py",
+    "line": 504,
+    "kind": "qss",
+    "source": "label.setStyleSheet(self._sk.muted_css())"
+  },
+  {
+    "path": "AssetsManager/dialogs/tabbed_dialog.py",
+    "line": 566,
+    "kind": "a11y_name",
+    "source": "btn.setAccessibleName(tr(\"panel.settings\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/tabbed_dialog.py",
+    "line": 567,
+    "kind": "fixed_geometry",
+    "source": "btn.setFixedSize(scaled_px(themes.metrics(\"hit_area\")), scaled_px(themes.metrics(\"hit_area\")))"
+  },
+  {
+    "path": "AssetsManager/dialogs/tabbed_dialog.py",
+    "line": 569,
+    "kind": "qss",
+    "source": "btn.setStyleSheet(\r\n            f\"QPushButton {{ color: {themes.color('heading')}; padding: 0; background: transparent; \"\r\n            f\"border: {scaled_px(1)}px solid transparent; \"\r\n            f\"border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px; }}\"\r\n            f\"QPushButton:hover {{ background: {hover_bg}; }}\"\r\n            f\"QPushButton:focus {{ background: {hover_bg}; \"\r\n            f\"border: {scaled_px(1)}px solid {focus_color}; }}\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/tabbed_dialog.py",
+    "line": 599,
+    "kind": "a11y_name",
+    "source": "btn.setAccessibleName(f\"{label_text}: {tr('dialog.browse')}\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/tabbed_dialog.py",
+    "line": 601,
+    "kind": "fixed_geometry",
+    "source": "btn.setFixedWidth(scaled_px(60))"
+  },
+  {
+    "path": "AssetsManager/dialogs/tabbed_dialog.py",
+    "line": 310,
+    "kind": "qss",
+    "source": "self._tabs.setStyleSheet(self._tab_qss())"
+  },
+  {
+    "path": "AssetsManager/dialogs/tabbed_dialog.py",
+    "line": 375,
+    "kind": "qss",
+    "source": "label.setStyleSheet(sk.heading_css())"
+  },
+  {
+    "path": "AssetsManager/dialogs/tabbed_dialog.py",
+    "line": 377,
+    "kind": "qss",
+    "source": "label.setStyleSheet(sk.muted_css())"
+  },
+  {
+    "path": "AssetsManager/dialogs/tag_editor_dialog.py",
+    "line": 59,
+    "kind": "qss",
+    "source": "self._current_flow.setStyleSheet(\"background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/dialogs/tag_editor_dialog.py",
+    "line": 70,
+    "kind": "a11y_name",
+    "source": "self._add_input.setAccessibleName(tr(\"tageditor.placeholder\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/tag_editor_dialog.py",
+    "line": 88,
+    "kind": "a11y_name",
+    "source": "self._sug_filter.setAccessibleName(tr(\"tageditor.filter\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/tag_editor_dialog.py",
+    "line": 95,
+    "kind": "a11y_name",
+    "source": "self._sug_list.setAccessibleName(tr(\"tageditor.all_tags\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/tag_editor_dialog.py",
+    "line": 114,
+    "kind": "fixed_geometry",
+    "source": "self._del_progress.setFixedHeight(scaled_px(4))"
+  },
+  {
+    "path": "AssetsManager/dialogs/tag_editor_dialog.py",
+    "line": 145,
+    "kind": "a11y_name",
+    "source": "self._sug_filter.setAccessibleName(tr(\"tageditor.filter\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/tag_editor_dialog.py",
+    "line": 146,
+    "kind": "a11y_name",
+    "source": "self._sug_list.setAccessibleName(tr(\"tageditor.all_tags\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/tag_editor_dialog.py",
+    "line": 158,
+    "kind": "fixed_geometry",
+    "source": "self._del_progress.setFixedHeight(scaled_px(4))"
+  },
+  {
+    "path": "AssetsManager/dialogs/tag_editor_dialog.py",
+    "line": 128,
+    "kind": "a11y_name",
+    "source": "button.setAccessibleName(label)"
+  },
+  {
+    "path": "AssetsManager/dialogs/tag_style_dialog.py",
+    "line": 62,
+    "kind": "fixed_geometry",
+    "source": "self._color_btn.setFixedSize(scaled_px(90), scaled_px(28))"
+  },
+  {
+    "path": "AssetsManager/dialogs/tag_style_dialog.py",
+    "line": 64,
+    "kind": "a11y_name",
+    "source": "self._color_btn.setAccessibleName(tr(\"tagstyle.color\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/tag_style_dialog.py",
+    "line": 66,
+    "kind": "a11y_name",
+    "source": "self._clear_color_btn.setAccessibleName(tr(\"tagstyle.clear_color\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/tag_style_dialog.py",
+    "line": 76,
+    "kind": "a11y_name",
+    "source": "self._icon_combo.setAccessibleName(tr(\"tagstyle.icon\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/tag_style_dialog.py",
+    "line": 86,
+    "kind": "a11y_name",
+    "source": "self._category_input.setAccessibleName(tr(\"tagstyle.category\"))"
+  },
+  {
+    "path": "AssetsManager/dialogs/tag_style_dialog.py",
+    "line": 114,
+    "kind": "qss",
+    "source": "self._color_btn.setStyleSheet(\r\n            f\"QPushButton {{ background: {color or 'transparent'}; \"\r\n            f\"border: {scaled_px(1)}px solid {themes.color('border')}; border-radius: {radius_sm}px; \"\r\n            f\"color: {text}; }}\"\r\n        )"
+  },
+  {
+    "path": "AssetsManager/dock_factory.py",
+    "line": 122,
+    "kind": "qss",
+    "source": "bar.setStyleSheet(\r\n        f\"background: {themes.header_for_dock()}; \"\r\n        f\"border-bottom: {scaled_px(1)}px solid {themes.color('border_subtle')}; \"\r\n        f\"border-top: none; border-left: none; border-right: none; \"\r\n        f\"border-radius: 0; \")"
+  },
+  {
+    "path": "AssetsManager/dock_factory.py",
+    "line": 133,
+    "kind": "qss",
+    "source": "title_label.setStyleSheet(\r\n        f\"color: {themes.color('heading')}; font-size: {scaled_pt(themes.font_size('sm'))}px; \"\r\n        f\"font-weight: bold; \"\r\n        f\"background: transparent; border: none; \"\r\n        f\"padding: {spacing_xs}px {spacing_sm}px;\")"
+  },
+  {
+    "path": "AssetsManager/dock_factory.py",
+    "line": 185,
+    "kind": "a11y_name",
+    "source": "float_btn.setAccessibleName(tr(\"dock.float\"))"
+  },
+  {
+    "path": "AssetsManager/dock_factory.py",
+    "line": 186,
+    "kind": "fixed_geometry",
+    "source": "float_btn.setFixedSize(btn_size, btn_size)"
+  },
+  {
+    "path": "AssetsManager/dock_factory.py",
+    "line": 189,
+    "kind": "qss",
+    "source": "float_btn.setStyleSheet(btn_style)"
+  },
+  {
+    "path": "AssetsManager/dock_factory.py",
+    "line": 198,
+    "kind": "a11y_name",
+    "source": "close_btn.setAccessibleName(tr(\"dock.close\"))"
+  },
+  {
+    "path": "AssetsManager/dock_factory.py",
+    "line": 199,
+    "kind": "fixed_geometry",
+    "source": "close_btn.setFixedSize(btn_size, btn_size)"
+  },
+  {
+    "path": "AssetsManager/dock_factory.py",
+    "line": 202,
+    "kind": "qss",
+    "source": "close_btn.setStyleSheet(btn_style)"
+  },
+  {
+    "path": "AssetsManager/dock_factory.py",
+    "line": 169,
+    "kind": "fixed_geometry",
+    "source": "btn.setFixedSize(btn_size, btn_size)"
+  },
+  {
+    "path": "AssetsManager/dock_factory.py",
+    "line": 172,
+    "kind": "qss",
+    "source": "btn.setStyleSheet(btn_style)"
+  },
+  {
+    "path": "AssetsManager/panels/base.py",
+    "line": 56,
+    "kind": "duration",
+    "source": "self._show_anim.setDuration(themes.motion(\"normal\"))"
+  },
+  {
+    "path": "AssetsManager/panels/base.py",
+    "line": 124,
+    "kind": "a11y_name",
+    "source": "gear.setAccessibleName(tr(\"panel.settings\"))"
+  },
+  {
+    "path": "AssetsManager/panels/base.py",
+    "line": 125,
+    "kind": "fixed_geometry",
+    "source": "gear.setFixedSize(scaled_px(20), scaled_px(20))"
+  },
+  {
+    "path": "AssetsManager/panels/base.py",
+    "line": 129,
+    "kind": "qss",
+    "source": "gear.setStyleSheet(\r\n            f\"color: {themes.color('heading')}; padding: 0; background: transparent; border: none; \"\r\n            f\"border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px;\")"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_events.py",
+    "line": 290,
+    "kind": "duration",
+    "source": "anim.setDuration(duration)"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_events.py",
+    "line": 595,
+    "kind": "duration",
+    "source": "anim.setDuration(themes.motion(\"micro\"))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 112,
+    "kind": "fixed_geometry",
+    "source": "self._header.setFixedHeight(scaled_px(36))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 133,
+    "kind": "fixed_geometry",
+    "source": "self._address_container.setFixedHeight(scaled_px(28))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 143,
+    "kind": "qss",
+    "source": "self._breadcrumb.setStyleSheet(\"background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 151,
+    "kind": "fixed_geometry",
+    "source": "self._refresh_btn.setFixedSize(\r\n            scaled_px(themes.metrics(\"hit_area\")), scaled_px(themes.metrics(\"hit_area\"))\r\n        )"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 164,
+    "kind": "fixed_geometry",
+    "source": "self._search.setFixedHeight(scaled_px(28))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 165,
+    "kind": "fixed_geometry",
+    "source": "self._search.setFixedWidth(scaled_px(200))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 178,
+    "kind": "fixed_geometry",
+    "source": "self._toolbar_widget.setFixedHeight(scaled_px(32))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 188,
+    "kind": "a11y_name",
+    "source": "self._filter_combo.setAccessibleName(tr(\"filelist.filter_tooltip\"))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 206,
+    "kind": "a11y_name",
+    "source": "self._sort_combo.setAccessibleName(tr(\"filelist.sort_tooltip\"))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 223,
+    "kind": "a11y_name",
+    "source": "self._view_combo.setAccessibleName(tr(\"filelist.view_tooltip\"))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 232,
+    "kind": "a11y_name",
+    "source": "self._zoom_combo.setAccessibleName(tr(\"filelist.zoom_tooltip\"))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 261,
+    "kind": "fixed_geometry",
+    "source": "self._status_bar.setFixedHeight(scaled_px(28))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 278,
+    "kind": "fixed_geometry",
+    "source": "self._cmd_palette_btn.setFixedHeight(scaled_px(20))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 287,
+    "kind": "fixed_geometry",
+    "source": "self._view_grid_btn.setFixedSize(scaled_px(22), scaled_px(20))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 296,
+    "kind": "fixed_geometry",
+    "source": "self._view_details_btn.setFixedSize(scaled_px(22), scaled_px(20))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 378,
+    "kind": "qss",
+    "source": "self._status_bar.setStyleSheet(\r\n            f\"background: transparent; \"\r\n            f\"border-top: {scaled_px(1)}px solid {themes.color('border_subtle')};\")"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 381,
+    "kind": "qss",
+    "source": "self._status.setStyleSheet(\r\n            f\"color: {themes.color('muted')}; font-size: {scaled_pt(themes.font_size('sm'))}px; \"\r\n            f\"background: transparent; \"\r\n            f\"padding: {scaled_px(int(themes.prop('spacing', 'xs')))}px 0;\")"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 385,
+    "kind": "qss",
+    "source": "self._operation_feedback.setStyleSheet(\r\n            f\"color: {themes.color('muted')}; font-size: {scaled_pt(themes.font_size('sm'))}px; \"\r\n            f\"background: transparent; \"\r\n            f\"padding: {scaled_px(int(themes.prop('spacing', 'xs')))}px 0;\")"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 531,
+    "kind": "a11y_name",
+    "source": "self._advanced_btn.setAccessibleName(tr(\"filelist.advanced.tooltip\"))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 689,
+    "kind": "qss",
+    "source": "self._adv_title.setStyleSheet(\r\n            f\"color: {themes.color('heading')}; background: transparent; {label_font} font-weight: bold;\"\r\n        )"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 692,
+    "kind": "qss",
+    "source": "self._advanced_popup.setStyleSheet(\r\n            f\"QDialog {{ background: {themes.color('panel')}; \"\r\n            f\"border: {scaled_px(1)}px solid {themes.color('border')}; \"\r\n            f\"border-radius: {scaled_px(int(themes.prop('border_radius', 'md')))}px; }}\"\r\n            f\"QLineEdit, QSpinBox, QDateEdit {{ background: {themes.color('input_bg')}; \"\r\n            f\"color: {themes.color('input_text')}; border: {scaled_px(1)}px solid {themes.color('border')}; \"\r\n            f\"border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px; \"\r\n            f\"padding: {scaled_px(2)}px {scaled_px(6)}px; }}\"\r\n        )"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 823,
+    "kind": "a11y_name",
+    "source": "self._toolbar_toggle_btn.setAccessibleName(tip)"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 848,
+    "kind": "qss",
+    "source": "self._detail_view.setStyleSheet(\r\n            f\"QTreeView {{\"\r\n            f\"  background: {themes.color('base')}; color: {themes.color('body')}; \"\r\n            f\"  alternate-background-color: {alpha(themes.color('header'), 0.12)}; \"\r\n            f\"  selection-background-color: {alpha(themes.color('accent'), 0.20)}; \"\r\n            f\"  selection-color: {themes.color('heading')}; \"\r\n            f\"  border: none; outline: none; font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; \"\r\n            f\"}}\"\r\n            f\"QTreeView::item {{\"\r\n            f\"  padding: {scaled_px(int(themes.prop('spacing', 'xs')))}px {scaled_px(int(themes.prop('spacing', 'sm')))}px; \"\r\n            f\"  border: none; border-bottom: {scaled_px(1)}px solid {themes.color('border_subtle')}; \"\r\n            f\"}}\"\r\n            f\"QTreeView::item:alternate {{\"\r\n            f\"  background: {alpha(themes.color('header'), 0.24)}; \"\r\n            f\"}}\"\r\n            f\"QTreeView::item:hover {{\"\r\n            f\"  background: {alpha(themes.color('hover_overlay'), themes.prop('opacity', 'hover'))}; \"\r\n            f\"}}\"\r\n            f\"QTreeView::item:selected {{\"\r\n            f\"  background: {alpha(themes.color('accent'), 0.28)}; color: {themes.color('heading')}; \"\r\n            f\"  border-left: {scaled_px(2)}px solid {themes.color('accent')}; \"\r\n            f\"}}\")"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 446,
+    "kind": "qss",
+    "source": "self._header.setStyleSheet(self._header_css(t))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 448,
+    "kind": "qss",
+    "source": "self._header_title.setStyleSheet(self._header_title_css(t))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 662,
+    "kind": "a11y_name",
+    "source": "editor.setAccessibleName(editor.toolTip() or \"\")"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 688,
+    "kind": "qss",
+    "source": "label.setStyleSheet(f\"color: {label_color}; background: transparent; {label_font}\")"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_base_layout.py",
+    "line": 451,
+    "kind": "qss",
+    "source": "btn.setStyleSheet(self._nav_button_css(t))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_grid_widget.py",
+    "line": 112,
+    "kind": "font_point",
+    "source": "self._font_name.setPointSize(scaled_pt(9))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_grid_widget.py",
+    "line": 116,
+    "kind": "font_point",
+    "source": "self._font_sub.setPointSize(scaled_pt(8))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_grid_widget_data.py",
+    "line": 82,
+    "kind": "font_point",
+    "source": "self._font_name.setPointSize(scaled_pt(9))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_grid_widget_data.py",
+    "line": 86,
+    "kind": "font_point",
+    "source": "self._font_sub.setPointSize(scaled_pt(8))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_grid_widget_data.py",
+    "line": 89,
+    "kind": "font_point",
+    "source": "self._font_badge.setPointSize(scaled_pt(8))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_grid_widget_data.py",
+    "line": 108,
+    "kind": "a11y_name",
+    "source": "self.setAccessibleName(tr(\"filelist.grid.a11y.name\"))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_grid_widget_data.py",
+    "line": 758,
+    "kind": "qss",
+    "source": "self._scrollbar.setStyleSheet(\r\n            f\"QScrollBar:vertical {{ background: transparent; width:{scaled_px(6)}px; }}\"\r\n            f\"QScrollBar::handle:vertical {{ background: {themes.color('scrollbar_thumb')}; \"\r\n            f\"border-radius:{scaled_px(int(themes.prop('border_radius', 'sm')))}px; min-height:{scaled_px(24)}px; }}\"\r\n            f\"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}\")"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_grid_widget_render.py",
+    "line": 155,
+    "kind": "font_point",
+    "source": "text_font.setPointSize(scaled_pt(11))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_navigation.py",
+    "line": 323,
+    "kind": "qss",
+    "source": "dot.setStyleSheet(\r\n                f\"QPushButton {{ color: {sk.token('muted')}; font-size: {sk.pt(sk.font_size('sm'))}px; \"\r\n                f\"padding: {sk.px(2)}px {sk.px(4)}px; background: transparent; \"\r\n                f\"border: none; border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; }}\"\r\n                f\"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; color: {sk.token('heading')}; }}\")"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_navigation.py",
+    "line": 343,
+    "kind": "qss",
+    "source": "btn.setStyleSheet(\r\n                f\"QPushButton {{ color: {sk.token('heading') if current else sk.token('muted')}; \"\r\n                f\"font-size: {sk.pt(sk.font_size('sm'))}px; font-weight: {'bold' if current else 'normal'}; \"\r\n                f\"padding: {sk.px(2)}px {sk.px(6)}px; background: transparent; \"\r\n                f\"border: none; border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; }}\"\r\n                f\"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; color: {sk.token('heading')}; }}\")"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_navigation.py",
+    "line": 350,
+    "kind": "a11y_name",
+    "source": "btn.setAccessibleName(name)"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_ui_helpers.py",
+    "line": 53,
+    "kind": "fixed_geometry",
+    "source": "btn.setFixedSize(scaled_px(26), scaled_px(26))"
+  },
+  {
+    "path": "AssetsManager/panels/file_list/_ui_helpers.py",
+    "line": 55,
+    "kind": "a11y_name",
+    "source": "btn.setAccessibleName(tooltip)"
+  },
+  {
+    "path": "AssetsManager/panels/image_viewer.py",
+    "line": 877,
+    "kind": "font_point",
+    "source": "f.setPointSize(scaled_pt(11))"
+  },
+  {
+    "path": "AssetsManager/panels/image_viewer.py",
+    "line": 915,
+    "kind": "font_point",
+    "source": "f3.setPointSize(scaled_pt(9))"
+  },
+  {
+    "path": "AssetsManager/panels/image_viewer.py",
+    "line": 948,
+    "kind": "font_point",
+    "source": "f.setPointSize(scaled_pt(12))"
+  },
+  {
+    "path": "AssetsManager/panels/image_viewer.py",
+    "line": 1003,
+    "kind": "font_point",
+    "source": "title_font.setPointSize(scaled_pt(10))"
+  },
+  {
+    "path": "AssetsManager/panels/image_viewer.py",
+    "line": 1012,
+    "kind": "font_point",
+    "source": "body_font.setPointSize(scaled_pt(9))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 108,
+    "kind": "qss",
+    "source": "self._preview_host.setStyleSheet(\"background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 140,
+    "kind": "qss",
+    "source": "self._details_container.setStyleSheet(\"background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 158,
+    "kind": "qss",
+    "source": "self._details_scroll.viewport().setStyleSheet(\r\n            \"background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 162,
+    "kind": "qss",
+    "source": "details_widget.setStyleSheet(\"background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 169,
+    "kind": "qss",
+    "source": "meta.setStyleSheet(self._group_css(sk))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 175,
+    "kind": "qss",
+    "source": "self._name.setStyleSheet(\r\n            sk.label_css(\"heading\", size=14, bold=True)\r\n            + f\" QLabel {{ padding: {sk.px(2)}px 0; }}\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 205,
+    "kind": "qss",
+    "source": "self._plugin_fields_widget.setStyleSheet(\"background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 217,
+    "kind": "qss",
+    "source": "tags_grp.setStyleSheet(self._group_css(sk))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 223,
+    "kind": "qss",
+    "source": "self._tags_flow.setStyleSheet(\"background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 234,
+    "kind": "a11y_name",
+    "source": "self._add_tag_btn.setAccessibleName(tr(\"info.add_tag\"))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 236,
+    "kind": "qss",
+    "source": "self._add_tag_btn.setStyleSheet(\r\n            f\"QPushButton {{ background: transparent; color: {sk.token('muted')}; \"\r\n            f\"border: {scaled_px(1)}px dashed {sk.token('border')}; \"\r\n            f\"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; \"\r\n            f\"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; \"\r\n            f\"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}\"\r\n            f\"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; }}\"\r\n            f\"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.28)}; }}\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 249,
+    "kind": "a11y_name",
+    "source": "self._manage_btn.setAccessibleName(tr(\"info.manage_tags\"))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 251,
+    "kind": "qss",
+    "source": "self._manage_btn.setStyleSheet(\r\n            f\"QPushButton {{ background: transparent; color: {sk.token('muted')}; \"\r\n            f\"border: {scaled_px(1)}px solid {sk.token('border')}; \"\r\n            f\"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; \"\r\n            f\"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; \"\r\n            f\"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}\"\r\n            f\"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; }}\"\r\n            f\"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.28)}; }}\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 264,
+    "kind": "a11y_name",
+    "source": "self._browse_btn.setAccessibleName(tr(\"info.browse_tags\"))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 267,
+    "kind": "qss",
+    "source": "self._browse_btn.setStyleSheet(\r\n            f\"QPushButton {{ background: transparent; color: {sk.token('muted')}; \"\r\n            f\"border: {scaled_px(1)}px solid {sk.token('border')}; \"\r\n            f\"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; \"\r\n            f\"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; \"\r\n            f\"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}\"\r\n            f\"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; }}\"\r\n            f\"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.28)}; }}\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 282,
+    "kind": "a11y_name",
+    "source": "self._ai_tag_btn.setAccessibleName(tr(\"info.ai_tag\"))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 285,
+    "kind": "qss",
+    "source": "self._ai_tag_btn.setStyleSheet(\r\n            f\"QPushButton {{ background: transparent; color: {sk.token('muted')}; \"\r\n            f\"border: {scaled_px(1)}px solid {sk.token('border')}; \"\r\n            f\"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; \"\r\n            f\"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; \"\r\n            f\"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; }}\"\r\n            f\"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; }}\"\r\n            f\"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.28)}; }}\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 302,
+    "kind": "qss",
+    "source": "notes_grp.setStyleSheet(self._group_css(sk))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 319,
+    "kind": "qss",
+    "source": "act_bar.setStyleSheet(f\"background: transparent; \"\r\n                              f\"border-top: {scaled_px(1)}px solid {sk.token('border_subtle')};\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 321,
+    "kind": "fixed_geometry",
+    "source": "act_bar.setFixedHeight(scaled_px(28))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 329,
+    "kind": "a11y_name",
+    "source": "self._open_btn.setAccessibleName(tr(\"info.open\"))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 333,
+    "kind": "qss",
+    "source": "self._open_btn.setStyleSheet(sk.button_css(\r\n            \"primary\", font_size_key=\"sm\",\r\n            padding_y=sk.px(int(themes.prop(\"spacing\", \"xs\"))),\r\n            padding_x=sk.px(int(themes.prop(\"spacing\", \"md\")))))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 341,
+    "kind": "a11y_name",
+    "source": "self._copy_btn.setAccessibleName(tr(\"info.copy_path\"))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 345,
+    "kind": "qss",
+    "source": "self._copy_btn.setStyleSheet(sk.button_css(\r\n            \"secondary\", font_size_key=\"sm\",\r\n            padding_y=sk.px(int(themes.prop(\"spacing\", \"xs\"))),\r\n            padding_x=sk.px(int(themes.prop(\"spacing\", \"md\")))))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 472,
+    "kind": "qss",
+    "source": "self._preview_host.setStyleSheet(            \"background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 494,
+    "kind": "qss",
+    "source": "self._act_bar.setStyleSheet(\r\n            f\"background: transparent; border-top: {scaled_px(1)}px solid {sk.token('border')}; \"\r\n            f\"padding: {sk.px(4)}px {sk.px(8)}px;\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 499,
+    "kind": "qss",
+    "source": "self._open_btn.setStyleSheet(sk.button_css(\r\n            \"primary\", font_size_key=\"md\",\r\n            padding_y=sk.px(int(themes.prop(\"spacing\", \"xs\"))),\r\n            padding_x=sk.px(int(themes.prop(\"spacing\", \"md\")))))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 503,
+    "kind": "qss",
+    "source": "self._copy_btn.setStyleSheet(sk.button_css(\r\n            \"secondary\", font_size_key=\"sm\",\r\n            padding_y=sk.px(int(themes.prop(\"spacing\", \"xs\"))),\r\n            padding_x=sk.px(int(themes.prop(\"spacing\", \"md\")))))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 515,
+    "kind": "qss",
+    "source": "self._name.setStyleSheet(\r\n            sk.label_css(\"heading\", size=16, bold=True)\r\n            + f\" QLabel {{ border: none; padding: {sk.px(2)}px 0; }}\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 567,
+    "kind": "a11y_name",
+    "source": "self._add_tag_btn.setAccessibleName(tr(\"info.add_tag\"))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 569,
+    "kind": "a11y_name",
+    "source": "self._manage_btn.setAccessibleName(tr(\"info.manage_tags\"))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 571,
+    "kind": "a11y_name",
+    "source": "self._browse_btn.setAccessibleName(tr(\"info.browse_tags\"))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 574,
+    "kind": "a11y_name",
+    "source": "self._ai_tag_btn.setAccessibleName(tr(\"info.ai_tag\"))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 587,
+    "kind": "a11y_name",
+    "source": "self._open_btn.setAccessibleName(tr(\"info.open\"))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 592,
+    "kind": "a11y_name",
+    "source": "self._copy_btn.setAccessibleName(tr(\"info.copy_path\"))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 695,
+    "kind": "qss",
+    "source": "row.setStyleSheet(\"background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 701,
+    "kind": "qss",
+    "source": "lbl.setStyleSheet(\r\n            sk.muted_css(11)\r\n            + f\" QLabel {{ min-width: {sk.px(65)}px; }}\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 785,
+    "kind": "qss",
+    "source": "lbl.setStyleSheet(\r\n            sk.muted_css(11)\r\n            + f\" QLabel {{ min-width: {sk.px(65)}px; }}\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 794,
+    "kind": "qss",
+    "source": "val.setStyleSheet(sk.label_css(\"body\", size=12))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 815,
+    "kind": "qss",
+    "source": "lbl.setStyleSheet(\r\n            sk.muted_css(11)\r\n            + f\" QLabel {{ min-width: {sk.px(65)}px; }}\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 825,
+    "kind": "qss",
+    "source": "link.setStyleSheet(sk.label_css(\"body\", size=12))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 828,
+    "kind": "qss",
+    "source": "btn_holder.setStyleSheet(\"background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 856,
+    "kind": "a11y_name",
+    "source": "btn.setAccessibleName(tooltip)"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 857,
+    "kind": "fixed_geometry",
+    "source": "btn.setFixedSize(scaled_px(18), scaled_px(18))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 860,
+    "kind": "qss",
+    "source": "btn.setStyleSheet(\r\n            f\"QPushButton {{ color: {sk.token('muted')}; font-size: {sk.pt(sk.font_size('caption'))}px; padding: 0; \"\r\n            f\"background: transparent; border: none; \"\r\n            f\"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; }}\"\r\n            f\"QPushButton:hover {{ color: {sk.token('heading')}; background: {sk.token('accent')}; }}\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 920,
+    "kind": "a11y_name",
+    "source": "gear.setAccessibleName(tr(\"panel.settings\"))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 921,
+    "kind": "fixed_geometry",
+    "source": "gear.setFixedSize(scaled_px(20), scaled_px(20))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 1053,
+    "kind": "qss",
+    "source": "self._preview.setStyleSheet(\"\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 1065,
+    "kind": "qss",
+    "source": "self._preview.setStyleSheet(sk.muted_css(24))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 1094,
+    "kind": "qss",
+    "source": "self._preview.setStyleSheet(\"\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 1106,
+    "kind": "duration",
+    "source": "anim.setDuration(themes.motion(\"normal\"))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 1455,
+    "kind": "duration",
+    "source": "anim.setDuration(themes.motion(\"fast\"))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 1980,
+    "kind": "qss",
+    "source": "self._preview.setStyleSheet(\"background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 456,
+    "kind": "fixed_geometry",
+    "source": "self._act_bar.setFixedHeight(scaled_px(28))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 474,
+    "kind": "qss",
+    "source": "self._details_scroll.viewport().setStyleSheet(            \"background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 476,
+    "kind": "qss",
+    "source": "grp.setStyleSheet(self._group_css(sk))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 486,
+    "kind": "qss",
+    "source": "btn.setStyleSheet(\r\n                f\"QPushButton {{ background: transparent; color: {themes.color('muted')}; \"\r\n                f\"font-size: {sk.pt(int(themes.prop('font_size', 'sm')))}px; \"\r\n                f\"border: {scaled_px(1)}px {border_style} {sk.token('border')}; \"\r\n                f\"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; \"\r\n                f\"padding: {sk.px(int(themes.prop('spacing', 'xs')))}px {sk.px(int(themes.prop('spacing', 'md')))}px; }}\"\r\n                f\"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; }}\"\r\n                f\"QPushButton:pressed {{ background: {alpha(sk.token('accent'), 0.28)}; }}\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 665,
+    "kind": "a11y_name",
+    "source": "button.setAccessibleName(button.toolTip())"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 709,
+    "kind": "fixed_geometry",
+    "source": "star_btn.setFixedSize(hit, hit)"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 712,
+    "kind": "a11y_name",
+    "source": "star_btn.setAccessibleName(tr(\"info.rating_star\").format(n=i))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 746,
+    "kind": "fixed_geometry",
+    "source": "btn.setFixedSize(btn_size, btn_size)"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 872,
+    "kind": "qss",
+    "source": "btn.setStyleSheet(\r\n                f\"QPushButton {{ color: {sk.token('muted')}; font-size: {sk.pt(sk.font_size('caption'))}px; padding: 0; \"\r\n                f\"background: transparent; border: none; \"\r\n                f\"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; }}\"\r\n                f\"QPushButton:hover {{ color: {sk.token('heading')}; background: {sk.token('accent')}; }}\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 895,
+    "kind": "qss",
+    "source": "link_label.setStyleSheet(\r\n                sk.label_css(\"body\", size=12)\r\n                + \" QLabel { text-decoration: underline; }\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 903,
+    "kind": "qss",
+    "source": "link_label.setStyleSheet(sk.label_css(\"body\", size=12))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 463,
+    "kind": "fixed_geometry",
+    "source": "btn.setFixedSize(scaled_px(18), scaled_px(18))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 533,
+    "kind": "qss",
+    "source": "rating_label.setStyleSheet(\r\n                    sk.muted_css(11)\r\n                    + f\" QLabel {{ min-width: {sk.px(65)}px; }}\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 585,
+    "kind": "a11y_name",
+    "source": "btn.setAccessibleName(tr(\"info.rating_star\").format(n=i))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 651,
+    "kind": "qss",
+    "source": "w.setStyleSheet(\r\n                            sk.muted_css(11)\r\n                            + f\" QLabel {{ min-width: {sk.px(65)}px; }}\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 655,
+    "kind": "qss",
+    "source": "w.setStyleSheet(sk.label_css(\"body\", size=12))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 634,
+    "kind": "qss",
+    "source": "w.setStyleSheet(label_style)"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 636,
+    "kind": "qss",
+    "source": "w.setStyleSheet(value_style)"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 658,
+    "kind": "qss",
+    "source": "w.setStyleSheet(sk.label_css(\"body\", size=12))"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 685,
+    "kind": "qss",
+    "source": "qlabel.setStyleSheet(\r\n                                    sk.muted_css(11)\r\n                                    + f\" QLabel {{ min-width: {sk.px(65)}px; }}\")"
+  },
+  {
+    "path": "AssetsManager/panels/info.py",
+    "line": 689,
+    "kind": "qss",
+    "source": "qlabel.setStyleSheet(sk.label_css(\"body\", size=12))"
+  },
+  {
+    "path": "AssetsManager/panels/sidebar.py",
+    "line": 146,
+    "kind": "fixed_geometry",
+    "source": "self._search.setFixedHeight(scaled_px(themes.metrics(\"control_height_md\")))"
+  },
+  {
+    "path": "AssetsManager/panels/sidebar.py",
+    "line": 189,
+    "kind": "a11y_name",
+    "source": "self._expand_btn.setAccessibleName(tr(\"sidebar.expand_all\"))"
+  },
+  {
+    "path": "AssetsManager/panels/sidebar.py",
+    "line": 195,
+    "kind": "a11y_name",
+    "source": "self._collapse_btn.setAccessibleName(tr(\"sidebar.collapse_all\"))"
+  },
+  {
+    "path": "AssetsManager/panels/sidebar.py",
+    "line": 217,
+    "kind": "fixed_geometry",
+    "source": "self._status_bar.setFixedHeight(scaled_px(28))"
+  },
+  {
+    "path": "AssetsManager/panels/sidebar.py",
+    "line": 1238,
+    "kind": "a11y_name",
+    "source": "self._expand_btn.setAccessibleName(tr(\"sidebar.expand_all\"))"
+  },
+  {
+    "path": "AssetsManager/panels/sidebar.py",
+    "line": 1240,
+    "kind": "a11y_name",
+    "source": "self._collapse_btn.setAccessibleName(tr(\"sidebar.collapse_all\"))"
+  },
+  {
+    "path": "AssetsManager/panels/sidebar.py",
+    "line": 1262,
+    "kind": "qss",
+    "source": "self._tree.setStyleSheet(sk.tree_css())"
+  },
+  {
+    "path": "AssetsManager/panels/sidebar.py",
+    "line": 1281,
+    "kind": "qss",
+    "source": "self._status_bar.setStyleSheet(\r\n            f\"background: transparent; \"\r\n            f\"border-top: {scaled_px(1)}px solid {themes.color('border_subtle')};\")"
+  },
+  {
+    "path": "AssetsManager/panels/sidebar.py",
+    "line": 1284,
+    "kind": "qss",
+    "source": "self._status.setStyleSheet(\r\n            f\"color: {themes.color('muted')}; font-size: {font_size}px; background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/panels/sidebar.py",
+    "line": 1361,
+    "kind": "a11y_name",
+    "source": "gear.setAccessibleName(tr(\"sidebar_settings.title\"))"
+  },
+  {
+    "path": "AssetsManager/panels/sidebar.py",
+    "line": 1362,
+    "kind": "fixed_geometry",
+    "source": "gear.setFixedSize(scaled_px(20), scaled_px(20))"
+  },
+  {
+    "path": "AssetsManager/panels/sidebar.py",
+    "line": 201,
+    "kind": "fixed_geometry",
+    "source": "btn.setFixedSize(hit, hit)"
+  },
+  {
+    "path": "AssetsManager/panels/sidebar.py",
+    "line": 1314,
+    "kind": "fixed_geometry",
+    "source": "btn.setFixedSize(hit, hit)"
+  },
+  {
+    "path": "AssetsManager/panels/sidebar.py",
+    "line": 1317,
+    "kind": "qss",
+    "source": "btn.setStyleSheet(\r\n                f\"QPushButton {{ color: {themes.color('body')}; padding: 0; \"\r\n                f\"font-size: {font_size}px; font-weight: bold; \"\r\n                f\"background: transparent; border-radius: {radius}px; \"\r\n                f\"border: {scaled_px(1)}px solid {themes.color('border_subtle')}; }}\"\r\n                f\"QPushButton:hover {{ background: {hover}; }}\"\r\n                f\"QPushButton:pressed {{ background: {selected}; }}\")"
+  },
+  {
+    "path": "AssetsManager/panels/tag_tree.py",
+    "line": 48,
+    "kind": "fixed_geometry",
+    "source": "self._search.setFixedHeight(ctl_h)"
+  },
+  {
+    "path": "AssetsManager/panels/tag_tree.py",
+    "line": 58,
+    "kind": "fixed_geometry",
+    "source": "add_btn.setFixedHeight(ctl_h)"
+  },
+  {
+    "path": "AssetsManager/panels/tag_tree.py",
+    "line": 61,
+    "kind": "a11y_name",
+    "source": "add_btn.setAccessibleName(tr(\"tagtree.new_tag\"))"
+  },
+  {
+    "path": "AssetsManager/panels/tag_tree.py",
+    "line": 98,
+    "kind": "qss",
+    "source": "self._tree.setStyleSheet(sk.tree_css())"
+  },
+  {
+    "path": "AssetsManager/panels/tag_tree.py",
+    "line": 139,
+    "kind": "a11y_name",
+    "source": "self._add_btn.setAccessibleName(tr(\"tagtree.new_tag\"))"
+  },
+  {
+    "path": "AssetsManager/widgets/command_palette.py",
+    "line": 187,
+    "kind": "font_point",
+    "source": "title_font.setPointSize(scaled_pt(int(themes.font_size(\"sm\", 12))))"
+  },
+  {
+    "path": "AssetsManager/widgets/command_palette.py",
+    "line": 238,
+    "kind": "fixed_geometry",
+    "source": "self._card.setFixedWidth(card_w)"
+  },
+  {
+    "path": "AssetsManager/widgets/command_palette.py",
+    "line": 258,
+    "kind": "fixed_geometry",
+    "source": "search_icon.setFixedSize(scaled_px(20), scaled_px(20))"
+  },
+  {
+    "path": "AssetsManager/widgets/command_palette.py",
+    "line": 270,
+    "kind": "font_point",
+    "source": "input_font.setPointSize(scaled_pt(14))"
+  },
+  {
+    "path": "AssetsManager/widgets/command_palette.py",
+    "line": 307,
+    "kind": "font_point",
+    "source": "footer_font.setPointSize(scaled_pt(int(themes.font_size(\"xxs\", 9))))"
+  },
+  {
+    "path": "AssetsManager/widgets/command_palette.py",
+    "line": 338,
+    "kind": "qss",
+    "source": "self._card.setStyleSheet(\n            f\"QFrame#paletteCard {{ \"\n            f\"background: {card_bg}; \"\n            f\"border: {scaled_px(1)}px solid {border_color}; \"\n            f\"border-radius: {br_md}px; \"\n            f\"}} \"\n            f\"QFrame#paletteDivider {{ \"\n            f\"background: {border_color}; \"\n            f\"min-height: {scaled_px(1)}px; \"\n            f\"max-height: {scaled_px(1)}px; \"\n            f\"}} \"\n            f\"QLineEdit {{ \"\n            f\"background: transparent; \"\n            f\"border: none; \"\n            f\"color: {input_text}; \"\n            f\"selection-background-color: {themes.color('accent')}; \"\n            f\"}} \"\n            f\"QListWidget {{ \"\n            f\"background: transparent; \"\n            f\"border: none; \"\n            f\"outline: none; \"\n            f\"}} \"\n            f\"QFrame#paletteFooter {{ \"\n            f\"border-top: {scaled_px(1)}px solid {border_color}; \"\n            f\"background: transparent; \"\n            f\"}} \"\n            f\"QLabel#paletteHint {{ \"\n            f\"color: {muted_color}; \"\n            f\"}}\"\n        )"
+  },
+  {
+    "path": "AssetsManager/widgets/command_palette.py",
+    "line": 88,
+    "kind": "font_point",
+    "source": "font.setPointSize(scaled_pt(int(themes.font_size(\"caption\", 10))))"
+  },
+  {
+    "path": "AssetsManager/widgets/command_palette.py",
+    "line": 138,
+    "kind": "font_point",
+    "source": "badge_font.setPointSize(scaled_pt(int(themes.font_size(\"xxs\", 9))))"
+  },
+  {
+    "path": "AssetsManager/widgets/command_palette.py",
+    "line": 169,
+    "kind": "font_point",
+    "source": "desc_font.setPointSize(scaled_pt(int(themes.font_size(\"caption\", 10))))"
+  },
+  {
+    "path": "AssetsManager/widgets/dominant_palette_strip.py",
+    "line": 113,
+    "kind": "qss",
+    "source": "self.setStyleSheet(\n            f\"#dominantPaletteStrip {{\"\n            f\"  background: {themes.alpha(t['panel'], 0.5)}; \"\n            f\"  border: {scaled_px(1)}px solid {t['border_subtle']}; \"\n            f\"  border-radius: {r_md}px; \"\n            f\"}}\"\n            f\"#dominantPaletteLabel {{\"\n            f\"  color: {t['muted']}; \"\n            f\"  font-size: {font_sm}px; \"\n            f\"  font-weight: bold; \"\n            f\"  background: transparent; \"\n            f\"  border: none; \"\n            f\"}}\"\n        )"
+  },
+  {
+    "path": "AssetsManager/widgets/dominant_palette_strip.py",
+    "line": 79,
+    "kind": "fixed_geometry",
+    "source": "btn.setFixedHeight(h)"
+  },
+  {
+    "path": "AssetsManager/widgets/dominant_palette_strip.py",
+    "line": 81,
+    "kind": "a11y_name",
+    "source": "btn.setAccessibleName(f\"Color {hex_code}\")"
+  },
+  {
+    "path": "AssetsManager/widgets/dominant_palette_strip.py",
+    "line": 88,
+    "kind": "qss",
+    "source": "btn.setStyleSheet(\n                f\"QPushButton {{\"\n                f\"  background: {hex_code}; \"\n                f\"  border: {scaled_px(1)}px solid {border_subtle}; \"\n                f\"  border-radius: {r_sm}px; \"\n                f\"}}\"\n                f\"QPushButton:hover {{\"\n                f\"  border: {scaled_px(2)}px solid {themes.color('accent')}; \"\n                f\"}}\"\n            )"
+  },
+  {
+    "path": "AssetsManager/widgets/empty_state.py",
+    "line": 152,
+    "kind": "qss",
+    "source": "self._title_label.setStyleSheet(sk.label_css(title_color, size=16, bold=True))"
+  },
+  {
+    "path": "AssetsManager/widgets/empty_state.py",
+    "line": 157,
+    "kind": "qss",
+    "source": "self._subtitle_label.setStyleSheet(sk.muted_css(12))"
+  },
+  {
+    "path": "AssetsManager/widgets/hsv_wheel.py",
+    "line": 173,
+    "kind": "fixed_geometry",
+    "source": "self.setFixedWidth(scaled_px(24))"
+  },
+  {
+    "path": "AssetsManager/widgets/lan_sharing.py",
+    "line": 345,
+    "kind": "a11y_name",
+    "source": "self._share_toggle_btn.setAccessibleName(self._share_toggle_btn.toolTip())"
+  },
+  {
+    "path": "AssetsManager/widgets/lan_sharing.py",
+    "line": 322,
+    "kind": "qss",
+    "source": "self._share_status_label.setStyleSheet(\r\n                    f\"color: {themes.color('accent')}; padding: 0 {scaled_px(8)}px;\"\r\n                )"
+  },
+  {
+    "path": "AssetsManager/widgets/lan_sharing.py",
+    "line": 328,
+    "kind": "qss",
+    "source": "self._share_status_label.setStyleSheet(\r\n                    f\"color: {themes.color('muted')}; padding: 0 {scaled_px(8)}px;\"\r\n                )"
+  },
+  {
+    "path": "AssetsManager/widgets/micro_tab_bar.py",
+    "line": 100,
+    "kind": "duration",
+    "source": "self._indicator_anim.setDuration(themes.motion(\"normal\"))"
+  },
+  {
+    "path": "AssetsManager/widgets/micro_tab_bar.py",
+    "line": 210,
+    "kind": "a11y_name",
+    "source": "self._buttons[index].setAccessibleName(f\"Tab: {text}\")"
+  },
+  {
+    "path": "AssetsManager/widgets/micro_tab_bar.py",
+    "line": 315,
+    "kind": "a11y_name",
+    "source": "btn.setAccessibleName(f\"Tab: {title}\")"
+  },
+  {
+    "path": "AssetsManager/widgets/micro_tab_bar.py",
+    "line": 419,
+    "kind": "qss",
+    "source": "btn.setStyleSheet(button_qss)"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 86,
+    "kind": "a11y_name",
+    "source": "self._toggle.setAccessibleName(tr(\"plugins.toggle\", default=\"Toggle Enabled\"))"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 94,
+    "kind": "fixed_geometry",
+    "source": "self.setFixedHeight(scaled_px(72))"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 101,
+    "kind": "fixed_geometry",
+    "source": "self._status_dot.setFixedSize(scaled_px(10), scaled_px(10))"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 102,
+    "kind": "qss",
+    "source": "self._name_label.setStyleSheet(\n            f\"font-size: {scaled_pt(int(themes.prop('font_size', 'md')))}px; font-weight: bold; color: {themes.color('heading')}; background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 104,
+    "kind": "qss",
+    "source": "self._desc_label.setStyleSheet(\n            f\"font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; color: {themes.color('muted')}; background: transparent; border: none;\")"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 106,
+    "kind": "qss",
+    "source": "self._version_label.setStyleSheet(\n            f\"font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; color: {themes.color('muted')}; background: {themes.color('header')}; \"\n            f\"border: {scaled_px(1)}px solid {themes.color('border_subtle') or alpha(themes.color('border'), 0.5)}; border-radius: {br_sm}px; \"\n            f\"padding: {sp_xs}px {scaled_px(int(themes.prop('spacing', 'sm')))}px;\")"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 110,
+    "kind": "fixed_geometry",
+    "source": "self._toggle.setFixedSize(scaled_px(44), scaled_px(24))"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 127,
+    "kind": "qss",
+    "source": "self._status_dot.setStyleSheet(\n            f\"background: {color}; border-radius: {scaled_px(int(themes.prop('border_radius', 'sm')))}px; border: none;\"\n        )"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 133,
+    "kind": "qss",
+    "source": "self._toggle.setStyleSheet(sk.switch_css())"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 134,
+    "kind": "a11y_name",
+    "source": "self._toggle.setAccessibleName(\n            f\"{self._name} — {tr('plugins.disable' if self._toggle.isChecked() else 'plugins.enable', default='Toggle Enabled')}\"\n        )"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 233,
+    "kind": "a11y_name",
+    "source": "self._toggle_btn.setAccessibleName(tr(\"plugins.toggle\", default=\"Toggle Enabled\"))"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 253,
+    "kind": "qss",
+    "source": "self._name_label.setStyleSheet(sk.label_css(\"heading\", size=18, bold=True))"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 254,
+    "kind": "qss",
+    "source": "self._separator.setStyleSheet(f\"color: {sk.token('border_subtle')};\")"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 255,
+    "kind": "qss",
+    "source": "self._desc_label.setStyleSheet(sk.label_css(\"body\", size=12))"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 257,
+    "kind": "qss",
+    "source": "self._diag_label.setStyleSheet(\n            f\"font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; color: {danger}; background: {alpha(danger, 0.08)}; \"\n            f\"border: {scaled_px(1)}px solid {alpha(danger, 0.19)}; border-radius: {br_sm}px; padding: {sp_sm}px;\")"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 260,
+    "kind": "qss",
+    "source": "self._toggle_btn.setStyleSheet(\n            sk.button_css(\"primary\", font_size_key=\"sm\",\n                          padding_y=sp_sm, padding_x=sp_lg))"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 293,
+    "kind": "qss",
+    "source": "self._status_badge.setStyleSheet(\n            f\"font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; font-weight: bold; color: {themes.color('on_accent')}; \"\n            f\"background: {badge_color}; border-radius: {br_sm}px; \"\n            f\"padding: {sp_xs}px {scaled_px(int(themes.prop('spacing', 'sm')))}px;\"\n        )"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 341,
+    "kind": "qss",
+    "source": "lbl.setStyleSheet(\n            f\"font-size: {fs_sm}px; font-weight: bold; color: {themes.color('muted')}; \"\n            f\"background: transparent; border: none; min-width: {scaled_px(80)}px;\"\n        )"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 348,
+    "kind": "qss",
+    "source": "val.setStyleSheet(\n            f\"font-size: {fs_sm}px; color: {themes.color('heading')}; background: transparent; border: none;\"\n        )"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 356,
+    "kind": "qss",
+    "source": "container.setStyleSheet(\"background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 377,
+    "kind": "a11y_name",
+    "source": "self._toggle_btn.setAccessibleName(label)"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 143,
+    "kind": "qss",
+    "source": "self.setStyleSheet(\n                f\"PluginCard {{ background: {alpha(themes.color('accent'), 0.13)}; border: {scaled_px(1)}px solid {themes.color('accent')}; \"\n                f\"border-radius: {br_md}px; }}\"\n            )"
+  },
+  {
+    "path": "AssetsManager/widgets/plugin_ui.py",
+    "line": 148,
+    "kind": "qss",
+    "source": "self.setStyleSheet(\n                f\"PluginCard {{ background: {themes.color('panel')}; border: {scaled_px(1)}px solid {border_subtle}; \"\n                f\"border-radius: {br_md}px; }}\"\n                f\"PluginCard:hover {{ border-color: {alpha(themes.color('accent'), 0.5)}; background: {hover_bg}; }}\"\n            )"
+  },
+  {
+    "path": "AssetsManager/widgets/quick_look_overlay.py",
+    "line": 255,
+    "kind": "fixed_geometry",
+    "source": "self._header_icon.setFixedSize(\n            scaled_px(themes.metrics(\"icon_sm\")), scaled_px(themes.metrics(\"icon_sm\"))\n        )"
+  },
+  {
+    "path": "AssetsManager/widgets/quick_look_overlay.py",
+    "line": 280,
+    "kind": "fixed_geometry",
+    "source": "self._close_btn.setFixedSize(hit_area, hit_area)"
+  },
+  {
+    "path": "AssetsManager/widgets/quick_look_overlay.py",
+    "line": 310,
+    "kind": "fixed_geometry",
+    "source": "self._prev_btn.setFixedSize(nav_btn_size, nav_btn_size)"
+  },
+  {
+    "path": "AssetsManager/widgets/quick_look_overlay.py",
+    "line": 321,
+    "kind": "fixed_geometry",
+    "source": "self._next_btn.setFixedSize(nav_btn_size, nav_btn_size)"
+  },
+  {
+    "path": "AssetsManager/widgets/quick_look_overlay.py",
+    "line": 407,
+    "kind": "qss",
+    "source": "self.setStyleSheet(\n            f\"\"\"\n            #quickLookCard {{\n                background: {card_bg};\n                border: {border_width}px solid {card_border};\n                border-radius: {radius_lg}px;\n            }}\n            #quickLookHeader {{\n                background: {header_bg};\n                border-bottom: {border_width}px solid {card_border};\n                border-top-left-radius: {radius_lg}px;\n                border-top-right-radius: {radius_lg}px;\n            }}\n            #quickLookFooter {{\n                background: {footer_bg};\n                border-top: {border_width}px solid {card_border};\n                border-bottom-left-radius: {radius_lg}px;\n                border-bottom-right-radius: {radius_lg}px;\n            }}\n            #quickLookCanvasArea {{\n                background: {canvas_bg};\n            }}\n            #quickLookTitle {{\n                color: {color_heading};\n                font-size: {fs_md}px;\n                font-weight: bold;\n            }}\n            #quickLookSpecPill {{\n                background: {pill_bg};\n                color: {color_accent};\n                border: {border_width}px solid {pill_border};\n                border-radius: {radius_xs}px;\n                padding: {pad_y_xs}px {pad_x_xs}px;\n                font-size: {fs_xs}px;\n                font-family: monospace;\n                font-weight: bold;\n            }}\n            #quickLookIndex {{\n                color: {color_muted};\n                font-size: {fs_sm}px;\n                font-family: monospace;\n            }}\n            #quickLookNavBtn {{\n                background: {nav_btn_bg};\n                border: {border_width}px solid {card_border};\n                border-radius: {nav_btn_radius}px;\n            }}\n            #quickLookNavBtn:hover {{\n                background: {nav_btn_hover_bg};\n                border-color: {card_border_hover};\n            }}\n            #quickLookKbd {{\n                background: {kbd_bg};\n                color: {color_heading};\n                border-radius: {radius_xs}px;\n                padding: {pad_y_xxs}px {pad_x_xs}px;\n                font-size: {fs_xs}px;\n                font-family: monospace;\n            }}\n            #quickLookFooterText {{\n                color: {color_muted};\n                font-size: {fs_sm}px;\n            }}\n            \"\"\"\n        )"
+  },
+  {
+    "path": "AssetsManager/widgets/quick_look_overlay.py",
+    "line": 556,
+    "kind": "a11y_name",
+    "source": "self.setAccessibleName(f\"QuickLook: {name}\")"
+  },
+  {
+    "path": "AssetsManager/widgets/quick_tagger_overlay.py",
+    "line": 87,
+    "kind": "fixed_geometry",
+    "source": "self._card.setFixedWidth(scaled_px(440))"
+  },
+  {
+    "path": "AssetsManager/widgets/quick_tagger_overlay.py",
+    "line": 92,
+    "kind": "qss",
+    "source": "self._card.setStyleSheet(\n            f\"#quickTaggerCard {{\"\n            f\"  background: {panel_bg}; \"\n            f\"  border: {scaled_px(1)}px solid {border_clr}; \"\n            f\"  border-radius: {r_md}px; \"\n            f\"}}\"\n            f\"#quickTaggerCard QLabel#taggerTitle {{\"\n            f\"  color: {themes.color('heading')}; font-size: {scaled_pt(themes.font_size('md'))}px; \"\n            f\"  font-weight: bold; background: transparent; border: none;\"\n            f\"}}\"\n            f\"#quickTaggerCard QLabel#taggerCount {{\"\n            f\"  color: {themes.color('muted')}; font-size: {scaled_pt(themes.font_size('xs'))}px; \"\n            f\"  background: {themes.color('input_bg')}; border: {scaled_px(1)}px solid {border_clr}; \"\n            f\"  border-radius: {scaled_px(4)}px; padding: {scaled_px(2)}px {scaled_px(6)}px;\"\n            f\"}}\"\n            f\"#quickTaggerCard QLabel#taggerTarget {{\"\n            f\"  color: {themes.color('body')}; font-size: {scaled_pt(themes.font_size('sm'))}px; \"\n            f\"  background: transparent; border: none;\"\n            f\"}}\"\n            f\"#quickTaggerCard QLineEdit {{\"\n            f\"  background: {themes.color('input_bg')}; color: {themes.color('heading')}; \"\n            f\"  border: {scaled_px(1)}px solid {themes.color('border')}; border-radius: {input_r}px; \"\n            f\"  padding: 0 {scaled_px(10)}px; font-size: {scaled_pt(themes.font_size('sm'))}px; \"\n            f\"}}\"\n            f\"#quickTaggerCard QLineEdit:focus {{ border: {scaled_px(1)}px solid {themes.color('border_focus')}; }}\"\n            f\"#quickTaggerCard QLabel#taggerFooter {{\"\n            f\"  color: {themes.color('muted')}; font-size: {scaled_pt(themes.font_size('xxs'))}px; \"\n            f\"  background: transparent; border: none;\"\n            f\"}}\"\n        )"
+  },
+  {
+    "path": "AssetsManager/widgets/quick_tagger_overlay.py",
+    "line": 148,
+    "kind": "fixed_geometry",
+    "source": "close_btn.setFixedSize(scaled_px(22), scaled_px(22))"
+  },
+  {
+    "path": "AssetsManager/widgets/quick_tagger_overlay.py",
+    "line": 173,
+    "kind": "fixed_geometry",
+    "source": "self._input.setFixedHeight(scaled_px(themes.metrics(\"control_height_md\")))"
+  },
+  {
+    "path": "AssetsManager/widgets/stylekit.py",
+    "line": 547,
+    "kind": "qss",
+    "source": "label.setStyleSheet(self.heading_css())"
+  },
+  {
+    "path": "AssetsManager/widgets/stylekit.py",
+    "line": 553,
+    "kind": "qss",
+    "source": "label.setStyleSheet(self.muted_css())"
+  },
+  {
+    "path": "AssetsManager/widgets/stylekit.py",
+    "line": 564,
+    "kind": "qss",
+    "source": "badge.setStyleSheet(\r\n            f\"background: {self._alpha(color_key, 0.13)}; \"\r\n            f\"border: 1px solid {self._alpha(color_key, 0.38)}; \"\r\n            f\"border-radius: {self.px(int(self.prop('border_radius', 'md', 10)))}px; \"\r\n            f\"padding: {self.px(int(self.prop('spacing', 'xs', 4)))}px {self.px(int(self.prop('spacing', 'sm', 8)))}px;\")"
+  },
+  {
+    "path": "AssetsManager/widgets/stylekit.py",
+    "line": 576,
+    "kind": "qss",
+    "source": "text.setStyleSheet(\r\n            f\"color: {color}; font-size: {self.pt(11)}px; font-weight: bold; \"\r\n            f\"background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/widgets/tag_chip.py",
+    "line": 78,
+    "kind": "a11y_name",
+    "source": "chip.setAccessibleName(f\"Tag: {tag}\")"
+  },
+  {
+    "path": "AssetsManager/widgets/tag_chip.py",
+    "line": 83,
+    "kind": "qss",
+    "source": "chip.setStyleSheet(\r\n        f\"QWidget#TagChip {{ background: {background}; \"\r\n        f\"border: {scaled_px(1)}px solid transparent; \"\r\n        f\"border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; }}\"\r\n        f\"QWidget#TagChip:hover {{ border-color: {label_color}; background: {hover_background}; }}\"\r\n        f\"QWidget#TagChip:focus {{ border: {scaled_px(1)}px solid {label_color}; }}\")"
+  },
+  {
+    "path": "AssetsManager/widgets/tag_chip.py",
+    "line": 95,
+    "kind": "qss",
+    "source": "name.setStyleSheet(\r\n        f\"color: {label_color}; font-size: {scaled_pt(themes.font_size('caption'))}px; \"\r\n        \"background: transparent;\")"
+  },
+  {
+    "path": "AssetsManager/widgets/tag_chip.py",
+    "line": 106,
+    "kind": "a11y_name",
+    "source": "close_btn.setAccessibleName(f\"Remove tag: {tag}\")"
+  },
+  {
+    "path": "AssetsManager/widgets/tag_chip.py",
+    "line": 110,
+    "kind": "fixed_geometry",
+    "source": "close_btn.setFixedSize(scaled_px(20), scaled_px(20))"
+  },
+  {
+    "path": "AssetsManager/widgets/tag_chip.py",
+    "line": 113,
+    "kind": "qss",
+    "source": "close_btn.setStyleSheet(\r\n            f\"QPushButton#TagChipClose {{ color: {label_color}; padding: 0; \"\r\n            f\"background: transparent; border: {scaled_px(1)}px solid transparent; \"\r\n            f\"border-radius: {scaled_px(max(2, int(themes.prop('border_radius', 'sm')) // 2))}px; }}\"\r\n            f\"QPushButton#TagChipClose:hover {{ border-color: {label_color}; }}\"\r\n            f\"QPushButton#TagChipClose:focus {{ border: {scaled_px(1)}px solid {label_color}; \"\r\n            f\"background: {background}; }}\")"
+  },
+  {
+    "path": "AssetsManager/widgets/theme_preview.py",
+    "line": 454,
+    "kind": "qss",
+    "source": "widget.setStyleSheet(qss)"
+  },
+  {
+    "path": "AssetsManager/widgets/theme_preview.py",
+    "line": 313,
+    "kind": "fixed_geometry",
+    "source": "swatch.setFixedSize(scaled_px(32), scaled_px(32))"
+  },
+  {
+    "path": "AssetsManager/widgets/theme_preview.py",
+    "line": 341,
+    "kind": "qss",
+    "source": "swatch.setStyleSheet(\r\n                f\"background: {color_hex}; border: {scaled_px(1)}px solid {themes.color('border')}; border-radius: {radius_sm}px;\"\r\n            )"
+  },
+  {
+    "path": "AssetsManager/widgets/toast.py",
+    "line": 52,
+    "kind": "a11y_name",
+    "source": "self.setAccessibleName(message)"
+  },
+  {
+    "path": "AssetsManager/widgets/toast.py",
+    "line": 66,
+    "kind": "fixed_geometry",
+    "source": "border_bar.setFixedWidth(px(4))"
+  },
+  {
+    "path": "AssetsManager/widgets/toast.py",
+    "line": 67,
+    "kind": "qss",
+    "source": "border_bar.setStyleSheet(\r\n            f\"background: {border_color}; \"\r\n            f\"border-top-left-radius: {radius_sm}px; border-bottom-left-radius: {radius_sm}px;\"\r\n        )"
+  },
+  {
+    "path": "AssetsManager/widgets/toast.py",
+    "line": 88,
+    "kind": "qss",
+    "source": "msg_label.setStyleSheet(sk.label_css(\"heading\", size=12))"
+  },
+  {
+    "path": "AssetsManager/widgets/toast.py",
+    "line": 115,
+    "kind": "qss",
+    "source": "body.setStyleSheet(\r\n            f\"background: {sk.token('panel')}; border: {scaled_px(1)}px solid {sk.token('border')}; \"\r\n            f\"border-left: none; border-radius: 0 {radius_sm}px {radius_sm}px 0;\")"
+  },
+  {
+    "path": "AssetsManager/widgets/toast.py",
+    "line": 148,
+    "kind": "qss",
+    "source": "self.setStyleSheet(\r\n            f\"background: transparent; border-radius: {radius_sm}px;\")"
+  },
+  {
+    "path": "AssetsManager/widgets/toast.py",
+    "line": 158,
+    "kind": "duration",
+    "source": "self._fade_in_anim.setDuration(themes.motion(\"fast\"))"
+  },
+  {
+    "path": "AssetsManager/widgets/toast.py",
+    "line": 164,
+    "kind": "duration",
+    "source": "self._fade_out_anim.setDuration(themes.motion(\"slow\"))"
+  },
+  {
+    "path": "AssetsManager/widgets/toast.py",
+    "line": 80,
+    "kind": "qss",
+    "source": "icon_label.setStyleSheet(\r\n                f\"background: transparent; padding-right: {scaled_px(4)}px;\")"
+  },
+  {
+    "path": "AssetsManager/widgets/toast.py",
+    "line": 82,
+    "kind": "fixed_geometry",
+    "source": "icon_label.setFixedWidth(px(20))"
+  },
+  {
+    "path": "AssetsManager/widgets/toast.py",
+    "line": 95,
+    "kind": "qss",
+    "source": "sub_label.setStyleSheet(sk.muted_css(11))"
+  },
+  {
+    "path": "AssetsManager/widgets/tray.py",
+    "line": 73,
+    "kind": "font_pixel",
+    "source": "font.setPixelSize(20)"
+  },
+  {
+    "path": "AssetsManager/widgets/workspace_bar.py",
+    "line": 55,
+    "kind": "duration",
+    "source": "self._indicator_anim.setDuration(themes.motion(\"normal\"))"
+  },
+  {
+    "path": "AssetsManager/widgets/workspace_bar.py",
+    "line": 59,
+    "kind": "duration",
+    "source": "self._indicator_width_anim.setDuration(themes.motion(\"normal\"))"
+  },
+  {
+    "path": "AssetsManager/widgets/workspace_bar.py",
+    "line": 104,
+    "kind": "qss",
+    "source": "self.setStyleSheet(\r\n            f\"QTabBar {{ background: transparent; }}\"\r\n            f\"QTabBar::tab {{ \"\r\n            f\"  background: transparent; color: {themes.color('muted')}; \"\r\n            f\"  border: {scaled_px(1)}px solid transparent; \"\r\n            f\"  border-top-left-radius: {radius_md}px; border-top-right-radius: {radius_md}px; \"\r\n            f\"  padding: {scaled_px(2)}px {spacing_sm}px; margin-right: {scaled_px(1)}px; \"\r\n            f\"  font-size: {font_caption}px; min-width: {scaled_px(22)}px; max-width: {scaled_px(140)}px;\"\r\n            f\"}} \"\r\n            f\"QTabBar::tab:selected {{ \"\r\n            f\"  color: {themes.color('heading')}; \"\r\n            f\"  background: {alpha(themes.color('accent'), 0.18)}; \"\r\n            f\"  border: {scaled_px(1)}px solid {alpha(themes.color('accent'), 0.40)}; \"\r\n            f\"}} \"\r\n            f\"QTabBar::tab:hover:!selected {{ \"\r\n            f\"  color: {themes.color('body')}; \"\r\n            f\"  background: {hover}; \"\r\n            f\"  border: {scaled_px(1)}px solid {themes.color('border_subtle')}; \"\r\n            f\"}} \"\r\n            f\"QTabBar::tab:pressed:!selected {{ \"\r\n            f\"  color: {themes.color('heading')}; \"\r\n            f\"  background: {pressed}; \"\r\n            f\"  border: {scaled_px(1)}px solid {themes.color('border_subtle')}; \"\r\n            f\"}} \"\r\n            f\"QTabBar::close-button {{ \"\r\n            f\"  background: transparent;\"\r\n            f\"  margin: 0px; padding: 0px;\"\r\n            f\"}} \"\r\n            f\"QTabBar::close-button:hover {{ \"\r\n            f\"  background: {alpha(themes.color('accent'), 0.375)}; border-radius: {radius_sm}px;\"\r\n            f\"}} \"\r\n            f\"QTabBar QToolButton {{ \"\r\n            f\"  color: {themes.color('muted')}; background: transparent; border: none;\"\r\n            f\"}} \"\r\n            f\"QTabBar QToolButton:hover {{ \"\r\n            f\"  color: {themes.color('heading')}; background: {hover}; border-radius: {radius_sm}px;\"\r\n            f\"}} \"\r\n            f\"QTabBar QToolButton:pressed {{ \"\r\n            f\"  color: {themes.color('heading')}; background: {pressed}; border-radius: {radius_sm}px;\"\r\n            f\"}} \"\r\n        )"
+  },
+  {
+    "path": "AssetsManager/widgets/workspace_bar.py",
+    "line": 349,
+    "kind": "fixed_geometry",
+    "source": "self._sep.setFixedWidth(scaled_px(1))"
+  },
+  {
+    "path": "AssetsManager/widgets/workspace_bar.py",
+    "line": 366,
+    "kind": "fixed_geometry",
+    "source": "self._add_btn.setFixedSize(scaled_px(themes.metrics(\"hit_area\")), scaled_px(themes.metrics(\"hit_area\")))"
+  },
+  {
+    "path": "AssetsManager/widgets/workspace_bar.py",
+    "line": 369,
+    "kind": "a11y_name",
+    "source": "self._add_btn.setAccessibleName(tr(\"workspace.add_library\"))"
+  },
+  {
+    "path": "AssetsManager/widgets/workspace_bar.py",
+    "line": 379,
+    "kind": "qss",
+    "source": "self._sep.setStyleSheet(\r\n            f\"QFrame {{ color: {themes.color('border_subtle')}; background: {themes.color('border_subtle')}; }}\")"
+  },
+  {
+    "path": "AssetsManager/widgets/workspace_bar.py",
+    "line": 384,
+    "kind": "qss",
+    "source": "self._add_btn.setStyleSheet(\r\n            f\"QPushButton {{ background: {alpha(themes.color('accent'), 0.753)}; color: {themes.color('heading')}; \"\r\n            f\"border: {scaled_px(1)}px solid {themes.color('accent')}; border-radius: {radius_md}px; }} \"\r\n            f\"QPushButton:hover {{ background: {themes.color('accent')}; color: {themes.color('on_accent')}; \"\r\n            f\"border: {scaled_px(1)}px solid {themes.color('accent')}; }} \"\r\n            f\"QPushButton:pressed {{ background: {pressed}; color: {themes.color('on_accent')}; \"\r\n            f\"border: {scaled_px(1)}px solid {themes.color('accent')}; }} \")"
+  },
+  {
+    "path": "AssetsManager/widgets/workspace_bar.py",
+    "line": 306,
+    "kind": "qss",
+    "source": "editor.setStyleSheet(self._renamer_style)"
+  },
+  {
+    "path": "AssetsManager/window.py",
+    "line": 672,
+    "kind": "a11y_name",
+    "source": "self._share_toggle_btn.setAccessibleName(tr(\"sharing.toggle_tooltip\"))"
+  },
+  {
+    "path": "AssetsManager/window.py",
+    "line": 673,
+    "kind": "fixed_geometry",
+    "source": "self._share_toggle_btn.setFixedSize(scaled_px(28), scaled_px(28))"
+  },
+  {
+    "path": "AssetsManager/window.py",
+    "line": 678,
+    "kind": "qss",
+    "source": "self._share_toggle_btn.setStyleSheet(\r\n            f\"QPushButton {{ background: transparent; border: none; }}\"\r\n            f\"QPushButton:hover {{ background: {btn_hover}; border-radius: {btn_radius}px; }}\"\r\n            f\"QPushButton:pressed {{ background: {alpha(themes.get()['accent'], 0.18)}; border-radius: {btn_radius}px; }}\"\r\n        )"
+  },
+  {
+    "path": "AssetsManager/window.py",
+    "line": 738,
+    "kind": "qss",
+    "source": "self._share_status_label.setStyleSheet(f\"color: {themes.color('muted')}; padding: 0 {scaled_px(8)}px;\")"
+  },
+  {
+    "path": "AssetsManager/window.py",
+    "line": 754,
+    "kind": "qss",
+    "source": "status_bar.setStyleSheet(sk.status_bar_css())"
+  },
+  {
+    "path": "AssetsManager/window.py",
+    "line": 881,
+    "kind": "fixed_geometry",
+    "source": "self._workspace.setFixedWidth(max(avail, 0))"
+  },
+  {
+    "path": "AssetsManager/window.py",
+    "line": 1439,
+    "kind": "font_point",
+    "source": "font.setPointSize(scaled_pt(base_pt))"
+  },
+  {
+    "path": "AssetsManager/window.py",
+    "line": 293,
+    "kind": "duration",
+    "source": "anim.setDuration(300)"
+  },
+  {
+    "path": "AssetsManager/window.py",
+    "line": 957,
+    "kind": "a11y_name",
+    "source": "self._share_toggle_btn.setAccessibleName(tr(\"sharing.toggle_tooltip\"))"
+  },
+  {
+    "path": "AssetsManager/window_coordinator.py",
+    "line": 76,
+    "kind": "qss",
+    "source": "w._menu_widget.setStyleSheet(f\"background: {themes.color('header')};\")"
+  },
+  {
+    "path": "AssetsManager/window_coordinator.py",
+    "line": 77,
+    "kind": "qss",
+    "source": "w._menu_bar.setStyleSheet(\r\n            f\"QMenuBar {{ background: transparent; color: {themes.color('heading')}; \"\r\n            f\"border: none; padding: {scaled_px(2)}px {spacing_sm}px; font-size: {font_sm}px; }}\"\r\n            f\"QMenuBar::item {{ padding: {spacing_xs}px {scaled_px(10)}px; border-radius: {radius_sm}px; }}\"\r\n            f\"QMenuBar::item:selected {{ background: {hover}; }}\"\r\n            f\"QMenu {{ background: {themes.color('panel')}; color: {themes.color('heading')}; \"\r\n            f\"border: {scaled_px(1)}px solid {themes.color('border')}; border-radius: {radius_md}px; padding: {spacing_xs}px; }}\"\r\n            f\"QMenu::item {{ padding: {scaled_px(5)}px {scaled_px(28)}px {scaled_px(5)}px {scaled_px(12)}px; border-radius: {radius_sm}px; }}\"\r\n            f\"QMenu::item:selected {{ background: {themes.color('accent')}; color: {themes.color('on_accent')}; }}\"\r\n            f\"QMenu::item:pressed {{ background: {pressed}; color: {themes.color('on_accent')}; }}\"\r\n        )"
+  },
+  {
+    "path": "AssetsManager/window_coordinator.py",
+    "line": 92,
+    "kind": "qss",
+    "source": "w._share_status_label.setStyleSheet(f\"color: {themes.color('muted')}; padding: 0 {scaled_px(8)}px;\")"
+  },
+  {
+    "path": "AssetsManager/window_coordinator.py",
+    "line": 93,
+    "kind": "qss",
+    "source": "w.statusBar().setStyleSheet(sk.status_bar_css())"
+  },
+  {
+    "path": "AssetsManager/window_coordinator.py",
+    "line": 138,
+    "kind": "duration",
+    "source": "anim_out.setDuration(100)"
+  },
+  {
+    "path": "AssetsManager/window_coordinator.py",
+    "line": 148,
+    "kind": "duration",
+    "source": "anim_in.setDuration(200)"
+  }
+]

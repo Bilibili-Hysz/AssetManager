@@ -1,0 +1,3 @@
+ M docs/reports/README.md
+?? docs/reports/desktop-visual-consistency-2026-09-05-evidence/
+?? docs/reports/desktop-visual-consistency-2026-09-05.md

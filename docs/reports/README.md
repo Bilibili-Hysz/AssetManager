@@ -2,7 +2,12 @@
 
 > 状态:**LIVING(导航)** · updated: 2026-09-02 · 本目录两层定位:① 分模块审查底稿(2026-08-10~11 P0/P1 轮,已蒸馏为 [`module-audit-distilled-2026-09-02.md`](module-audit-distilled-2026-09-02.md),原件归档至 `archive/2026-09/module-audits-superseded/`);② 08-29 起各会话产出报告的归流地。原 08-10~08-15 细扫描系列 12 份已于 2026-09-02 移入 `archive/2026-09/reports-superseded/`(结论被 08-29~09-02 评审取代)。报告正文内容零改写(2026-09-02 梳理轮仅追加状态头元数据)。全库功能分类导航见 [`docs/README.md`](../README.md),证据账本见 [`docs/compose/README.md`](../compose/README.md)。
 
-## 文件清单(11 顶层,0 子目录)
+## 09-05 桌面视觉一致性
+
+- [桌面端视觉一致性审阅与优化方案](desktop-visual-consistency-2026-09-05.md)：当前工作区静态审阅、全桌面组件地图、11项差异、统一规范建议、分阶段实施和验收矩阵；不代表已实施或已完成实机视觉验收。
+- [配套证据](desktop-visual-consistency-2026-09-05-evidence/)：逐文件清单、源码摘要、主题配对和检查输出。
+
+## 历史报告导航
 
 ### module-* 系列(已蒸馏为 1 份,2026-09-02 收敛轮)
 

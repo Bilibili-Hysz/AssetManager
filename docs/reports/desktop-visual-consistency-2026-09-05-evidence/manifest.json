@@ -1,0 +1,484 @@
+{
+  "time_utc": "2026-09-05T01:50:56.202234+00:00",
+  "head": "b2fb5fbd550844a6a04fbd9523e981f6e538d774",
+  "scope": [
+    "AssetsManager/panels",
+    "AssetsManager/widgets",
+    "AssetsManager/dialogs",
+    "AssetsManager/background",
+    "AssetsManager/plugin_api",
+    "Plugins/Addons",
+    "AssetsManager/app.py",
+    "AssetsManager/window.py",
+    "AssetsManager/window_coordinator.py",
+    "AssetsManager/dock_factory.py",
+    "AssetsManager/core/themes.py",
+    "AssetsManager/core/theme_loader.py",
+    "AssetsManager/core/icons.py",
+    "AssetsManager/core/ui_scale.py",
+    "AssetsManager/core/color_utils.py",
+    "AssetsManager/core/signal_bus.py"
+  ],
+  "file_count": 112,
+  "totals": {
+    "lines": 39739,
+    "qss": 234,
+    "paint": 10,
+    "fixed_geometry": 69,
+    "duration": 14,
+    "a11y_name": 85,
+    "font_point": 19,
+    "font_pixel": 1
+  },
+  "warning": "Lexical signal/reduce_motion counts do not account for inheritance. Occurrence counts are not defect counts.",
+  "files": [
+    {
+      "path": "AssetsManager/app.py",
+      "sha256": "a89b34937a2b01f3d628e6cb3c3c0945e7145562ee216676591ceeb5552a8545"
+    },
+    {
+      "path": "AssetsManager/background/__init__.py",
+      "sha256": "7b42eb88c50a8ba635ee5e1f7fc3a5dc5e533395621221af55641bf225b741a1"
+    },
+    {
+      "path": "AssetsManager/background/cpu.py",
+      "sha256": "5afc90a859a18e9d3666212b912b2fbb5e2d12a02b8253dad20477999208e618"
+    },
+    {
+      "path": "AssetsManager/background/gl/__init__.py",
+      "sha256": "69e69a01a96adc900b2e7e7bc319dba3a860f593ea033552f6cecf8ece63fe23"
+    },
+    {
+      "path": "AssetsManager/background/gl/presets.py",
+      "sha256": "3293c8b7edd98a1cb813ac76ef75fbdfb45e4df6d110960a86671c960fa18d38"
+    },
+    {
+      "path": "AssetsManager/background/gl/renderer.py",
+      "sha256": "a4610c23f84773ca9fca722e69730758a7bf714b5e96f4c3414c197e14a442dd"
+    },
+    {
+      "path": "AssetsManager/background/gl/shaders.py",
+      "sha256": "ddf4436bef9b05fef3ed69c4657150c2a4f6aa85f4e806b76ff0bbcf9b382ef0"
+    },
+    {
+      "path": "AssetsManager/background/model.py",
+      "sha256": "e48c6a7213d7f60185df03f63251f70c8190d1c0cada44cfc7eb92dd5e088230"
+    },
+    {
+      "path": "AssetsManager/background/pipeline.py",
+      "sha256": "489e0e0cb164e90aa4a4119340210e076824253f0158dd7e46504d2f4b042987"
+    },
+    {
+      "path": "AssetsManager/core/color_utils.py",
+      "sha256": "059c4430ebefeb05cdebe04364bb0c38563b4084e775788223c77f81f7c98d62"
+    },
+    {
+      "path": "AssetsManager/core/icons.py",
+      "sha256": "027bf714d614549b6385e368798d99dc22b4db408be746e0ab4bc9b1218c51a7"
+    },
+    {
+      "path": "AssetsManager/core/signal_bus.py",
+      "sha256": "2cca2eea433e3c4935ae5a89e82a261e930018b8a8c205504e6efec3126c10ab"
+    },
+    {
+      "path": "AssetsManager/core/theme_loader.py",
+      "sha256": "b731f91e5bc804ed2706f9dea3d7e1380b5bb7fdcd7bb0ccb5ea53d94c055f0f"
+    },
+    {
+      "path": "AssetsManager/core/themes.py",
+      "sha256": "1853daa7b493f7447c92a8722f6f9e0c9cc9dbae3c24242ff38858b8fff59262"
+    },
+    {
+      "path": "AssetsManager/core/ui_scale.py",
+      "sha256": "3cdc107f466bc7d13d7a3232e2062df41e0efb296bcb603f10ea67079f29e88d"
+    },
+    {
+      "path": "AssetsManager/dialogs/__init__.py",
+      "sha256": "5e0e3ebb9372d6bea001032d4bd39a8cc454e953ee7db0ee8338f1368b250ccf"
+    },
+    {
+      "path": "AssetsManager/dialogs/_maintenance_tasks.py",
+      "sha256": "e2f6da3c1d62d984c0659456be06694e094ea525fc86365beb8ffc92f1c1943d"
+    },
+    {
+      "path": "AssetsManager/dialogs/_plugin_manager_widget.py",
+      "sha256": "2476fb13514891720fa2e6a24cb2e0d6e7c811a6ca70e3635c0655ed4ed4d9e5"
+    },
+    {
+      "path": "AssetsManager/dialogs/_share_api.py",
+      "sha256": "5f1e338ba81cae290f18936db8f86e82a77c247fa4108a0f31831e4434c0431f"
+    },
+    {
+      "path": "AssetsManager/dialogs/_sharing_helpers.py",
+      "sha256": "bd6b2f6a266f14526a76b49e96a41b4b4b43af40bcc55399ca0645fa9a0854cd"
+    },
+    {
+      "path": "AssetsManager/dialogs/activity_panel.py",
+      "sha256": "cefb8fa56016d8f1481b1d58968eeac8032917ae69e14f1dbb5720582acf9aa5"
+    },
+    {
+      "path": "AssetsManager/dialogs/color_picker_dialog.py",
+      "sha256": "4a04c0005f7fef27c8eb4c5664ef704bb846fc0843aa99e249ce9347e27ed625"
+    },
+    {
+      "path": "AssetsManager/dialogs/generic_settings_dialog.py",
+      "sha256": "7466935a1ab6f4c0ed052c6ac21bb4fb079b6a4262f8af2be01b0c66ecbaf27f"
+    },
+    {
+      "path": "AssetsManager/dialogs/modal_dialog.py",
+      "sha256": "a35bf0005727508cf7c46635b4e86f340bd8cbfa8011f63f5253177eab1ce87e"
+    },
+    {
+      "path": "AssetsManager/dialogs/plugin_manager_dialog.py",
+      "sha256": "e3545d515002378e85ce6fbdae4c7d612b50fb4b18af11c82ce3d6e6db6d16ca"
+    },
+    {
+      "path": "AssetsManager/dialogs/plugin_operator_dialog.py",
+      "sha256": "518bb6e268a406d7eaf7a3c097ffd3ff98ce556daa0cf7b5d9726c7342c3d8ca"
+    },
+    {
+      "path": "AssetsManager/dialogs/settings_dialog.py",
+      "sha256": "a8da38bed116c34c0afef5a9c172949e573be41ab8c86182dbf73f84f041adc3"
+    },
+    {
+      "path": "AssetsManager/dialogs/share_link_dialog.py",
+      "sha256": "4760b109d08f25c4eaba500071d2009f5b7ab96939de3bcd1c98453d7c8d66f0"
+    },
+    {
+      "path": "AssetsManager/dialogs/share_qr_dialog.py",
+      "sha256": "fb90cf0474cc27389598905ff1a0aa9cb15e40e528b9301937ec28d8a8694eb7"
+    },
+    {
+      "path": "AssetsManager/dialogs/sharing_settings/__init__.py",
+      "sha256": "a5132402624d741d518f187e61071f14eb12068826b6a5fd836f6988819f7ceb"
+    },
+    {
+      "path": "AssetsManager/dialogs/sharing_settings/_access_page.py",
+      "sha256": "39e8da2827247e153a89ca93bdcaaadf905a292d14a8fd7c013a0b720c617fee"
+    },
+    {
+      "path": "AssetsManager/dialogs/sharing_settings/_configuration_page.py",
+      "sha256": "23b2d7da1d91c1e1ef277571deedce159bb004a04af25d256ed93b2c767e4565"
+    },
+    {
+      "path": "AssetsManager/dialogs/sharing_settings/_endpoint_page.py",
+      "sha256": "be2026c4d6537c33d570524d9fc10637c5c2d9adcf752f4dc285c0b98de883e1"
+    },
+    {
+      "path": "AssetsManager/dialogs/sharing_settings/_links_page.py",
+      "sha256": "2ea463390aa4f858d3c7e3a6d32e4122e7db597ae8e60bd4345ac4a81dd2fb82"
+    },
+    {
+      "path": "AssetsManager/dialogs/sharing_settings/_ui.py",
+      "sha256": "22f7dda3c983c7ccc4a0154ad83d3d60e622f78a91ebef146ccf00904aa2673b"
+    },
+    {
+      "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+      "sha256": "56ec86627aaf31ec1ccd5587de3dc4931adf9c73a498dea799d67ba9972ca5ce"
+    },
+    {
+      "path": "AssetsManager/dialogs/sidebar_favorites.py",
+      "sha256": "54d5ce721ee12f3eeb2cf0c69f0fe05f12f06b85259f0365f9a83583c9f25b59"
+    },
+    {
+      "path": "AssetsManager/dialogs/sidebar_recent.py",
+      "sha256": "92ec117caf39b01ad845c87f57efc9508c981ec13757d751b4ef5e5b0d78c9bf"
+    },
+    {
+      "path": "AssetsManager/dialogs/sidebar_settings_dialog.py",
+      "sha256": "a823489061b482130cd775526cd977d25bfb18637252d84f6377eed1da8aa6ae"
+    },
+    {
+      "path": "AssetsManager/dialogs/startup.py",
+      "sha256": "a2be258d1864948e4d49faf0e7cd15e335e891e8384bdf15042760b2879d118b"
+    },
+    {
+      "path": "AssetsManager/dialogs/tabbed_dialog.py",
+      "sha256": "e3ae1d8ff0d0f87da0d283675a4b374b0a58ea06ef948bb49af12a435d8c569e"
+    },
+    {
+      "path": "AssetsManager/dialogs/tag_browser_dialog.py",
+      "sha256": "dad080b57fcf18f5af536375b70590ee3f3692f0a872bc1c2a6803e7bf9ff810"
+    },
+    {
+      "path": "AssetsManager/dialogs/tag_editor_dialog.py",
+      "sha256": "16534f0eb19f926a59a36b54fcc28c4807353222174c3d1e57bc54157d9600a7"
+    },
+    {
+      "path": "AssetsManager/dialogs/tag_style_dialog.py",
+      "sha256": "363d85e5cfadceaed74427732980dc059ada0e74bbd62ed6a07d4645c6f47176"
+    },
+    {
+      "path": "AssetsManager/dialogs/theme_preview_dialog.py",
+      "sha256": "8f30a1a7fd5ceb1d3b66750614da8eff6ec3d6ad282ebca49e49e650c5a6750e"
+    },
+    {
+      "path": "AssetsManager/dialogs/undo_panel.py",
+      "sha256": "42ca19c3f18680601f685a1e98368631a2d115ae16ccbe6c08c07f27cb83452e"
+    },
+    {
+      "path": "AssetsManager/dock_factory.py",
+      "sha256": "0404233272bf62703a9385a1b91d1d85a63a68313f683ed0672debe5a0f2421c"
+    },
+    {
+      "path": "AssetsManager/panels/__init__.py",
+      "sha256": "0a9adf2c24daaa0f89dc6ae00a9ddf7b92c766428fb6d3b25d0c3818c092260e"
+    },
+    {
+      "path": "AssetsManager/panels/_ai_tag_common.py",
+      "sha256": "9057cf1b810374eb0a163ce7ff27ddd423c6e340fde9fbae35a65eb0291944de"
+    },
+    {
+      "path": "AssetsManager/panels/_event_bridge.py",
+      "sha256": "c8d68b627d8dd107fc809ccf23ef35fa83968d0d84b16c15d22ca9535f22e0f6"
+    },
+    {
+      "path": "AssetsManager/panels/_info_parts.py",
+      "sha256": "9d2fae56e89517da827ee4e7acc310137c922a90b3b8f8c69c9e5a59082d8656"
+    },
+    {
+      "path": "AssetsManager/panels/_sidebar_parts.py",
+      "sha256": "c896e06069fac6354c139c5eadcdd58bb8fc53b79aaa6de08612d14ad45399e0"
+    },
+    {
+      "path": "AssetsManager/panels/base.py",
+      "sha256": "42db99ccefa008bf9b587574f08ef9a2a96ea2a4361250970dcd9d94a624394f"
+    },
+    {
+      "path": "AssetsManager/panels/empty.py",
+      "sha256": "e2b038611ffd075233200f6d6eaf1c244c3ec5f83366a18b2b4c8311e1117880"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/__init__.py",
+      "sha256": "c771d47be06c7fda4ae31ca715a3def7ad81a67c03be64df527339f27df89235"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_actions.py",
+      "sha256": "3c9749948e7176dae839f4c2c9e43a07d4ec925b3d6a07e1e0b60febe413e21b"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_animator.py",
+      "sha256": "1ee20a1843c5657450a4b43afdc7bcd7c3c8d4693fca65a76af2a4449c2287e5"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_background.py",
+      "sha256": "58f059516c0d9b953a511e2de489dc7ee2a8994c019a8ab35050b4083b477d7a"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_base.py",
+      "sha256": "fecf519b0c44186d106b0bab636946bb4058de6b5cc1f72fd588fa15cc4de8b7"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_base_events.py",
+      "sha256": "c08d01ee3ca234c29f678eb3443ee7be94eac590450f6c50ab52e8bf8ed36744"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_base_layout.py",
+      "sha256": "e4929562c8191e0799067d1546628fbe6b36bd30358d3a4d8669efc215a484a9"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_base_logic.py",
+      "sha256": "84b33d04f943dbc48b0e76a60399b63700c92bde578aa4bd4e0983c204491626"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_batch_rename.py",
+      "sha256": "f44320b4ba993642d4e11bff4880b2f471e84675d3da09521e496436e38d2eab"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_batch_rename_dialog.py",
+      "sha256": "6a7494a7e9351b3b5b07f55a4f5be3d950f27e1fa6076d04681266c19a7d12be"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_commands.py",
+      "sha256": "7eff46e52299fb1f97d733f50c794bcba22070be6b70d6a9492b8274777a1974"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_common.py",
+      "sha256": "d8f8166cdd3b2e3ae9a79e0c22d8bdf319fad1bee3797cd6755b8f3f008cce1d"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_detail_model.py",
+      "sha256": "b7b2f5ac3b791300511ba4a5f08aa915b5c3220d263d82708f97af7188ca7ce4"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_grid_layout.py",
+      "sha256": "524c18d26cccd15f985403ed61f43d81d35bfb92bf8273ca71449a6ca37b68b1"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_grid_texture_cache.py",
+      "sha256": "f4e7fa9aa81c1875843547925df0a8145e4606aa05c97a081ee97d163ac3abf6"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_grid_widget.py",
+      "sha256": "12d918a608729d02881bcfd96efb4f605ed3e8acc10fb5740b175fcd48f23b71"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_grid_widget_data.py",
+      "sha256": "7dfcf46580e45fdb19c2cfefa2f9f7044c901392c0cfc3d1ef3ebc4c93e90323"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_grid_widget_interact.py",
+      "sha256": "d73efaf918c88e461597e70f1fc51dec84ac9d6c823bacaf6f22a7cbd3c786b2"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_grid_widget_render.py",
+      "sha256": "64abfac59bdbf431075e03ef440954c91fbdd0f5bc24c49f316da5f51129470f"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_host.py",
+      "sha256": "62533fa4e1a501becd1e8ec29378a5f04e3504ce8847b03d9e2896581b87fd45"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_loader.py",
+      "sha256": "e363ab8259e33bb075e4a3fea91a2bb1409e37eb739c4db2e47070b6ba40e249"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_model.py",
+      "sha256": "3eb3e2bcef4d97bc08a2dd3ec0eab56a2c588f6d2383cab67c1165a6f2364b79"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_navigation.py",
+      "sha256": "6f19d1c979d5473fe9adea73b00d554923cf959ab1643ce51a3591284a615ddd"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_shortcuts.py",
+      "sha256": "cec90b50ea2cc79c292870aaa6324ab705456f75b20e4c167e73ee6560daa72b"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_status_helpers.py",
+      "sha256": "67850da844bdb7a42439114e220523e58be15f472b948dc7953701c11ca1881d"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_thumbnail_delivery.py",
+      "sha256": "bd3b96c6d31249ee774b3ec30e0b8e55ebef6bb7e48d91ca45aeb538c631db9f"
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_ui_helpers.py",
+      "sha256": "78d44751f138381af4c2e9be01b76255b2671ce8553b872f7bf7313988c10b18"
+    },
+    {
+      "path": "AssetsManager/panels/image_viewer.py",
+      "sha256": "e5e62f8e41448f1dda6b19344916573d7524dad73cd257c4492bf26542b7ee6d"
+    },
+    {
+      "path": "AssetsManager/panels/info.py",
+      "sha256": "06b72a3cfa4c499fe5b281f9c497f00dbebdb059de5f67cd7852d68f541ec5a6"
+    },
+    {
+      "path": "AssetsManager/panels/panel_state.py",
+      "sha256": "192f9fe12681b915a8525eaa3f43c74622752cfed49bd2af67f77a3999498f36"
+    },
+    {
+      "path": "AssetsManager/panels/sidebar.py",
+      "sha256": "9c40fdc6deb9d6e251148ac303eb6a03444778674bbbe74f71fb2f6f36ab57f6"
+    },
+    {
+      "path": "AssetsManager/panels/tag_tree.py",
+      "sha256": "bee2842bd12a68449411a3c022865180d4870e318cd6a58e2f603896e0b1a733"
+    },
+    {
+      "path": "AssetsManager/plugin_api/__init__.py",
+      "sha256": "de7e99b5ab6c13faa53e12703058a6b98dc8ca6c8ce03bc2df6d3da60f45006c"
+    },
+    {
+      "path": "AssetsManager/plugin_api/types.py",
+      "sha256": "701868a672bcd150d547ae944753af233b4910b624f6e667a3f4ff3d8d5d98d5"
+    },
+    {
+      "path": "AssetsManager/widgets/__init__.py",
+      "sha256": "6ee6d04bf5c6ce36c7dd92f9711825a3eae9bd4c6ed0ccf743072e97baf369ca"
+    },
+    {
+      "path": "AssetsManager/widgets/command_palette.py",
+      "sha256": "a17f970e3d06e20b48592268c45704943da7f4ec5810b03917e1bd2f22afafe5"
+    },
+    {
+      "path": "AssetsManager/widgets/dominant_palette_strip.py",
+      "sha256": "3dcefc09ebe823225717937cb4f121ef0a04926e85dddf2b401baf905c00e8ca"
+    },
+    {
+      "path": "AssetsManager/widgets/elevation.py",
+      "sha256": "e9e0e83fbc0e2f6f0a8415e882134957a9a12185dcbd1d1007cafa306159c880"
+    },
+    {
+      "path": "AssetsManager/widgets/empty_state.py",
+      "sha256": "4f154a205593a8bfffb102561483ff95fc307c09471306cc9f5ad4cbcba7f64c"
+    },
+    {
+      "path": "AssetsManager/widgets/hsv_wheel.py",
+      "sha256": "f120d478639b201a344bbe7ec314d2064c48c732d1fe92bc09b2bc9615583433"
+    },
+    {
+      "path": "AssetsManager/widgets/lan_sharing.py",
+      "sha256": "2d335c3d3a5e2f3b97ba3e1bb01c4917a97571158bb135116d536172c9dad4b8"
+    },
+    {
+      "path": "AssetsManager/widgets/micro_tab_bar.py",
+      "sha256": "525d5964b6c23c6447b6c32085e789bd6f850f0951c6e7a30abe2164d0d08a27"
+    },
+    {
+      "path": "AssetsManager/widgets/plugin_ui.py",
+      "sha256": "b864a8f42cc78ff6ae3bf22ffa3668a9f9fedd34cc95cf1456ba1097e1593243"
+    },
+    {
+      "path": "AssetsManager/widgets/quick_look_overlay.py",
+      "sha256": "db7b28ecab14f1fa2f0f659b7bb9163433481c258c953789d3973953753c6d28"
+    },
+    {
+      "path": "AssetsManager/widgets/quick_tagger_overlay.py",
+      "sha256": "06c00dee09b5994dc26bdcc2f14de56fd7697501f45e76e99e999473adc522f1"
+    },
+    {
+      "path": "AssetsManager/widgets/sharing_contracts.py",
+      "sha256": "cd865cf4435fb3b00c0c877fa74d04bb0c4fa852598326edc08f26a598a34164"
+    },
+    {
+      "path": "AssetsManager/widgets/shortcut_manager.py",
+      "sha256": "87784e29428bcd54478baca217a7a5eb03b1aa8d9ce3c766a3c3c72df51c4353"
+    },
+    {
+      "path": "AssetsManager/widgets/stylekit.py",
+      "sha256": "8ec173cf9a2aa3a89297b8c24377a0b253ff0ff01455b5bfc47d2878fa49b9c0"
+    },
+    {
+      "path": "AssetsManager/widgets/tab_container.py",
+      "sha256": "d5c9915f28f821a8ed86c1430fafea90ba9c3a98621d7fd6c9198be4dd1e59ba"
+    },
+    {
+      "path": "AssetsManager/widgets/tag_chip.py",
+      "sha256": "0b4f174c3b3ca6d10efa4f311c529238eb99321feb3bb24836ccf3dbdf47ca58"
+    },
+    {
+      "path": "AssetsManager/widgets/theme_preview.py",
+      "sha256": "1eda9d512c68408c6a4d35a84c17f05f8d9067987991e66bdadced52148925b7"
+    },
+    {
+      "path": "AssetsManager/widgets/toast.py",
+      "sha256": "e0895728b53b679a3b7edd8a4792a3356b388753f537230bc30f3fc0b4af14f2"
+    },
+    {
+      "path": "AssetsManager/widgets/tray.py",
+      "sha256": "679ab862aea1496dc501e81cde79e1a2d5424dc97b4aac774eac4855c327fda3"
+    },
+    {
+      "path": "AssetsManager/widgets/workspace_bar.py",
+      "sha256": "258b08209262e9225871d76f4d880e7c319c8da8f832372467020ce9875df37c"
+    },
+    {
+      "path": "AssetsManager/window.py",
+      "sha256": "0dc886704a03573fb8ff5859651115494660595cef39cbd94c5c171c58d01ddc"
+    },
+    {
+      "path": "AssetsManager/window_coordinator.py",
+      "sha256": "9e18cf3886b2b6695eb28496655d6ebd6b0d6e5aeaef002f5a1305e256ab01ce"
+    },
+    {
+      "path": "Plugins/Addons/booth_link/parser.py",
+      "sha256": "4b990cc833fdfa7311597fc06761860fdbd06606f917710bba8d9c9fd790f5c5"
+    },
+    {
+      "path": "Plugins/Addons/download_tracker/tracker.py",
+      "sha256": "afe70562a11e9f2f3995662636d15cb550f439bff7e491df6f2d9bce0b5db86c"
+    }
+  ]
+}

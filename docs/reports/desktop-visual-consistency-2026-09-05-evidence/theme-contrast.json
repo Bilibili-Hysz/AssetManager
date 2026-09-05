@@ -1,0 +1,674 @@
+[
+  {
+    "theme": "Amber",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 8.955,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Amber",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.592,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Amber",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 7.714,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Amber",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 14.34,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Charcoal",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 8.345,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Charcoal",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.622,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Charcoal",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 5.646,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Charcoal",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 13.553,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Default",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 7.068,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Default",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.558,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Default",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 6.289,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Default",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 11.612,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Dracula",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 7.275,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Dracula",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.629,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Dracula",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 6.784,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Dracula",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 13.359,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Espresso",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 9.046,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Espresso",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.607,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Espresso",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 6.403,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Espresso",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 14.485,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Forest",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 9.179,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Forest",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.524,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Forest",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 8.308,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Forest",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 14.141,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Gruvbox",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 8.593,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Gruvbox",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.627,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Gruvbox",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 5.431,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Gruvbox",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 10.747,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Midnight",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 8.838,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Midnight",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.506,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Midnight",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 6.284,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Midnight",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 14.987,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Navy",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 8.834,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Navy",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 5.307,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Navy",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 5.586,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Navy",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 14.224,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Nord",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 7.448,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Nord",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.544,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Nord",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 6.243,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Nord",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 8.73,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Onyx",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 9.702,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Onyx",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.611,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Onyx",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 7.446,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Onyx",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 15.531,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Rose Pine",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 9.394,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Rose Pine",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.635,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Rose Pine",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 8.432,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Rose Pine",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 12.505,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Slate",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 7.986,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Slate",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.62,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Slate",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 7.17,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Slate",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 13.454,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Coral",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 9.956,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Coral",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.513,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Coral",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 5.756,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Coral",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 15.553,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Dawn",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 9.577,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Dawn",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 5.699,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Dawn",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 4.958,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Dawn",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 15.856,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Frost",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 8.172,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Frost",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.599,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Frost",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 4.661,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Frost",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 15.264,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Lavender",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 9.63,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Lavender",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.633,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Lavender",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 5.124,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Lavender",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 16.172,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Lilac",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 9.374,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Lilac",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.545,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Lilac",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 5.265,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Lilac",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 15.815,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Mint",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 8.91,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Mint",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.501,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Mint",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 6.354,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Mint",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 15.766,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Peach",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 9.722,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Peach",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.696,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Peach",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 5.756,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Peach",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 15.325,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Rose",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 10.191,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Rose",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.704,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Rose",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 4.7,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Rose",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 15.551,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Sage",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 8.946,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Sage",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.554,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Sage",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 6.851,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Sage",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 14.806,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Silver",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 8.241,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Silver",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.515,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Silver",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 5.067,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Silver",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 16.243,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Sky",
+    "foreground": "body",
+    "background": "panel",
+    "ratio": 7.371,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Sky",
+    "foreground": "muted",
+    "background": "panel",
+    "ratio": 4.509,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Sky",
+    "foreground": "on_accent",
+    "background": "accent",
+    "ratio": 5.601,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  },
+  {
+    "theme": "Sky",
+    "foreground": "input_text",
+    "background": "input_bg",
+    "ratio": 14.103,
+    "scope": "raw opaque JSON pair; not rendered UI or composed wallpaper"
+  }
+]

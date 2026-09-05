@@ -1,0 +1,51 @@
+{
+  "time_utc": "2026-09-05T01:51:57.977380+00:00",
+  "platform": "Windows-11-10.0.26220-SP0",
+  "python": "3.14.3 (tags/v3.14.3:323c59a, Feb  3 2026, 16:04:56) [MSC v.1944 64 bit (AMD64)]",
+  "local_links_checked": 77,
+  "source_hashes_checked": 136,
+  "report_sha256": "cd5dac631cf4ec819197e97bf442c3888c9280069c742b143f299c523eec282d",
+  "checks": [
+    {
+      "command": [
+        "C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\python.exe",
+        "scripts/check_style_sources.py"
+      ],
+      "exit_code": 0,
+      "script_sha256": "58c48897eb33801ebbd4fe751fd9232f01dcc0274ebb23cb3a40981fa45c6240",
+      "output_sha256": "224b7673d461850ef8e03e0749cf83815266b38b9056e37f9ad178a270a2750c",
+      "output": "check_style_sources: 0 violation(s) across 94 scoped file(s)\n"
+    },
+    {
+      "command": [
+        "C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\python.exe",
+        "scripts/check_style_dialects.py"
+      ],
+      "exit_code": 0,
+      "script_sha256": "7cabd9e16a53e0a2871c2da22ff5caa8ed09cbab289d22449a8b9531b6cd258e",
+      "output_sha256": "204a6a586967a2a50e7238a445850800b3ee454c6379346e612f3a28e0d1b70f",
+      "output": "check_style_dialects: clean — 0 legacy sites across 0 files (G3 freeze held)\n"
+    },
+    {
+      "command": [
+        "C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\python.exe",
+        "scripts/check_inline_styles.py"
+      ],
+      "exit_code": 0,
+      "script_sha256": "c158880b42d057bdc1b538b1a9ff525c89dc843f3abd1f0cb0bbeed8b1232acb",
+      "output_sha256": "17deef1a4c70f7e22b94c11f8cef5a2888e1097191e2d797a51cf3b768e496dd",
+      "output": "check_inline_styles: clean — 232 calls across 39 files (ratchet baseline held)\n"
+    },
+    {
+      "command": [
+        "C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\python.exe",
+        "scripts/check_i18n_catalogs.py"
+      ],
+      "exit_code": 0,
+      "script_sha256": "903fe3dafdd7dd51fe9f887644ca1c7f5eb01566b9594ea8cbeb0783208c3055",
+      "output_sha256": "bcedb516ac8c2529da8a63cdc4ca76d356b451d7a6626a32f83f3b58bfc869e8",
+      "output": "i18n catalogs are aligned (en=1035, ja=1035, zh=1035; _meta.version=[2])\n"
+    }
+  ],
+  "problems": []
+}
