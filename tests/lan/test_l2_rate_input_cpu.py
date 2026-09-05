@@ -78,6 +78,47 @@ async def test_browse_tier_uses_its_own_budget_and_does_not_touch_general():
         await client.close()
 
 
+@pytest.mark.anyio
+async def test_skip_routes_bound_credential_probes_without_limiting_guests():
+    """Credential-bearing skip requests cannot bypass the CPU budget.
+
+    Anonymous media polling keeps the legacy skip behavior; only requests
+    that would enter PBKDF2/revocation checks consume this defensive bucket.
+    """
+    async def ok_handler(_request):
+        return web.json_response({"ok": True})
+
+    app = web.Application()
+    app.router.add_get("/api/image", ok_handler)
+    declare(app, "/api/image", RoutePolicy(rate_limit="skip"))
+    middleware = create_security_middleware(
+        RateLimiter(max_requests=100, window_seconds=60),
+        IPBlacklist(),
+        skip_auth_rate_limiter=RateLimiter(max_requests=1, window_seconds=60),
+    )
+    app.middlewares.append(middleware)
+
+    from aiohttp.test_utils import TestClient, TestServer
+
+    client = TestClient(TestServer(app))
+    await client.start_server()
+    try:
+        guest = await client.get("/api/image")
+        assert guest.status == 200
+        first = await client.get(
+            "/api/image", headers={"Authorization": "Bearer random-token"}
+        )
+        assert first.status == 200
+        limited = await client.get(
+            "/api/image", headers={"Authorization": "Bearer another-random-token"}
+        )
+        assert limited.status == 429
+        body = await limited.json()
+        assert body["code"] == "auth_rate_limited"
+    finally:
+        await client.close()
+
+
 # ── Query input budget ─────────────────────────────────────────────
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 from PIL import Image
 
+from AssetsManager.lan.routes import _helpers as route_helpers
 from AssetsManager.lan.routes._helpers import LAN_APP_KEY
 from AssetsManager.lan.routes.image import handle_image, serve_verified_image
 from tests.lan.support.api_helpers import _make_client, _make_lan_app
@@ -97,6 +98,20 @@ async def test_image_route_rejects_image_suffix_with_non_image_content(tmp_path)
     client = await _make_client(app)
     try:
         response = await client.get("/api/image", params={"path": "fake.png"})
+        assert response.status == 404
+    finally:
+        await client.close()
+
+
+@pytest.mark.anyio
+async def test_image_route_rejects_source_above_inline_budget(tmp_path, monkeypatch):
+    app, library, _conn = _make_lan_app(tmp_path)
+    _image(library / "large.png")
+    monkeypatch.setattr(route_helpers, "MAX_INLINE_READ_BYTES", 1)
+    _register_image_route(app)
+    client = await _make_client(app)
+    try:
+        response = await client.get("/api/image", params={"path": "large.png"})
         assert response.status == 404
     finally:
         await client.close()

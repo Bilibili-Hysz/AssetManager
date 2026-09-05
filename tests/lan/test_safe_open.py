@@ -11,6 +11,7 @@ from AssetsManager.lan.path_guard import PathEscapeError
 from AssetsManager.lan.safe_open import (
     FileIdentity,
     SafeOpenError,
+    iter_safe_file,
     read_safe_file,
     safe_open_under_root,
 )
@@ -75,6 +76,23 @@ def test_read_safe_file_binds_bytes_before_return(tmp_path):
     body, identity = read_safe_file(tmp_path, target)
     assert body == b"payload"
     assert identity.size == len(body)
+
+
+def test_iter_safe_file_yields_bounded_chunks_and_closes(tmp_path):
+    target = tmp_path / "asset.bin"
+    target.write_bytes(b"0123456789")
+
+    chunks = iter_safe_file(tmp_path, target, max_bytes=10, chunk_size=3)
+    assert b"".join(chunks) == b"0123456789"
+    assert getattr(chunks, "_closed", False) is True
+
+
+def test_iter_safe_file_rejects_size_before_read(tmp_path):
+    target = tmp_path / "asset.bin"
+    target.write_bytes(b"0123456789")
+
+    with pytest.raises(SafeOpenError, match="exceeds snapshot limit"):
+        iter_safe_file(tmp_path, target, max_bytes=9)
 
 
 def test_safe_open_fails_closed_when_ancestor_inspection_fails(
