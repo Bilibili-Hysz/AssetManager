@@ -80,7 +80,7 @@
 | 生产代码修复（构造时序/快捷键生命周期/指示器 reduce_motion） | 登记 §1 待排期（构造时序缺陷建议优先——真机崩溃路径） |
 | 动画 M0（时间驱动模型）衔接 | 动画文档 §2 已确认网格定时器问题为 M0 直接输入；A 阶段样板页（截图矩阵）即 M1 样板的静态对照基线 |
 
-## 5. 阶段 A 验证记录（2026-09-05，工作树未 commit）
+## 5. 阶段 A 验证记录（2026-09-05，验证于入库前工作树；本阶段改动已入库 commit 4243c6f）
 
 - `pytest tests/desktop/test_visual_baseline_a.py -n 0` → 9 passed（多次）；`test_font_metric_baseline_a.py -n 0` → 4 passed（多次）
 - `pytest tests/desktop`（默认 xdist）→ 839 passed 三连跑全绿（历史 2 次单红均为 startup_window 证据轨用例的时序二态，已在模块 docstring 登记）

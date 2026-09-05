@@ -1,6 +1,6 @@
 # 桌面视觉统一 · 阶段 B 结果（基础控件规范收口）
 
-> 状态：**STAGE RESULT（2026-09-05，工作树未 commit）**
+> 状态：**STAGE RESULT（2026-09-05；已入库 commit 0db2ac5）**
 > 依据：[阶段 A 草案](desktop-visual-stage-a-baseline-2026-09-05.md) §2/§3 + 主报告 V01/V02。
 > 范围约束：本轮与并行 LAN 工作线互不接触（用户已约束并行子代理不碰 desktop 视觉面）。
 
@@ -35,7 +35,7 @@
 - StyleKit 快照：恰好 4 行变化（四个 variant 的 `QPushButton:disabled`），其余规则逐字不变。
 - 其余 8 张截图摘要零变化（焦点边框 2px 不在截图状态覆盖内——验证了阶段 A "截图不涉输入框焦点态"的预判）。
 
-## 5. 验证记录（2026-09-05，工作树未 commit）
+## 5. 验证记录（2026-09-05，验证于入库前工作树）
 
 - `pytest tests/desktop`（默认 xdist）→ **839 passed**；基线模块 `-n 0` → 13 passed（×多次）
 - `pytest tests/unit tests/integration` → **2715 passed, 17 skipped**（基线持平；期间 `test_collection_service_publishes_collection_changed` 出现的 xdist flake 已在干净工作树复现 5/6 同红，实证为预存 EventBus 单例竞态，与本轮无关）

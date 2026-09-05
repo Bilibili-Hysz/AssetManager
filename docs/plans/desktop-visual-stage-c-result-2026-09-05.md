@@ -1,6 +1,6 @@
 # 桌面视觉统一 · 阶段 C 结果（三发现收口）
 
-> 状态：**STAGE RESULT（2026-09-05，工作树未 commit）**
+> 状态：**STAGE RESULT（2026-09-05；已入库 commit 905f538）**
 > 依据：[主报告](../reports/desktop-visual-consistency-2026-09-05.md) V03/V04/V06 节 + [阶段 B 结果](desktop-visual-stage-b-result-2026-09-05.md) §6 遗留。
 > 范围约束：与并行 LAN 工作线互不接触（禁改 lan/、webui/、tests/lan/、core/file_snapshot.py）。
 
@@ -49,7 +49,7 @@
 - **判定**：24 主题的 `font_size` 表全库核对——token 值域 {caption:11, lg:14, md:13, sm:12, xl:16, xs:10, xxl:22, xxs:9}，**无任何主题定义 ≤8 的字号**；metrics 无主题覆盖。语义 token 最小档 xxs=9 无法表达网格副标题/角标的 8pt 密度档
 - **结论**：`_grid_widget_data.py` 的 `_font_sub`/`_font_badge` 3 处 8pt 维持手写（B 阶段已注"grid density special case"），本判定记录于本文档；是否引入 xxs-2=8 token 留待阶段 D 实机密度校准，不机械替换数字（阶段 A 草案原则）
 
-## 4. 验证记录（2026-09-05，工作树未 commit）
+## 4. 验证记录（2026-09-05，验证于入库前工作树）
 
 - C-1 靶向：`test_sharing_settings_dialog + test_dialog_runtime_refresh + test_tabbed_dialog_visuals` → **39 passed**（含 2 个新用例）
 - C-2 靶向：`test_file_list_grid_widget + test_file_list_grid_a11y + test_file_list_details + test_file_list_view + test_visual_baseline_a` → **281 passed**（含 1 个新用例；截图摘要零漂移）
@@ -67,5 +67,9 @@
 | 8pt 特例 | 判定维持手写（§3.3），阶段 D 校准 |
 | `_CORNER_R`→border_radius.md 派生 | 24 主题全 =10，保持字面+注释，阶段 D 决定 |
 | V05 浮层外壳 / V06 图形尺寸-热区-控件高度三分法余量 / V06 大缩放裁字 | 阶段 D（主报告任务清单后续项） |
+
+## 6. 证据时效性说明（审查轮 RV2 补记，2026-09-06）
+
+`screenshots/manifest.json` 的 `source_head` 混有两个值：`112483c8`（阶段 A 初生成 8 张）与 `7d07098a`（阶段 B 空库禁用色再生 1 张）。其后阶段 B 的焦点 2px 与阶段 C 的网格度量重建均为**摘要棘轮实测零漂移**的改动，按再生成策略（"漂移即再生，零漂移不强制"）未重生成 PNG——即当前入库的 9 张 PNG 对应阶段 A/B 时期的渲染，但每次后续改动都经摘要棘轮验证"当前渲染与入库 PNG 逐行等价"。例外记录：阶段 B 再生空库 PNG 一次（V02 禁用色预期变化）；阶段 C 网格两张截图（grid_navy/grid_dawn）与阶段 A 期差异为零。**审查轮 RV1 发现并修复的 `_M` 快照缺陷（bab8b46）不改变 ui_scale=1.0 下的渲染值**，PNG 无需再生成。
 
 无证据即 unverified——本文档自身也是这个纪律的适用对象。
