@@ -30,7 +30,10 @@ from AssetsManager.panels.file_list._common import (
     EXT_TO_CATEGORY, badge_color_for_extension, badge_label_for_extension,
 )
 from AssetsManager.panels.file_list._model import FileSystemModel
-from AssetsManager.panels.file_list._grid_widget_data import _M
+# Module-qualified access to the live metrics container: ``rebuild_grid_runtime_metrics``
+# rebinds ``_grid_widget_data._M`` to a fresh frozen dataclass, so a ``from … import _M``
+# snapshot here would keep painting with import-time margins after a scale change (V04).
+from AssetsManager.panels.file_list import _grid_widget_data as _grid_data
 
 if TYPE_CHECKING:
     from AssetsManager.panels.file_list._grid_layout import GridLayout
@@ -541,7 +544,7 @@ class RenderMixin:
         tp.setBrush(bg)
         tp.drawRoundedRect(card_f, float(_RM.corner_r), float(_RM.corner_r))
 
-        preview = QRect(card.x() + _M.preview_margin, card.y() + _M.preview_margin,
+        preview = QRect(card.x() + _grid_data._M.preview_margin, card.y() + _grid_data._M.preview_margin,
                         self._thumb_size, self._thumb_size)
         if is_dir:
             self._draw_folder(tp, preview, pixmap)
@@ -566,7 +569,7 @@ class RenderMixin:
 
         tp.setFont(self._font_name)
         tp.setPen(self._clr_heading)
-        name_y = preview.bottom() + _M.text_top_gap
+        name_y = preview.bottom() + _grid_data._M.text_top_gap
         text_left = preview.left()
         text_width = max(1, preview.width())
         name_rect = QRect(text_left, name_y, text_width, self._fm_name.height())
@@ -577,7 +580,7 @@ class RenderMixin:
         if subtitle:
             tp.setFont(self._font_sub)
             tp.setPen(self._clr_muted)
-            sub_y = name_rect.bottom() + _M.text_line_gap
+            sub_y = name_rect.bottom() + _grid_data._M.text_line_gap
             sub_rect = QRect(text_left, sub_y, text_width, self._fm_sub.height())
             elided_sub = self._fm_sub.elidedText(
                 subtitle or "", Qt.TextElideMode.ElideRight, sub_rect.width())

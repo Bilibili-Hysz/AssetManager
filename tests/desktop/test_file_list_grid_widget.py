@@ -1846,6 +1846,11 @@ def test_grid_scale_round_trip_restores_metrics_and_texture_identity(tmp_path):
 
         assert grid_data._M.card_pad == 9
         assert grid_render._RM.corner_r == 15
+        # The render mixin must read the LIVE container (module-qualified), not
+        # an import-time ``from … import _M`` snapshot — otherwise _render_item
+        # bakes stale 1.0 margins while _RM already paints 1.5 corners.
+        assert grid_render._grid_data._M is grid_data._M
+        assert grid_render._grid_data._M.card_pad == 9
         texture_150 = widget._render_item(0, rect)
         assert texture_150 is not None
         # Same rect size, different pixels: the 15px corner/badge metrics are

@@ -65,7 +65,7 @@
     {
       "family": "qfont_set",
       "file": "AssetsManager\\panels\\file_list\\_grid_widget_render.py",
-      "line": 198,
+      "line": 201,
       "method": "setPointSize",
       "role_hint": "text_font",
       "source_text": "text_font.setPointSize(scaled_pt(int(themes.font_size(\"caption\"))))",
