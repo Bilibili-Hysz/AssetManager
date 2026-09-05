@@ -1,5 +1,5 @@
 {
-  "_comment": "G1 ratchet ledger (audit F3/G1): per-file setStyleSheet allowance in the presentation layer. Counts may only DECREASE via StyleKit/central-QSS migration; new calls fail check_inline_styles.py. Lower allowances with: python scripts/check_inline_styles.py --update. app.py (central application point) and core/ are exempt by design. [2026-09-03 re-audit] settings_dialog.py 1->3: all three sites are sanctioned dialects, not regressions -- :133-138 _SettingsNavShell.setStyleSheet shim forwards StyleKit.nav_css() factory output (shim must call setStyleSheet by design); :265 theme swatch is token-interpolated data-driven QSS (same exemption class as theme_preview palettes).",
+  "_comment": "G1 ratchet ledger (audit F3/G1): per-file setStyleSheet allowance in the presentation layer. Counts may only DECREASE via StyleKit/central-QSS migration; new calls fail check_inline_styles.py. Lower allowances with: python scripts/check_inline_styles.py --update. app.py (central application point) and core/ are exempt by design.",
   "entries": {
     "AssetsManager/dialogs/color_picker_dialog.py": 1,
     "AssetsManager/dialogs/generic_settings_dialog.py": 1,
@@ -21,8 +21,8 @@
     "AssetsManager/panels/base.py": 1,
     "AssetsManager/panels/file_list/_base_layout.py": 11,
     "AssetsManager/panels/file_list/_grid_widget_data.py": 1,
-    "AssetsManager/panels/file_list/_navigation.py": 3,
-    "AssetsManager/panels/info.py": 49,
+    "AssetsManager/panels/file_list/_navigation.py": 2,
+    "AssetsManager/panels/info.py": 48,
     "AssetsManager/panels/sidebar.py": 4,
     "AssetsManager/panels/tag_tree.py": 1,
     "AssetsManager/widgets/command_palette.py": 1,
@@ -32,6 +32,7 @@
     "AssetsManager/widgets/micro_tab_bar.py": 1,
     "AssetsManager/widgets/plugin_ui.py": 16,
     "AssetsManager/widgets/quick_look_overlay.py": 1,
+    "AssetsManager/widgets/quick_tagger_overlay.py": 1,
     "AssetsManager/widgets/stylekit.py": 4,
     "AssetsManager/widgets/tag_chip.py": 3,
     "AssetsManager/widgets/theme_preview.py": 2,

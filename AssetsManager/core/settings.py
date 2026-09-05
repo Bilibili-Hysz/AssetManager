@@ -5,6 +5,7 @@ import logging
 import os
 import tempfile
 import threading
+from math import isfinite
 from typing import Callable, cast
 
 from AssetsManager.core.config_migrator import FutureConfigVersionError
@@ -33,6 +34,12 @@ SHARE_LAST_SUCCESSFUL_AUTH_KEY = "lan_share_last_successful_auth"
 # the LAN server needs the raw value for constant-time comparison.
 LAN_MCP_TOKEN_KEY = "lan_mcp_token"
 LIBRARY_WATCHER_INTERVAL_KEY = "library_watcher_interval_seconds"
+RECONCILIATION_OUTBOX_PRUNE_INTERVAL_KEY = "reconciliation_outbox_prune_interval_seconds"
+RECONCILIATION_OUTBOX_ACK_RETENTION_KEY = "reconciliation_outbox_ack_retention_seconds"
+RECONCILIATION_OUTBOX_DEAD_LETTER_RETENTION_KEY = (
+    "reconciliation_outbox_dead_letter_retention_seconds"
+)
+RECONCILIATION_OUTBOX_PRUNE_LIMIT_KEY = "reconciliation_outbox_prune_limit"
 THUMBNAIL_CACHE_MAX_BYTES_KEY = "thumbnail_cache_max_bytes"
 AI_TAGGING_ENABLED_KEY = "ai_tagging_enabled"
 AI_TAGGING_ENDPOINT_KEY = "ai_tagging_endpoint"
@@ -40,6 +47,10 @@ AI_TAGGING_MODEL_KEY = "ai_tagging_model"
 AI_TAGGING_MAX_TAGS_KEY = "ai_tagging_max_tags"
 AI_TAGGING_FORCE_EXISTING_KEY = "ai_tagging_force_existing"
 DEFAULT_LIBRARY_WATCHER_INTERVAL = 120.0
+DEFAULT_RECONCILIATION_OUTBOX_PRUNE_INTERVAL = 3600.0
+DEFAULT_RECONCILIATION_OUTBOX_ACK_RETENTION_SECONDS = 7 * 24 * 60 * 60
+DEFAULT_RECONCILIATION_OUTBOX_DEAD_LETTER_RETENTION_SECONDS = 30 * 24 * 60 * 60
+DEFAULT_RECONCILIATION_OUTBOX_PRUNE_LIMIT = 1000
 DEFAULT_SHARE_SAFETY_ACK_VERSION = 0
 DEFAULT_TRUSTED_NETWORK_CONFIRMED = False
 DEFAULT_SHARE_LAST_SUCCESSFUL_BIND = None
@@ -51,6 +62,15 @@ DEFAULT_SHARE_LAST_SUCCESSFUL_AUTH = None
 # so the legacy migration carries ONLY these keys into a fresh profile and
 # drops everything else instead of inheriting foreign content.
 _LEGACY_MIGRATABLE_KEYS = frozenset({"theme", "recent_libraries"})
+
+
+def _positive_finite_number(value) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and isfinite(float(value))
+        and value > 0
+    )
 
 
 def _valid_http_url(value) -> bool:
@@ -73,6 +93,15 @@ _VALIDATORS: dict[str, Callable] = {
     # Thumbnail disk-cache cap in bytes; 0 = unlimited (H2-a2).
     THUMBNAIL_CACHE_MAX_BYTES_KEY: (
         lambda v: isinstance(v, int) and not isinstance(v, bool) and v >= 0
+    ),
+    # Reconciliation outbox retention is deliberately bounded to positive
+    # finite values.  A malformed profile must never disable pruning by
+    # accident or create a zero-second busy loop.
+    RECONCILIATION_OUTBOX_PRUNE_INTERVAL_KEY: _positive_finite_number,
+    RECONCILIATION_OUTBOX_ACK_RETENTION_KEY: _positive_finite_number,
+    RECONCILIATION_OUTBOX_DEAD_LETTER_RETENTION_KEY: _positive_finite_number,
+    RECONCILIATION_OUTBOX_PRUNE_LIMIT_KEY: (
+        lambda v: isinstance(v, int) and not isinstance(v, bool) and v >= 1
     ),
     # AI tagging (H2-c). The feature is off until explicitly enabled; the
     # endpoint must be an absolute http(s) URL; max_tags stays in 1-20 so a
@@ -334,6 +363,56 @@ class AppSettings:
             if isinstance(val, list):
                 return list(val)
             return default if default is not None else []
+
+    @staticmethod
+    def _positive_setting(value, default):
+        """Return a positive finite setting or its safe default."""
+        if _positive_finite_number(value):
+            return float(value)
+        return float(default)
+
+    def get_reconciliation_outbox_prune_interval_seconds(self) -> float:
+        """Return the bounded outbox retention sweep interval."""
+        return self._positive_setting(
+            self.get(RECONCILIATION_OUTBOX_PRUNE_INTERVAL_KEY),
+            DEFAULT_RECONCILIATION_OUTBOX_PRUNE_INTERVAL,
+        )
+
+    def set_reconciliation_outbox_prune_interval_seconds(self, seconds) -> None:
+        self.set(RECONCILIATION_OUTBOX_PRUNE_INTERVAL_KEY, seconds)
+
+    def get_reconciliation_outbox_ack_retention_seconds(self) -> float:
+        """Return how long acknowledged outbox rows remain queryable."""
+        return self._positive_setting(
+            self.get(RECONCILIATION_OUTBOX_ACK_RETENTION_KEY),
+            DEFAULT_RECONCILIATION_OUTBOX_ACK_RETENTION_SECONDS,
+        )
+
+    def set_reconciliation_outbox_ack_retention_seconds(self, seconds) -> None:
+        self.set(RECONCILIATION_OUTBOX_ACK_RETENTION_KEY, seconds)
+
+    def get_reconciliation_outbox_dead_letter_retention_seconds(self) -> float:
+        """Return how long dead-letter rows remain replayable/auditable."""
+        return self._positive_setting(
+            self.get(RECONCILIATION_OUTBOX_DEAD_LETTER_RETENTION_KEY),
+            DEFAULT_RECONCILIATION_OUTBOX_DEAD_LETTER_RETENTION_SECONDS,
+        )
+
+    def set_reconciliation_outbox_dead_letter_retention_seconds(self, seconds) -> None:
+        self.set(RECONCILIATION_OUTBOX_DEAD_LETTER_RETENTION_KEY, seconds)
+
+    def get_reconciliation_outbox_prune_limit(self) -> int:
+        """Return the maximum rows removed by one retention pass."""
+        value = self.get(
+            RECONCILIATION_OUTBOX_PRUNE_LIMIT_KEY,
+            DEFAULT_RECONCILIATION_OUTBOX_PRUNE_LIMIT,
+        )
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 1:
+            return value
+        return DEFAULT_RECONCILIATION_OUTBOX_PRUNE_LIMIT
+
+    def set_reconciliation_outbox_prune_limit(self, limit: int) -> None:
+        self.set(RECONCILIATION_OUTBOX_PRUNE_LIMIT_KEY, limit)
 
     def get_share_safety_ack_version(self) -> int:
         """Return the persisted share-safety acknowledgement version.

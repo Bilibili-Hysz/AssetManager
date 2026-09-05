@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QDialogButtonBox,
     QLabel,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -175,14 +176,15 @@ def test_local_dialog_buttons_render_visible_keyboard_focus():
     app = QApplication.instance() or QApplication([])
     dialog = _VisualDialog(min_size=(320, 180))
     gear = dialog.make_gear_btn(lambda: None)
+    sec_btn = QPushButton("Action", dialog)
+    sec_btn.setProperty("buttonVariant", "secondary")
     dialog.layout().addWidget(gear)
+    dialog.layout().addWidget(sec_btn)
     try:
         dialog.show()
         app.processEvents()
-        # Only the gear (widget-level QSS) is asserted here: variant-property
-        # buttons styled by the DIALOG-level sheet render no visible focus
-        # ring in offscreen grabs — tracked as finding B7 (audit 2026-09-03).
-        for button in (gear,):
+        # Both gear and variant-property buttons now render visible focus ring (finding B7 resolved).
+        for button in (gear, sec_btn):
             button.clearFocus()
             app.processEvents()
             normal = _render_bytes(button, app)

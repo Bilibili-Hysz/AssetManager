@@ -114,7 +114,6 @@ def _attach_footer(widget: QWidget):
 def _build_title_bar(dock_title: str, dock: QDockWidget,
                      extra_buttons: list[QWidget]) -> QWidget:
     t = themes.get()
-    bar_radius = scaled_px(int(themes.prop("border_radius", "md")))
     spacing_xs = scaled_px(int(themes.prop("spacing", "xs")))
     spacing_sm = scaled_px(int(themes.prop("spacing", "sm")))
     spacing_md = scaled_px(int(themes.prop("spacing", "md")))
@@ -122,8 +121,9 @@ def _build_title_bar(dock_title: str, dock: QDockWidget,
     bar.setProperty("is_custom_title", True)
     bar.setStyleSheet(
         f"background: {themes.header_for_dock()}; "
-        f"border: {scaled_px(1)}px solid {themes.color('border_subtle')}; "
-        f"border-top-left-radius: {bar_radius}px; border-top-right-radius: {bar_radius}px; ")
+        f"border-bottom: {scaled_px(1)}px solid {themes.color('border_subtle')}; "
+        f"border-top: none; border-left: none; border-right: none; "
+        f"border-radius: 0; ")
 
     layout = QHBoxLayout(bar)
     layout.setContentsMargins(spacing_md, spacing_xs, spacing_md, spacing_xs)
@@ -131,7 +131,7 @@ def _build_title_bar(dock_title: str, dock: QDockWidget,
 
     title_label = QLabel(dock_title)
     title_label.setStyleSheet(
-        f"color: {themes.color('heading')}; font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; "
+        f"color: {themes.color('heading')}; font-size: {scaled_pt(themes.font_size('sm'))}px; "
         f"font-weight: bold; "
         f"background: transparent; border: none; "
         f"padding: {spacing_xs}px {spacing_sm}px;")

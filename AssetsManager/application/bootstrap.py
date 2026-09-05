@@ -255,7 +255,7 @@ class LibraryScopedServices:
     media_derivatives_recorder: MediaDerivativesRecorder | None = None
     collection_service: CollectionService | None = None
     command_executions: CommandExecutionStore | None = None
-    command_registry: "CommandRegistry" | None = None
+    command_registry: CommandRegistry | None = None
 
     @property
     def lan_services(self) -> LanRuntimeServices:
@@ -668,12 +668,28 @@ class ApplicationBootstrap:
                 reconciliation_queue=reconciliation_queue,
             )
             import_manifest_recovery.recover()
+            # Retention is application-configurable, but the settings facade
+            # remains fail-closed: malformed or missing values resolve to the
+            # service defaults.  Keep the policy at the runtime wiring edge so
+            # the queue/store stay independent of user-profile concerns.
             reconciliation_service = AssetIndexReconciliationService(
                 session=session,
                 asset_index_service=asset_index_service,
                 reconciliation_queue=reconciliation_queue,
                 projection_repair_service=projection_repair_service,
                 import_manifest_recovery=import_manifest_recovery,
+                transition_outbox_prune_interval=(
+                    self._app_settings.get_reconciliation_outbox_prune_interval_seconds()
+                ),
+                transition_outbox_ack_retention_seconds=(
+                    self._app_settings.get_reconciliation_outbox_ack_retention_seconds()
+                ),
+                transition_outbox_dead_letter_retention_seconds=(
+                    self._app_settings.get_reconciliation_outbox_dead_letter_retention_seconds()
+                ),
+                transition_outbox_prune_limit=(
+                    self._app_settings.get_reconciliation_outbox_prune_limit()
+                ),
                 # A runtime worker may recover from a bounded burst of
                 # unexpected infrastructure failures, but it must still
                 # become visibly faulted instead of retrying forever.

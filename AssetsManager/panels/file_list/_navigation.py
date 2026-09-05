@@ -4,11 +4,11 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, cast
 
-from PySide6.QtCore import Qt, QTimer, QFileSystemWatcher
+from PySide6.QtCore import Qt, QTimer, QFileSystemWatcher, QSize
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QMessageBox, QPushButton, QWidget
 
 from AssetsManager.core.signal_bus import get as bus
-from AssetsManager.core import themes
+from AssetsManager.core import icons, themes
 from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core.workers import CancellationToken
@@ -317,20 +317,23 @@ class NavigationMixin:
             p = p.parent
         show = ancestors[-5:] if len(ancestors) > 5 else ancestors
         if len(ancestors) > 5:
-            dot = QPushButton(" … ")
+            dot = QPushButton("…")
             dot.setFlat(True)
             dot.setCursor(Qt.CursorShape.PointingHandCursor)
             dot.setStyleSheet(
-                f"color: {sk.token('muted')}; font-size: {sk.pt(sk.font_size('sm'))}px; "
-                f"background: transparent; border: none;")
+                f"QPushButton {{ color: {sk.token('muted')}; font-size: {sk.pt(sk.font_size('sm'))}px; "
+                f"padding: {sk.px(2)}px {sk.px(4)}px; background: transparent; "
+                f"border: none; border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; }}"
+                f"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; color: {sk.token('heading')}; }}")
             hidden = ancestors[:-5]
             dot.setToolTip("\n".join(str(a) for a in hidden))
             dot.clicked.connect(lambda checked, paths=hidden: self._show_bc_menu(paths, dot))
             self._bc_layout.addWidget(dot)
         for i, anc in enumerate(show):
             if i > 0 or (len(ancestors) > 5 and i == 0):
-                sep = QLabel(" > ")
-                sep.setStyleSheet(sk.muted_css(12))
+                sep = QLabel()
+                ch_sz = scaled_px(10)
+                sep.setPixmap(icons.icon("chevron_right", color="icon_muted", size=ch_sz).pixmap(QSize(ch_sz, ch_sz)))
                 self._bc_layout.addWidget(sep)
             name = anc.name or str(anc)
             btn = QPushButton(name)
@@ -340,9 +343,9 @@ class NavigationMixin:
             btn.setStyleSheet(
                 f"QPushButton {{ color: {sk.token('heading') if current else sk.token('muted')}; "
                 f"font-size: {sk.pt(sk.font_size('sm'))}px; font-weight: {'bold' if current else 'normal'}; "
-                f"padding: {sk.px(2)}px {sk.px(4)}px; background: transparent; "
+                f"padding: {sk.px(2)}px {sk.px(6)}px; background: transparent; "
                 f"border: none; border-radius: {sk.px(int(themes.prop('border_radius', 'sm')))}px; }}"
-                f"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; }}")
+                f"QPushButton:hover {{ background: {alpha(sk.token('hover_overlay'), themes.prop('opacity', 'hover'))}; color: {sk.token('heading')}; }}")
             btn.setToolTip(str(anc))
             btn.setAccessibleName(name)
             bpath = str(anc)

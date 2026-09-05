@@ -21,11 +21,12 @@ Architecture:
   __init__.py      — FileListPanel (default) + legacy FileListPanel
 """
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 # QVariantAnimation stays in this module's namespace: _base_events resolves it
 # lazily through _base so tests can monkeypatch the panel's animation class.
 from PySide6.QtCore import Qt, Signal, QVariantAnimation  # noqa: F401
+from PySide6.QtWidgets import QWidget
 
 from AssetsManager.panels._event_bridge import CategoryRegistrySubscription
 from AssetsManager.panels.base import PanelContent
@@ -76,7 +77,11 @@ class FileListPanel(NavigationMixin, ActionsMixin, LayoutMixin, LogicMixin, Even
             "filter": self._model._filter_text,
             "category": self._model._filter_cat,
             "hidden": self._model.show_hidden,
-            "toolbar_visible": self._toolbar_widget.isVisibleTo(self._toolbar_widget.parentWidget()),
+            # The toolbar always lives inside the panel's layout, so a parent
+            # exists whenever save_state runs; the cast carries that invariant.
+            "toolbar_visible": self._toolbar_widget.isVisibleTo(
+                cast(QWidget, self._toolbar_widget.parentWidget())
+            ),
             "view_memory": dict(self._view_memory),
         }
 

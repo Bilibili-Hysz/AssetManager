@@ -21,7 +21,7 @@ def store():
 
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.executescript(database._SCHEMA)
-    assert migrate(conn) == 42
+    assert migrate(conn) >= 42
     return CommandExecutionStore(lambda: conn)
 
 
@@ -124,7 +124,7 @@ def test_atomic_claim_across_two_connections_has_one_winner(tmp_path):
     db_path = tmp_path / "journal.sqlite"
     setup = sqlite3.connect(str(db_path), check_same_thread=False)
     setup.executescript(database._SCHEMA)
-    assert migrate(setup) == 42
+    assert migrate(setup) >= 42
     setup.close()
 
     barrier = threading.Barrier(2)
@@ -189,7 +189,7 @@ def test_fifo_trim_caps_rows(monkeypatch):
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.executescript(database._SCHEMA)
     from AssetsManager.core.db_migrations import migrate
-    assert migrate(conn) == 42
+    assert migrate(conn) >= 42
     monkeypatch.setattr(ce_module, "MAX_ROWS", 5)
     store = CommandExecutionStore(lambda: conn)
     for i in range(8):

@@ -10,6 +10,14 @@ from AssetsManager.core.config_migrator import (
     migrate,
 )
 from AssetsManager.core.settings import (
+    DEFAULT_RECONCILIATION_OUTBOX_ACK_RETENTION_SECONDS,
+    DEFAULT_RECONCILIATION_OUTBOX_DEAD_LETTER_RETENTION_SECONDS,
+    DEFAULT_RECONCILIATION_OUTBOX_PRUNE_INTERVAL,
+    DEFAULT_RECONCILIATION_OUTBOX_PRUNE_LIMIT,
+    RECONCILIATION_OUTBOX_ACK_RETENTION_KEY,
+    RECONCILIATION_OUTBOX_DEAD_LETTER_RETENTION_KEY,
+    RECONCILIATION_OUTBOX_PRUNE_INTERVAL_KEY,
+    RECONCILIATION_OUTBOX_PRUNE_LIMIT_KEY,
     SHARE_LAST_SUCCESSFUL_AUTH_KEY,
     SHARE_LAST_SUCCESSFUL_BIND_KEY,
     SHARE_SAFETY_ACK_VERSION_KEY,
@@ -110,6 +118,60 @@ def test_set_get():
     assert s.get("key1") == "value1"
     assert s.get("nonexistent") is None
     assert s.get("nonexistent", "default") == "default"
+
+
+def test_reconciliation_outbox_retention_settings_round_trip(tmp_path):
+    settings = AppSettings.__new__(AppSettings)
+    settings._path = tmp_path / "settings.json"
+    settings._data = {}
+    settings._dirty = False
+
+    assert settings.get_reconciliation_outbox_prune_interval_seconds() == DEFAULT_RECONCILIATION_OUTBOX_PRUNE_INTERVAL
+    assert settings.get_reconciliation_outbox_ack_retention_seconds() == DEFAULT_RECONCILIATION_OUTBOX_ACK_RETENTION_SECONDS
+    assert settings.get_reconciliation_outbox_dead_letter_retention_seconds() == DEFAULT_RECONCILIATION_OUTBOX_DEAD_LETTER_RETENTION_SECONDS
+    assert settings.get_reconciliation_outbox_prune_limit() == DEFAULT_RECONCILIATION_OUTBOX_PRUNE_LIMIT
+
+    settings.set_reconciliation_outbox_prune_interval_seconds(90.0)
+    settings.set_reconciliation_outbox_ack_retention_seconds(3600)
+    settings.set_reconciliation_outbox_dead_letter_retention_seconds(7200.5)
+    settings.set_reconciliation_outbox_prune_limit(37)
+
+    assert settings.get_reconciliation_outbox_prune_interval_seconds() == 90.0
+    assert settings.get_reconciliation_outbox_ack_retention_seconds() == 3600.0
+    assert settings.get_reconciliation_outbox_dead_letter_retention_seconds() == 7200.5
+    assert settings.get_reconciliation_outbox_prune_limit() == 37
+
+
+def test_reconciliation_outbox_retention_settings_fail_closed_on_malformed_values(tmp_path):
+    settings = AppSettings.__new__(AppSettings)
+    settings._path = tmp_path / "settings.json"
+    settings._data = {
+        RECONCILIATION_OUTBOX_PRUNE_INTERVAL_KEY: 0,
+        RECONCILIATION_OUTBOX_ACK_RETENTION_KEY: float("nan"),
+        RECONCILIATION_OUTBOX_DEAD_LETTER_RETENTION_KEY: "30 days",
+        RECONCILIATION_OUTBOX_PRUNE_LIMIT_KEY: True,
+    }
+    settings._dirty = False
+
+    assert settings.get_reconciliation_outbox_prune_interval_seconds() == DEFAULT_RECONCILIATION_OUTBOX_PRUNE_INTERVAL
+    assert settings.get_reconciliation_outbox_ack_retention_seconds() == DEFAULT_RECONCILIATION_OUTBOX_ACK_RETENTION_SECONDS
+    assert settings.get_reconciliation_outbox_dead_letter_retention_seconds() == DEFAULT_RECONCILIATION_OUTBOX_DEAD_LETTER_RETENTION_SECONDS
+    assert settings.get_reconciliation_outbox_prune_limit() == DEFAULT_RECONCILIATION_OUTBOX_PRUNE_LIMIT
+
+
+def test_reconciliation_outbox_retention_settings_reject_invalid_writes():
+    settings = AppSettings.__new__(AppSettings)
+    settings._data = {}
+    settings._dirty = False
+
+    with pytest.raises(ValueError):
+        settings.set_reconciliation_outbox_prune_interval_seconds(0)
+    with pytest.raises(ValueError):
+        settings.set_reconciliation_outbox_ack_retention_seconds(float("inf"))
+    with pytest.raises(ValueError):
+        settings.set_reconciliation_outbox_dead_letter_retention_seconds(-1)
+    with pytest.raises(ValueError):
+        settings.set_reconciliation_outbox_prune_limit(0)
 
 
 def test_list_operations():

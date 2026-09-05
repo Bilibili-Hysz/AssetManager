@@ -84,6 +84,29 @@ class _DetailPanel(QFrame):
         self._status.hide()
         layout.addWidget(self._status)
 
+        # First-run welcome guide (shown when no library is selected)
+        self._guide_container = QWidget()
+        guide_layout = QVBoxLayout(self._guide_container)
+        guide_layout.setContentsMargins(0, 0, 0, 0)
+        guide_layout.setSpacing(scaled_px(8))
+
+        self._guide_icon = QLabel()
+        icon_sz = scaled_px(32)
+        self._guide_icon.setPixmap(icons.icon("sparkles", color="icon_accent", size=icon_sz).pixmap(QSize(icon_sz, icon_sz)))
+        guide_layout.addWidget(self._guide_icon)
+
+        self._guide_title = QLabel(tr("startup.guide_title", default="快速起步"))
+        self._guide_title.setObjectName("guideTitle")
+        guide_layout.addWidget(self._guide_title)
+
+        self._guide_desc = QLabel(
+            tr("startup.guide_desc", default="本地优先 · 原生无损\n选择或拖入已有文件夹建立资产库，不破坏原有目录结构。")
+        )
+        self._guide_desc.setObjectName("guideDesc")
+        self._guide_desc.setWordWrap(True)
+        guide_layout.addWidget(self._guide_desc)
+        layout.addWidget(self._guide_container)
+
         layout.addStretch()
 
         self._open_btn = QPushButton(tr("startup.open_btn"))
@@ -131,11 +154,16 @@ class _DetailPanel(QFrame):
         self._refresh_button_icons()
         self._open_btn.setStyleSheet(self._primary_btn_qss())
         self._remove_btn.setStyleSheet(self._ghost_btn_qss())
+        if hasattr(self, "_guide_container"):
+            icon_sz = scaled_px(32)
+            self._guide_icon.setPixmap(icons.icon("sparkles", color="icon_accent", size=icon_sz).pixmap(QSize(icon_sz, icon_sz)))
         if self._path_data:
             self.show_detail(self._name.text(), self._path_data,
                            Path(self._path_data).exists())
 
     def show_detail(self, name: str, path: str, exists: bool):
+        if hasattr(self, "_guide_container"):
+            self._guide_container.hide()
         self._path_data = path
         self._header.show()
         self._name.setText(name)
@@ -171,6 +199,8 @@ class _DetailPanel(QFrame):
         self._status.hide()
         self._open_btn.hide()
         self._remove_btn.hide()
+        if hasattr(self, "_guide_container"):
+            self._guide_container.show()
 
     def set_callbacks(self, open_cb, remove_cb):
         self._open_cb = open_cb
@@ -193,6 +223,14 @@ class _DetailPanel(QFrame):
             f"  background: {card_bg}; "
             f"  border: {scaled_px(1)}px solid {hairline}; "
             f"  border-radius: {radius}px; "
+            f"}}"
+            f"#{name} QLabel#guideTitle {{"
+            f"  font-size: {_font('md')}px; font-weight: bold; color: {themes.color('heading')}; "
+            f"  padding: 0; background: transparent; border: none;"
+            f"}}"
+            f"#{name} QLabel#guideDesc {{"
+            f"  font-size: {_font('xs')}px; color: {themes.color('muted')}; "
+            f"  padding: 0; background: transparent; border: none;"
             f"}}")
 
     def _primary_btn_qss(self) -> str:
@@ -276,8 +314,8 @@ class _LibraryCard(QFrame):
             f"background: transparent; border: none;")
         # Card background
         if self._selected:
-            bg = alpha(t["accent"], 0.25)
-            border = alpha(t["accent"], 0.30)
+            bg = alpha(t["accent"], 0.18)
+            border = alpha(t["accent"], 0.32)
         else:
             bg = "transparent"
             border = "transparent"

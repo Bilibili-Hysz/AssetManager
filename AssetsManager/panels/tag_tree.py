@@ -43,16 +43,19 @@ class TagTreePanel(StandardPanel):
 
 
         # ── Search bar + action toolbar at top (unified reading flow) ─
+        ctl_h = scaled_px(themes.metrics("control_height_md"))
         self._search = QLineEdit()
+        self._search.setFixedHeight(ctl_h)
         self._search.setPlaceholderText(tr("tagtree.filter_placeholder"))
         self._search.textChanged.connect(self._on_search)
         self._search.setClearButtonEnabled(True)
         bar = QHBoxLayout()
-        bar.setContentsMargins(scaled_px(4), scaled_px(4), scaled_px(4), scaled_px(2))
+        bar.setContentsMargins(scaled_px(6), scaled_px(4), scaled_px(6), scaled_px(4))
         bar.setSpacing(scaled_px(4))
         bar.addWidget(self._search)
 
         add_btn = QPushButton(tr("tagtree.new_tag"))
+        add_btn.setFixedHeight(ctl_h)
         add_btn.setIcon(icons.icon("tag", color="icon_secondary", size=scaled_px(16)))
         add_btn.setIconSize(QSize(scaled_px(16), scaled_px(16)))
         add_btn.setAccessibleName(tr("tagtree.new_tag"))

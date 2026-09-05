@@ -18,7 +18,7 @@ from PySide6.QtCore import Qt, QSize, QPoint
 from PySide6.QtWidgets import (
     QHBoxLayout, QComboBox, QLabel, QWidget, QMenu,
     QSizePolicy, QTreeView, QAbstractItemView, QHeaderView,
-    QLineEdit,
+    QLineEdit, QPushButton,
 )
 
 from AssetsManager.core import icons
@@ -98,8 +98,11 @@ class LayoutMixin:
         def _apply_tag_dialog(self, paths: list[str]) -> None: ...
         def _remove_tag_dialog(self, paths: list[str]) -> None: ...
         def _manage_tags_dialog(self, paths: list[str]) -> None: ...
+        def _ai_tag_batch(self, paths: list[str]) -> None: ...
         def _populate_details(self) -> None: ...
         def _load_visible(self) -> None: ...
+        def _render_bc(self) -> None: ...
+        def window(self) -> QWidget: ...
 
     def _build_ui(self) -> None:
         """Build header, toolbar, breadcrumb, status bar, grid and detail views."""
@@ -265,10 +268,45 @@ class LayoutMixin:
         self._operation_feedback = QLabel("")
         self._operation_feedback.hide()
         sl.addWidget(self._operation_feedback)
+
+        self._footer_right = QWidget()
+        fr_layout = QHBoxLayout(self._footer_right)
+        fr_layout.setContentsMargins(0, 0, 0, 0)
+        fr_layout.setSpacing(scaled_px(4))
+
+        self._cmd_palette_btn = QPushButton("Ctrl+K")
+        self._cmd_palette_btn.setFixedHeight(scaled_px(20))
+        self._cmd_palette_btn.setToolTip(tr("shortcuts.command_palette", default="打开全局命令面板 (Ctrl+K)"))
+        self._cmd_palette_btn.setIcon(icons.icon("search", color="icon_muted", size=scaled_px(12)))
+        self._cmd_palette_btn.setIconSize(QSize(scaled_px(12), scaled_px(12)))
+        themes.set_button_variant(self._cmd_palette_btn, "ghost")
+        self._cmd_palette_btn.clicked.connect(self._trigger_command_palette)
+        fr_layout.addWidget(self._cmd_palette_btn)
+
+        self._view_grid_btn = QPushButton()
+        self._view_grid_btn.setFixedSize(scaled_px(22), scaled_px(20))
+        self._view_grid_btn.setToolTip(tr("filelist.view.grid"))
+        self._view_grid_btn.setIcon(icons.icon("grid", color="icon_secondary", size=scaled_px(12)))
+        self._view_grid_btn.setIconSize(QSize(scaled_px(12), scaled_px(12)))
+        themes.set_button_variant(self._view_grid_btn, "ghost")
+        self._view_grid_btn.clicked.connect(lambda: self._set_view_mode_by_name("Grid"))
+        fr_layout.addWidget(self._view_grid_btn)
+
+        self._view_details_btn = QPushButton()
+        self._view_details_btn.setFixedSize(scaled_px(22), scaled_px(20))
+        self._view_details_btn.setToolTip(tr("filelist.view.details"))
+        self._view_details_btn.setIcon(icons.icon("file", color="icon_secondary", size=scaled_px(12)))
+        self._view_details_btn.setIconSize(QSize(scaled_px(12), scaled_px(12)))
+        themes.set_button_variant(self._view_details_btn, "ghost")
+        self._view_details_btn.clicked.connect(lambda: self._set_view_mode_by_name("Details"))
+        fr_layout.addWidget(self._view_details_btn)
+
+        sl.addWidget(self._footer_right)
         self._fst_status_style()
         self.content_layout.addWidget(self._status_bar)
 
-        self.content_layout.setContentsMargins(scaled_px(2), 0, scaled_px(2), scaled_px(4))
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_layout.setSpacing(0)
         self._header.setProperty("central", True)
 
         self._grid_widget = FileListGridWidget()
@@ -325,6 +363,13 @@ class LayoutMixin:
         self.content_layout.insertWidget(
             self.content_layout.indexOf(self._status_bar), self._detail_view)
 
+        from AssetsManager.widgets.empty_state import EmptyStateWidget
+
+        self._empty_state = EmptyStateWidget(cast(QWidget, self), kind="directory")
+        self.content_layout.insertWidget(
+            self.content_layout.indexOf(self._status_bar), self._empty_state)
+        self._empty_state.hide()
+
 
 
 
@@ -334,11 +379,11 @@ class LayoutMixin:
             f"background: transparent; "
             f"border-top: {scaled_px(1)}px solid {themes.color('border_subtle')};")
         self._status.setStyleSheet(
-            f"color: {themes.color('muted')}; font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; "
+            f"color: {themes.color('muted')}; font-size: {scaled_pt(themes.font_size('sm'))}px; "
             f"background: transparent; "
             f"padding: {scaled_px(int(themes.prop('spacing', 'xs')))}px 0;")
         self._operation_feedback.setStyleSheet(
-            f"color: {themes.color('muted')}; font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; "
+            f"color: {themes.color('muted')}; font-size: {scaled_pt(themes.font_size('sm'))}px; "
             f"background: transparent; "
             f"padding: {scaled_px(int(themes.prop('spacing', 'xs')))}px 0;")
 
@@ -359,8 +404,17 @@ class LayoutMixin:
             f"  border-color: {t['accent']}; "
             f"}}"
             f"#addressBarCapsule QLabel {{ background: transparent; border: none; }}"
-            f"#addressBarCapsule QPushButton {{ background: transparent; border: none; padding: 0; min-width: {scaled_px(22)}px; }}"
-            f"#addressBarCapsule QPushButton:hover {{ background: {hover}; border-radius: {r_sm}px; }}"
+            f"#addressBarCapsule QPushButton {{"
+            f"  background: transparent; color: {t['muted']}; border: none; "
+            f"  font-size: {scaled_pt(themes.font_size('sm'))}px; "
+            f"  padding: {scaled_px(2)}px {scaled_px(6)}px; border-radius: {r_sm}px; "
+            f"}}"
+            f"#addressBarCapsule QPushButton:hover {{"
+            f"  background: {hover}; color: {t['heading']}; "
+            f"}}"
+            f"#addressBarCapsule QPushButton[isCurrent='true'] {{"
+            f"  color: {t['heading']}; font-weight: bold; "
+            f"}}"
         )
 
     @staticmethod
@@ -545,7 +599,7 @@ class LayoutMixin:
             QDialog, QDateEdit, QGridLayout, QLabel, QLineEdit, QPushButton, QSpinBox,
         )
 
-        self._advanced_popup = QDialog(cast(QWidget, self), Qt.Popup)
+        self._advanced_popup = QDialog(cast(QWidget, self), Qt.WindowType.Popup)
         popup = self._advanced_popup
         grid = QGridLayout(popup)
         grid.setContentsMargins(scaled_px(12), scaled_px(10), scaled_px(12), scaled_px(10))
@@ -686,12 +740,58 @@ class LayoutMixin:
             self._status.setText(status_text(state=state, view_mode=mode, total=total, selected=sel, size_str=sz_str))
         else:
             self._status.setText(status_text(state=state, view_mode=mode, total=total, selected=0, size_str=""))
+        if hasattr(self, "_show_empty_if_needed"):
+            self._show_empty_if_needed()
 
     def _show_empty_if_needed(self):
         if self._model.rowCount() == 0:
             self._status.setText(tr("filelist.empty"))
+            if hasattr(self, "_empty_state"):
+                query = self._search.text().strip() if hasattr(self, "_search") else ""
+                if query:
+                    self._empty_state.set_state(
+                        kind="search",
+                        title=tr("filelist.search_no_results"),
+                        subtitle=tr("sidebar.empty_hint"),
+                    )
+                else:
+                    self._empty_state.set_state(
+                        kind="directory",
+                        title=tr("filelist.empty"),
+                        subtitle=tr("panel.empty.hint", default=""),
+                    )
+                self._empty_state.show()
+                self._grid_widget.hide()
+                self._detail_view.hide()
         else:
+            if hasattr(self, "_empty_state"):
+                self._empty_state.hide()
+                if self._view_mode == "Details":
+                    self._detail_view.show()
+                    self._grid_widget.hide()
+                else:
+                    self._grid_widget.show()
+                    self._detail_view.hide()
             self._apply_list_theme()
+
+    def _trigger_command_palette(self) -> None:
+        win = self.window() if callable(getattr(self, "window", None)) else None
+        open_palette = getattr(win, "_open_command_palette", None)
+        if callable(open_palette):
+            open_palette()
+        else:
+            try:
+                from AssetsManager.widgets.command_palette import CommandPalette
+                dlg = CommandPalette(cast(QWidget, self))
+                dlg.exec()
+            except Exception:
+                pass
+
+    def _set_view_mode_by_name(self, mode: str) -> None:
+        if hasattr(self, "_view_combo"):
+            idx = self._view_combo.findData(mode)
+            if idx >= 0:
+                self._view_combo.setCurrentIndex(idx)
 
     def _refresh_state_icons(self) -> None:
         """Keep stateful toolbar controls icon-only across every refresh path."""
@@ -747,9 +847,9 @@ class LayoutMixin:
         """
         self._detail_view.setStyleSheet(
             f"QTreeView {{"
-            f"  background: {themes.color('panel')}; color: {themes.color('body')}; "
-            f"  alternate-background-color: {alpha(themes.color('header'), 0.24)}; "
-            f"  selection-background-color: {alpha(themes.color('accent'), 0.28)}; "
+            f"  background: {themes.color('base')}; color: {themes.color('body')}; "
+            f"  alternate-background-color: {alpha(themes.color('header'), 0.12)}; "
+            f"  selection-background-color: {alpha(themes.color('accent'), 0.20)}; "
             f"  selection-color: {themes.color('heading')}; "
             f"  border: none; outline: none; font-size: {scaled_pt(int(themes.prop('font_size', 'sm')))}px; "
             f"}}"

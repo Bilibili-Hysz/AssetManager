@@ -8,7 +8,7 @@ import logging
 from time import perf_counter
 import os
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, TypedDict, cast
 import weakref
 from PySide6.QtCore import Qt, QAbstractListModel, QModelIndex, QObject, QRunnable, QThread, Signal
 from PySide6.QtGui import QIcon
@@ -75,6 +75,17 @@ class _ScanTask(CancellableRunnable):
         if not cancelled:
             signals.scan_done.emit(entries, stat_cache, error)
 
+class _StructuredFilter(TypedDict, total=False):
+    """Keyword payload ``set_structured_filter`` stores and ``filter_accepts``
+    re-expands into ``matches_structured`` — keys/param names stay 1:1."""
+
+    size_min: int
+    size_max: int
+    mtime_after: float
+    mtime_before: float
+    extensions: list[str]
+
+
 class FileSystemModel(QAbstractListModel):
     """Model backed by os.scandir. Supports sort, filter, and per-item roles."""
 
@@ -108,7 +119,7 @@ class FileSystemModel(QAbstractListModel):
         self._show_hidden: bool = False
         # Advanced (structured) filter: extension/size/mtime predicates
         # evaluated per entry in ``filter_accepts`` (see matches_structured).
-        self._structured_filter: dict[str, object] = {}
+        self._structured_filter: _StructuredFilter = {}
         # Count-bounded LRU (QIcon wraps a pixmap, so byte accounting is
         # indirect): a 10k-entry directory scrolled in details view used to
         # accumulate one QIcon per row, peaking around 400 MB (96px × 10k).
@@ -443,16 +454,19 @@ class FileSystemModel(QAbstractListModel):
         Kept outside :meth:`set_filter` so the plain name/category filter
         path stays byte-for-byte compatible with the shared pipeline.
         """
-        self._structured_filter = {
-            key: value for key, value in (
-                ("size_min", size_min),
-                ("size_max", size_max),
-                ("mtime_after", mtime_after),
-                ("mtime_before", mtime_before),
-                ("extensions", list(extensions) if extensions else None),
-            )
-            if value is not None
-        }
+        self._structured_filter = cast(
+            "_StructuredFilter",
+            {
+                key: value for key, value in (
+                    ("size_min", size_min),
+                    ("size_max", size_max),
+                    ("mtime_after", mtime_after),
+                    ("mtime_before", mtime_before),
+                    ("extensions", list(extensions) if extensions else None),
+                )
+                if value is not None
+            },
+        )
         self._subtitle_cache.clear()
         if self._dir_path:
             with self._reset_model("structured_filter"):

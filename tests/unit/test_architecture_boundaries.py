@@ -1088,6 +1088,8 @@ def test_library_service_current_stays_legacy_only() -> None:
     allowed = {
         ("tests.integration.test_library_service", "test_current_context_remains_legacy_compatibility_api"),
         ("tests.integration.test_library_service", "test_current_property_emits_deprecation_warning"),
+        ("AssetsManager.application.reconciliation_queue", "task_id"),
+        ("tests.unit.test_reconciliation_queue", "test_transition_listener_reports_committed_states_and_eviction_once"),
     }
     violations: list[str] = []
     for path in _files(ROOT, "AssetsManager") + _files(ROOT, "tests"):

@@ -11,7 +11,7 @@ live in ``_base_logic.py``; ``_base.py`` composes the three.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Iterable, cast
 
 from PySide6.QtCore import (
     Qt, QEvent, QSize, QTimer, QPoint,
@@ -30,13 +30,13 @@ from AssetsManager.panels.file_list._ui_helpers import _is_external_drop
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from PySide6.QtWidgets import QComboBox, QLineEdit, QTreeView
+    from PySide6.QtWidgets import QComboBox, QDateEdit, QDialog, QLineEdit, QPushButton, QSpinBox, QTreeView
 
     from AssetsManager.panels.file_list._detail_model import DetailModel
     from AssetsManager.panels.file_list._grid_layout import GridLayout
     from AssetsManager.panels.file_list._grid_widget import FileListGridWidget
     from AssetsManager.panels.file_list._loader import ThumbnailLoader
-    from AssetsManager.panels.file_list._model import FileSystemModel
+    from AssetsManager.panels.file_list._model import FileSystemModel, _StructuredFilter
     from AssetsManager.panels.file_list._thumbnail_delivery import ThumbnailDeliveryCoordinator
 
 tr = i18n.tr
@@ -59,6 +59,16 @@ class EventsMixin:
         _view_combo: QComboBox
         _zoom_combo: QComboBox
         _search: QLineEdit
+        # Advanced-filter popup widgets (built by LayoutMixin).
+        _advanced_btn: QPushButton
+        _advanced_popup: QDialog
+        _adv_mtime_after: QDateEdit
+        _adv_mtime_before: QDateEdit
+        _adv_size_min: QSpinBox
+        _adv_size_max: QSpinBox
+        _adv_rating_min: QSpinBox
+        _adv_rating_max: QSpinBox
+        _adv_extensions: QLineEdit
         _search_timer: QTimer | None
         _thumb_size: int
         _current: Path
@@ -74,6 +84,9 @@ class EventsMixin:
         def _schedule_once(self, interval_ms: int, callback: Any) -> Any: ...
         def _clear_pending_timers(self) -> None: ...
         def _start_fs_watcher(self) -> None: ...
+        def window(self) -> QWidget: ...
+        def _run_in_background(self, func: Any, *args: Any, on_done: Any = None) -> None: ...
+        def _get_tag_service(self) -> Any: ...
         def _on_tree_click(self, index: Any, col: int = 0) -> None: ...
         def _on_tree_double_click(self, index: Any, col: int = 0) -> None: ...
         def navigate_to(self, path: str, *, set_root: bool = False) -> None: ...
@@ -438,10 +451,16 @@ class EventsMixin:
         listing.
         """
         params = self._structured_search_params()
-        model_params = {
-            key: value for key, value in params.items()
-            if not key.startswith("rating")
-        }
+        # The comprehension only drops ``rating_*`` keys (model has no rating
+        # data); the remaining keys/param names stay 1:1 with
+        # ``set_structured_filter`` — the cast carries that invariant.
+        model_params = cast(
+            "_StructuredFilter",
+            {
+                key: value for key, value in params.items()
+                if not key.startswith("rating")
+            },
+        )
         self._model.set_structured_filter(**model_params)
         self._advanced_popup.hide()
         self._update_status()
@@ -805,7 +824,7 @@ class EventsMixin:
             entries = getattr(model, "entries", []) if model else []
 
         file_paths: list[str] = []
-        for e in entries:
+        for e in cast("Iterable[object]", entries):
             try:
                 p = getattr(e, "path", None)
                 if p:
@@ -821,20 +840,42 @@ class EventsMixin:
                 continue
 
         if not file_paths:
-            selected_fn = getattr(self, "_selected_paths", None)
-            selected = selected_fn() if callable(selected_fn) else []
+            selected_fn = cast("Any", getattr(self, "_selected_paths", None))
+            selected = cast("list[str]", selected_fn() if callable(selected_fn) else [])
             file_paths = [str(p) for p in selected if os.path.isfile(p)]
 
         if not file_paths:
             return
 
         current_index = 0
-        selected_fn = getattr(self, "_selected_paths", None)
-        selected = selected_fn() if callable(selected_fn) else []
+        selected_fn = cast("Any", getattr(self, "_selected_paths", None))
+        selected = cast("list[str]", selected_fn() if callable(selected_fn) else [])
         if selected and selected[0] in file_paths:
             current_index = file_paths.index(selected[0])
 
         win = self.window() if hasattr(self, "window") else None
         overlay = QuickLookOverlay(file_paths, current_index=current_index, parent=win)
         self._quick_look_overlay = overlay
+        overlay.exec()
+
+    def _open_quick_tagger(self) -> None:
+        """Open the QuickTagger modal overlay for selected files."""
+        selected_fn = cast("Any", getattr(self, "_selected_paths", None))
+        selected = cast("list[str]", selected_fn() if callable(selected_fn) else [])
+        if not selected or not getattr(self, "_lib_root", None):
+            return
+
+        from AssetsManager.widgets.quick_tagger_overlay import QuickTaggerOverlay
+
+        svc = self._get_tag_service() if hasattr(self, "_get_tag_service") else None
+        win = self.window() if hasattr(self, "window") else None
+        overlay = QuickTaggerOverlay(
+            cast("list[str]", selected),
+            library_root=cast("str", self._lib_root),
+            tag_service=svc,
+            parent=win,
+        )
+        if hasattr(self, "_post_refresh"):
+            overlay.tags_changed.connect(self._post_refresh)
+        self._quick_tagger_overlay = overlay
         overlay.exec()

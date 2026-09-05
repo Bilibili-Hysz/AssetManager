@@ -302,3 +302,33 @@ def test_startup_new_library_cancelled_dialog_is_noop(monkeypatch, tmp_path):
             window.close()
             window.deleteLater()
             app.processEvents()
+
+
+def test_startup_first_run_shows_welcome_guide(monkeypatch, tmp_path):
+    """First-run with no history must display the welcome guide on the left."""
+    app = QApplication.instance() or QApplication([])
+    window = _make_startup_window(monkeypatch, [])
+    window.show()
+    app.processEvents()
+    try:
+        assert hasattr(window._detail, "_guide_container")
+        assert not window._detail._guide_container.isHidden()
+        assert window._detail._name.isHidden()
+
+        # If a library is subsequently selected, guide hides and detail shows
+        window._detail.show_detail("Test Lib", str(tmp_path), True)
+        app.processEvents()
+        assert window._detail._guide_container.isHidden()
+        assert not window._detail._name.isHidden()
+
+        # Clearing detail restores the guide
+        window._detail.clear_detail()
+        app.processEvents()
+        assert not window._detail._guide_container.isHidden()
+    finally:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            window.close()
+            window.deleteLater()
+            app.processEvents()
+

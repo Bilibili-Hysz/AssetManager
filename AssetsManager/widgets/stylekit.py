@@ -350,7 +350,11 @@ class StyleKit:
             f"background: {danger_hover}; }}"
             f"QPushButton[buttonVariant=\"danger\"]:pressed {{ "
             f"background: {danger_pressed}; }}"
-            f"QPushButton:focus {{ border: 2px solid {t.get('border_focus', t.get('base', ''))}; }}"
+            f"QPushButton:focus, QPushButton[buttonVariant=\"primary\"]:focus, "
+            f"QPushButton[buttonVariant=\"secondary\"]:focus, "
+            f"QPushButton[buttonVariant=\"ghost\"]:focus, "
+            f"QPushButton[buttonVariant=\"danger\"]:focus {{ "
+            f"border: 2px solid {t.get('border_focus', t.get('base', ''))}; }}"
             f"QPushButton:pressed {{ background: {accent_pressed}; }}"
             f"QPushButton:disabled {{ background: {t.get('disabled_bg', t.get('base', ''))}; "
             f"color: {t.get('disabled_text', t.get('base', ''))}; border: 1px solid {t.get('disabled_bg', t.get('base', ''))}; }}"
@@ -486,13 +490,16 @@ class StyleKit:
         )
 
     def tree_css(self) -> str:
-        """Compact, theme-aware QTreeWidget QSS shared by sidebar/tag panels."""
+        """Comfortable, theme-aware QTreeWidget QSS shared by sidebar/tag panels."""
         font_size = self.pt(self.font_size("sm"))
-        pad_xs = self.px(int(self.prop("spacing", "xs", 4)))
-        pad_sm = self.px(int(self.prop("spacing", "sm", 8)))
-        radius_sm = self.px(int(self.prop("border_radius", "sm", 8)))
+        pad_y = self.px(5)
+        pad_x = self.px(8)
+        radius_sm = self.px(int(self.prop("border_radius", "sm", 6)))
+        margin_y = self.px(1)
+        margin_x = self.px(4)
         hover = self._alpha("hover_overlay", self.prop("opacity", "hover", 0.15))
-        selected = self._alpha("selected_overlay", 0.28)
+        selected = self._alpha("selected_overlay", 0.18)
+        selected_hover = self._alpha("selected_overlay", 0.26)
         body = self.token("body", self.token("heading", ""))
         heading = self.token("heading", body)
         muted = self.token("muted", body)
@@ -502,17 +509,21 @@ class StyleKit:
             f"  font-size: {font_size}px; "
             f"}}"
             f"QTreeWidget::item {{"
-            f"  padding: {pad_xs}px {pad_sm}px; "
+            f"  padding: {pad_y}px {pad_x}px; "
+            f"  margin: {margin_y}px {margin_x}px; "
             f"  border: none; border-radius: {radius_sm}px; "
             f"}}"
             f"QTreeWidget::item:hover {{"
             f"  background: {hover}; "
             f"}}"
             f"QTreeWidget::item:selected {{"
-            f"  background: {selected}; color: {heading}; "
+            f"  background: {selected}; color: {heading}; font-weight: 600; "
             f"}}"
             f"QTreeWidget::item:selected:focus {{"
-            f"  background: {selected}; color: {heading}; "
+            f"  background: {selected}; color: {heading}; font-weight: 600; "
+            f"}}"
+            f"QTreeWidget::item:selected:hover {{"
+            f"  background: {selected_hover}; color: {heading}; "
             f"}}"
             f"QTreeWidget::item:disabled {{ color: {muted}; }}"
         )

@@ -45,7 +45,6 @@ _PREVIEW_R = scaled_px(8)
 # Folder-tab glyph corner, canonical source: themes.metrics("radius_badge").
 _BADGE_R = scaled_px(int(themes.metrics("radius_badge")))
 _BADGE_H = scaled_px(14)
-_BADGE_R = scaled_px(6)
 
 _BADGE_PAD_H = scaled_px(5)
 _FULL_REBUILD_TEXTURE_BUDGET = 12
@@ -101,6 +100,7 @@ class RenderMixin:
         def width(self) -> int: ...
         def height(self) -> int: ...
         def isVisible(self) -> bool: ...
+        def parent(self) -> QWidget | None: ...
         def devicePixelRatioF(self) -> float: ...
         def hasFocus(self) -> bool: ...
         def _card_rect_in_item(self, item_rect: QRect) -> QRect: ...
@@ -228,7 +228,11 @@ class RenderMixin:
             p.fillRect(self.rect(), self._clr_panel)
 
         if self._model_rows == 0 or self._layout is None:
-            self._draw_empty_state(p)
+            # Defer to the layout-level EmptyStateWidget when it exists
+            # (installed by _base_layout.py) to avoid dual empty-state rendering.
+            parent = self.parent() if callable(getattr(self, 'parent', None)) else None
+            if parent is None or not hasattr(parent, '_empty_state'):
+                self._draw_empty_state(p)
             p.end()
             self._record_performance("grid.frame", started, session_token, generation, 0, 0)
             return
