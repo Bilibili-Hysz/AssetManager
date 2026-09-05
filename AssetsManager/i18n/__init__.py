@@ -33,16 +33,22 @@ def init():
     _log.info("I18n initialized: lang=%s", _current_lang)
 
 
-def tr(key: str, **kwargs) -> str:
+def tr(key: str, default: str | None = None, **kwargs) -> str:
     """Translate a dot-notation key to the current language.
 
-    Falls back to English if key or language is missing.
+    Falls back to English if key or language is missing. When both miss and
+    ``default`` is given, returns ``default`` instead of the raw key; without
+    ``default`` the raw key is returned (historical contract, and callers
+    such as ``_sharing_helpers`` previously relied on a nonexistent kwarg
+    silently vanishing into ``str.format``).
     Supports {placeholder} substitution via str.format().
     """
     text = _lookup(_current_lang, key)
     if text is None and _current_lang != _FALLBACK_LANG:
         text = _lookup(_FALLBACK_LANG, key)
     if text is None:
+        if default is not None:
+            return default
         _log.warning("Missing i18n key: %s", key)
         return key
     if kwargs:

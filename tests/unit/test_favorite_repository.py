@@ -94,3 +94,18 @@ def test_favorite_repository_migrates_subtrees_across_owners(tmp_path, schema_db
     assert repo.list_paths("user:2") == [new_child]
     assert repo.contains("user:1", old) is False
     assert repo.contains("user:1", old_child) is False
+
+
+def test_favorite_limit_constants_stay_in_sync():
+    """D11: the repository ceiling mirrors the service cap by value.
+
+    Importing across the layer boundary was rejected in favor_repository,
+    so this equality test is the mechanical guard the comment asked for:
+    if either constant drifts, this fails instead of silently truncating
+    favorite lists below the per-owner cap.
+    """
+    from AssetsManager.application.favorite_service import (
+        MAX_FAVORITES_PER_OWNER,
+    )
+
+    assert FavoriteRepository.LIMIT_CEILING == MAX_FAVORITES_PER_OWNER

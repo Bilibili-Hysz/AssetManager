@@ -203,9 +203,6 @@ img {
   html.light .bg-brand-600,
   html.light .bg-brand-700 { color: #ffffff; }
   html.light .text-brand-400 { color: var(--color-accent-text); }
-  html.light .storefront-link { color: #4f46e5; }
-  html.light .storefront-link:hover { color: #4338ca; }
-  html.light .storefront-eyebrow { color: #4f46e5; }
   html.light .text-white\/60,
   html.light .text-white\/70 { color: var(--color-text-secondary); }
   html.light .text-slate-500 { color: var(--color-text-secondary); }

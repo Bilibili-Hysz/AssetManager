@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
     QApplication,
+    QDockWidget,
     QLabel,
     QPushButton,
     QStatusBar,
@@ -32,6 +33,10 @@ from AssetsManager.lan.ports import LanDesktopAdapter, build_lan_server
 
 _log = logging.getLogger(__name__)
 tr = i18n.tr
+
+# D7: single source of truth lives in window_scoped_panels (Qt-free so test
+# stubs and the lifecycle coordinator import it without PySide6).
+from AssetsManager.window_scoped_panels import SWITCH_PANELS as SCOPED_PANELS  # noqa: E402, F401
 
 
 try:
@@ -272,7 +277,7 @@ class MainWindow(LanSharingMixin, QMainWindow):
         # filtering lives in TagBrowserDialog, which owns its own instance
         # (and its own runtime subscription). This loop tolerates the missing
         # attribute so a future in-window TagTreePanel slots in unchanged.
-        for name in ("file_list", "info", "sidebar", "tag_tree"):
+        for name in SCOPED_PANELS:
             panel = getattr(self, name, None)
             if panel is None or not _alive(panel):
                 continue
@@ -542,16 +547,18 @@ class MainWindow(LanSharingMixin, QMainWindow):
     def _toggle_sidebar(self):
         dock = getattr(self, "sidebar_dock", None)
         if _alive(dock):
-            visible = dock.isHidden()
-            dock.setVisible(visible)
+            qdock = cast(QDockWidget, dock)
+            visible = qdock.isHidden()
+            qdock.setVisible(visible)
             if hasattr(self, "_menu_act_toggle_sidebar"):
                 self._menu_act_toggle_sidebar.setChecked(visible)
 
     def _toggle_info(self):
         dock = getattr(self, "info_dock", None)
         if _alive(dock):
-            visible = dock.isHidden()
-            dock.setVisible(visible)
+            qdock = cast(QDockWidget, dock)
+            visible = qdock.isHidden()
+            qdock.setVisible(visible)
             if hasattr(self, "_menu_act_toggle_info"):
                 self._menu_act_toggle_info.setChecked(visible)
 
@@ -559,12 +566,12 @@ class MainWindow(LanSharingMixin, QMainWindow):
         """Standard layout: both Sidebar and Info visible."""
         dock_s = getattr(self, "sidebar_dock", None)
         if _alive(dock_s):
-            dock_s.show()
+            cast(QDockWidget, dock_s).show()
             if hasattr(self, "_menu_act_toggle_sidebar"):
                 self._menu_act_toggle_sidebar.setChecked(True)
         dock_i = getattr(self, "info_dock", None)
         if _alive(dock_i):
-            dock_i.show()
+            cast(QDockWidget, dock_i).show()
             if hasattr(self, "_menu_act_toggle_info"):
                 self._menu_act_toggle_info.setChecked(True)
 
@@ -572,12 +579,12 @@ class MainWindow(LanSharingMixin, QMainWindow):
         """Full canvas browse mode: hide both side docks for maximum grid canvas."""
         dock_s = getattr(self, "sidebar_dock", None)
         if _alive(dock_s):
-            dock_s.hide()
+            cast(QDockWidget, dock_s).hide()
             if hasattr(self, "_menu_act_toggle_sidebar"):
                 self._menu_act_toggle_sidebar.setChecked(False)
         dock_i = getattr(self, "info_dock", None)
         if _alive(dock_i):
-            dock_i.hide()
+            cast(QDockWidget, dock_i).hide()
             if hasattr(self, "_menu_act_toggle_info"):
                 self._menu_act_toggle_info.setChecked(False)
 
@@ -585,12 +592,12 @@ class MainWindow(LanSharingMixin, QMainWindow):
         """Inspector focus mode: hide sidebar, show info dock."""
         dock_s = getattr(self, "sidebar_dock", None)
         if _alive(dock_s):
-            dock_s.hide()
+            cast(QDockWidget, dock_s).hide()
             if hasattr(self, "_menu_act_toggle_sidebar"):
                 self._menu_act_toggle_sidebar.setChecked(False)
         dock_i = getattr(self, "info_dock", None)
         if _alive(dock_i):
-            dock_i.show()
+            cast(QDockWidget, dock_i).show()
             if hasattr(self, "_menu_act_toggle_info"):
                 self._menu_act_toggle_info.setChecked(True)
 

@@ -6,6 +6,11 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from AssetsManager.window_scoped_panels import (
+    SHUTDOWN_BEFORE_SAVE_PANELS as _SHUTDOWN_BEFORE_SAVE,
+    SWITCH_PANELS as _SWITCH_PANELS,
+)
+
 _log = logging.getLogger(__name__)
 
 
@@ -211,7 +216,7 @@ class WindowLifecycleCoordinator:
             run_window_step(notify_status)
             run_window_step(notify_tray)
 
-        for name in ("info", "file_list", "sidebar", "tag_tree"):
+        for name in _SWITCH_PANELS:
             def prepare_panel(name=name) -> None:
                 panel = getattr(window, name, None)
                 prepare = getattr(panel, "prepare_library_switch", None)
@@ -308,7 +313,7 @@ class WindowLifecycleCoordinator:
 
         run_cleanup(cleanup_lan)
         run_cleanup(cleanup_import)
-        for name in ("info", "sidebar", "tag_tree"):
+        for name in _SHUTDOWN_BEFORE_SAVE:
             def cleanup_panel(name=name) -> None:
                 panel = getattr(window, name, None)
                 shutdown = getattr(panel, "shutdown", None)
