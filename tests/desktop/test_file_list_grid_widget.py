@@ -1883,6 +1883,50 @@ def test_grid_scale_round_trip_restores_metrics_and_texture_identity(tmp_path):
         app.processEvents()
 
 
+def test_refresh_theme_rebuilds_runtime_metrics(tmp_path, monkeypatch):
+    """V04 contract on the THEME path: refresh_theme (like refresh_scale)
+    must rebuild _M/_RM before the cache clear. _RM.badge_r derives from
+    themes.metrics("radius_badge"), which is theme-overridable via
+    properties.metrics — a theme switch that moves a metric must reach the
+    render container without any ui_scale change. The scale-path sibling is
+    test_grid_scale_round_trip_restores_metrics_and_texture_identity.
+    """
+    from AssetsManager.core import themes
+    from AssetsManager.panels.file_list import (
+        _grid_widget_data as grid_data,
+        _grid_widget_render as grid_render,
+    )
+
+    app, model, widget = _visible_grid(tmp_path)
+    base_data = grid_data._M
+    base_render = grid_render._RM
+    assert base_render.badge_r == themes.metrics("radius_badge")  # 1.0 scale
+
+    # Same-scale refresh_theme still re-derives both containers (fresh
+    # objects, identical values) — a deleted rebuild call would leave the
+    # import-time singletons in place and fail the identity checks.
+    widget.refresh_theme()
+    app.processEvents()
+    assert grid_data._M is not base_data
+    assert grid_render._RM is not base_render
+    assert grid_data._M == base_data
+    assert grid_render._RM == base_render
+
+    # A theme-level metric override must flow through the theme-path
+    # rebuild: the next refresh_theme re-derives badge_r from the new value.
+    real_metrics = themes.metrics
+
+    def _themed_metrics(key: str) -> int:
+        return 9 if key == "radius_badge" else real_metrics(key)
+
+    monkeypatch.setattr(themes, "metrics", _themed_metrics)
+    widget.refresh_theme()
+    app.processEvents()
+    assert grid_render._RM.badge_r == 9
+    # The data container rebuild keeps 1.0-scale values unchanged.
+    assert grid_data._M == base_data
+
+
 def test_icon_detect_dpr_and_cross_screen_scaling(monkeypatch):
     from AssetsManager.core import icons
 

@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from AssetsManager.core.settings import AppSettings
-from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
+from AssetsManager.dialogs.tabbed_dialog import DialogButtonBar, TabbedDialog
 from AssetsManager.widgets.elevation import apply_elevation
 
 
@@ -178,6 +178,68 @@ def test_button_box_has_explicit_semantic_variants():
     finally:
         dialog.close()
         dialog.deleteLater()
+
+
+def test_dialog_button_bar_add_button_inserts_between_cancel_and_ok():
+    """V03 bar unit contract: addButton inserts before OK and successive adds
+    stack in call order; buttons()/buttonRole() mirror the QDialogButtonBox
+    surface SharingSettingsDialog and _set_default_tab_order rely on.
+
+    Design envelope is a single Apply ("TabbedDialog only ever adds Apply"),
+    so a second addButton is beyond the envelope: the layout still stacks it
+    before OK (the _insert_index increment), while buttons()/buttonRole keep
+    tracking only the most recent add — pinned here so a change to either
+    behaviour is a conscious decision.
+    """
+    app = QApplication.instance() or QApplication([])
+    bar = DialogButtonBar()
+    try:
+        ok_btn = bar.button(QDialogButtonBox.StandardButton.Ok)
+        cancel_btn = bar.button(QDialogButtonBox.StandardButton.Cancel)
+        first = bar.addButton("Apply", QDialogButtonBox.ButtonRole.ApplyRole)
+        second = bar.addButton("Reset", QDialogButtonBox.ButtonRole.ApplyRole)
+        layout = bar.layout()
+        order = [
+            layout.itemAt(i).widget()
+            for i in range(layout.count())
+            if layout.itemAt(i).widget() is not None
+        ]
+        # The stretch is a spacer item; widget order is Cancel|first|second|OK.
+        assert order == [cancel_btn, first, second, ok_btn]
+        assert bar._apply_btn is second
+        assert bar.buttons() == [ok_btn, cancel_btn, second]
+        assert bar.buttonRole(ok_btn) == QDialogButtonBox.ButtonRole.AcceptRole
+        assert bar.buttonRole(cancel_btn) == QDialogButtonBox.ButtonRole.RejectRole
+        assert bar.buttonRole(first) == QDialogButtonBox.ButtonRole.ApplyRole
+    finally:
+        bar.deleteLater()
+        app.processEvents()
+
+
+def test_dialog_button_bar_unknown_standard_button_and_role_fallback():
+    """button() returns None for any StandardButton the bar does not own and
+    buttonRole() falls back to ApplyRole for foreign buttons — the duck-typed
+    surface _set_default_tab_order probes before its next() scan."""
+    app = QApplication.instance() or QApplication([])
+    bar = DialogButtonBar()
+    try:
+        for standard in (
+            QDialogButtonBox.StandardButton.Save,
+            QDialogButtonBox.StandardButton.Apply,
+            QDialogButtonBox.StandardButton.Help,
+            QDialogButtonBox.StandardButton.Close,
+        ):
+            assert bar.button(standard) is None
+        # Before any addButton: buttons() lists only the built-in pair.
+        assert bar.buttons() == [
+            bar.button(QDialogButtonBox.StandardButton.Ok),
+            bar.button(QDialogButtonBox.StandardButton.Cancel),
+        ]
+        foreign = QPushButton("Foreign", bar)
+        assert bar.buttonRole(foreign) == QDialogButtonBox.ButtonRole.ApplyRole
+    finally:
+        bar.deleteLater()
+        app.processEvents()
 
 
 def test_custom_apply_button_participates_in_default_tab_order():
