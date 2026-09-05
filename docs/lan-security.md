@@ -1,6 +1,8 @@
 # LAN Security Rules
 
-> 状态:**LIVING** · updated: 2026-08-27 · 以代码为事实源;与代码的全面偏差清单见 `docs/overview-2026-08-27.md` §18。本文件不再重复 dated 证据(见 `docs/full-review/`)。
+> 状态:**LIVING** · updated: 2026-09-04 · 以代码为事实源;与代码的全面偏差清单见 `docs/overview-2026-08-27.md` §18。本文件不再重复 dated 证据(见 `docs/full-review/`)。
+>
+> **剥离标注（2026-09-04）**：商城运行时已按 [ADR 0005](adr/0005-commerce-extraction.md) 于 2026-08-30 移除（`/api/shop/*`、`/storefront`、`/seller` 路由与 seller/shop cookie 均不在当前代码中；13 个商城 DB 迁移与 schema 表为保迁移链**刻意保留**为无害孤儿）。下文标注 ~~删除线~~ 的商城条目是历史快照，保留用于理解迁移链；当前有效清单以 `lan/api.py` 实测为准（72 条路由，见 `docs/deep-analysis-2026-09-04/04-lan.md` §1）。
 
 LAN sharing exposes local files through the configured HTTP or HTTPS endpoint, so path validation is a hard security boundary. Without both a certificate and key the endpoint is HTTP; with both it is HTTPS.
 
@@ -37,7 +39,7 @@ Tokens are read from (in order):
 
 ### Middleware Verification Order
 
-1. Public paths pass through as guest: `/api/auth/login|register|verify_key|seller-status|seller-login|seller-logout`、`/api/quota`、`/login`、`/browse`、`/detail`、`/`、`/favicon.ico`；public prefixes：`/assets`、`/s`、`/storefront`、`/store`、`/seller`、`/app`、`/api/shop`（commerce 公开面，额外尝试解析可选凭证）；public share endpoints：`POST /api/shares/{id}/verify`、`GET /api/shares/{id}/info|download|preview`（仅无尾段/带路径）
+1. Public paths pass through as guest: `/api/auth/login|register|verify_key`、`/api/quota`、`/login`、`/browse`、`/detail`、`/`、`/favicon.ico`；public prefixes：`/assets`、`/s`；public share endpoints：`POST /api/shares/{id}/verify`、`GET /api/shares/{id}/info|download|preview`（仅无尾段/带路径）。（历史：~~`/api/auth/seller-status|seller-login|seller-logout`、`/storefront`、`/store`、`/seller`、`/app`、`/api/shop`~~ 已随 ADR 0005 剥离）
 2. If no auth configured (key/password/users all absent) → guest allow（`_has_active_users` 带 30s 负缓存，DB 异常 fail-closed）
 3. Check raw access key against stored hash (PBKDF2 `verify_key`)
 4. Check `verify_auth_token(token, local_ui_auth_secret)` (local UI)
@@ -68,7 +70,7 @@ The service gate, historical posture wiring, and first-share confirmation/write-
 
 | Limiter | 预算 | 范围 |
 |---------|------|------|
-| `AuthRateLimiter`(auth_strict) | 10 attempts/300s | `/api/auth/login`、`/api/auth/register`、`/api/auth/verify_key`、`/api/auth/seller-login`、`/api/shop/auth/login` + 任意 `/api/shares/{id}/verify` 结尾路径 |
+| `AuthRateLimiter`(auth_strict) | 10 attempts/300s | `/api/auth/login`、`/api/auth/register`、`/api/auth/verify_key` + 任意 `/api/shares/{id}/verify` 结尾路径（历史：~~`/api/auth/seller-login`、`/api/shop/auth/login`~~ 已随 ADR 0005 剥离） |
 | browse 档 | 600 req/60s | 浏览类端点(`_BROWSE_RATE` 策略) |
 | `RateLimiter`(general) | `_LanServerImpl` 默认 100/60s;`ShareManager` 默认 1000/60s | 其余非浏览路径;**未知/未声明路由 = required+general(fail-closed)** |
 | 分享密码锁定(服务层) | 5 failures / 60s 冷却 | 每 share_id **进程内**失败计数(`ShareService.password_attempt_blocked`),429 + Retry-After;**重启即清零,多进程各自计数** |
@@ -100,10 +102,10 @@ All pure crypto functions (hashing, token generation/verification) live in `Asse
 | `lan_token` | 主认证（24h） | `/` | 86400 |
 | `share_token` | 分享作用域（1h） | `/api/shares/{id}` | 3600 |
 | `am_quota_id` | 匿名免费配额身份（30d，HMAC 签名） | `/` | 2592000 |
-| `seller_session` | 卖家会话（12h，内存验证） | `/` | — |
-| `shop_cart_token` / `shop_wishlist_token` | 买家 owner（365d） | `/` | — |
-| `shop_order_receipt_{order_id}` | 订单回执（30d，HttpOnly） | `/api/shop` | — |
-| `shop_store_visit` | 商店访问（24h） | `/api/shop` | — |
+| ~~`seller_session`~~ | ~~卖家会话（12h，内存验证）~~ | ~~`/`~~ | ADR 0005 剥离 |
+| ~~`shop_cart_token` / `shop_wishlist_token`~~ | ~~买家 owner（365d）~~ | ~~`/`~~ | ADR 0005 剥离 |
+| ~~`shop_order_receipt_{order_id}`~~ | ~~订单回执（30d，HttpOnly）~~ | ~~`/api/shop`~~ | ADR 0005 剥离 |
+| ~~`shop_store_visit`~~ | ~~商店访问（24h）~~ | ~~`/api/shop`~~ | ADR 0005 剥离 |
 
 全部 `httponly=True`、`samesite=Lax`；敏感 cookie 视 TLS 状态条件加 `secure`。
 

@@ -6,7 +6,7 @@
 
 AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用,内置 aiohttp 局域网分享服务器。用户可以通过桌面端管理文件资产库(元数据、标签、缩略图),也可以通过局域网内的浏览器远程浏览和下载资产。仓库名 `AssetsManager_old-bak` 仅为目录命名,项目包名为 `AssetsManager`。
 
-<!-- stats: app_services=52 controllers=4 core=34 dialogs=24 domain_events=15 e2e_specs=6 hooks=17 i18n_en=1051 i18n_ja=1051 i18n_zh=1051 icons=56 pages=10 python_test_files=322 repos=12 routes=72 routes_modules=22 schema_version=46 stores=2 themes=24 ts=105 webui_test_files=89 widgets=18 -->
+<!-- stats: app_services=52 controllers=4 core=34 dialogs=24 domain_events=15 e2e_specs=3 hooks=17 i18n_en=1036 i18n_ja=1036 i18n_zh=1036 icons=56 pages=10 python_test_files=326 repos=12 routes=72 routes_modules=22 schema_version=46 stores=2 themes=24 ts=105 webui_test_files=89 widgets=19 -->
 > **验证边界（2026-08-21）**：README 的结构统计由 `scripts/check_doc_stats.py` 从当前工作树测量；测试、构建、浏览器、真实 LAN、依赖和发布结果只在带 commit、精确命令、平台、工具版本与 artifact digest 的日期化证据中成立。历史全量数字（包括 2026-08-17 的 3778/7 和此前 WebUI/E2E 数字）保留在 dated 文档中，不作为当前 release 或 `verified-fixed` 声明。当前 C6-C10 收敛与剩余限制见 [`docs/full-review/c6-c10-convergence-2026-08-21.md`](docs/full-review/c6-c10-convergence-2026-08-21.md)。
 > **工作区实况索引**：2026-08-27 的结构/机制/数据流/弱点地图见 [`docs/overview-2026-08-27.md`](docs/overview-2026-08-27.md)（dated snapshot）；当前架构/功能/可靠性复核见 [`docs/reports/architecture-function-and-reliability-review-2026-09-01.md`](docs/reports/architecture-function-and-reliability-review-2026-09-01.md)。已移入归档的文档溯源见 [`docs/archive/INDEX.md`](docs/archive/INDEX.md)。
 
@@ -48,7 +48,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用,内置 aio
 | 桌面 | QDockWidget（dock_factory 统一构建）、QAbstractListModel、QThreadPool、signal_bus（7 信号）/event_bus（15 个领域事件）、icons.py（56 图标，DPR 感知） |
 | LAN | aiohttp（22 个路由模块，72 条路由 + WebSocket）；middleware 顺序 security→metrics→auth；PathGuard 路径守卫；HMAC 令牌（ts.nonce.sig）；WebSocketManager（50 连接/心跳 30s/1MB 帧截断）；Cloudflare Tunnel；React SPA（webui/dist 托管） |
 | 数据层 | DatabaseManager（连接级读写门 + 身份标记）；**12 个 SQL 仓库**（统一 for_session 绑定 + SAVEPOINT + CAS）；db_migrations（迁移 v1-v46，契约回溯校验）；schema_defs 契约；LibraryLock；json_store 原子持久化 |
-| 开发工具 | ruff / pyright / pytest / Cython（4 个热点模块）/ PyInstaller |
+| 开发工具 | ruff / pyright / pytest / Cython（实验性，8 个 core 模块）/ PyInstaller |
 
 > 细节（版本号、常量、令牌 TTL、限流档位）见 `docs/overview-2026-08-27.md` §1-§15 与 `docs/lan-security.md`。
 
@@ -61,7 +61,7 @@ AssetManager 是一款基于 PySide6 (Qt) 的桌面资产管理应用,内置 aio
 │  Controllers（4 个，零 Qt import）
 ├─ Application Layer（52 模块）— bootstrap 装配 → 每库 LibraryRuntime/LibrarySession
 │  （应用服务层（52 模块）顶层，另有 gallery/ 子包 5 文件）
-├─ Repositories — 17 个 SQL 仓库（for_session + savepoint 事务 + CAS）
+├─ Repositories — **12 个 SQL 仓库**（统一 for_session + SAVEPOINT 事务 + CAS；另有 `_common` 共享管线）
 ├─ Domain — 值对象 + 15 个领域事件 + 错误层级（零基础设施依赖）
 └─ Infrastructure core/ — database/迁移/契约/锁/路径/主题/图标/缓存/插件
         LAN 层（aiohttp：认证/限流/隧道/WS）与 core 共享，经 application 访问数据
@@ -89,11 +89,11 @@ AssetsManager_old-bak/
 │   │                           #  （12 个 SQL 仓库）+ 统一 for_session/SAVEPOINT/CAS
 │   ├── panels/                 # 桌面面板（file_list 27 文件 mixin 星系 + sidebar/info/tag_tree/image_viewer）
 │   ├── dialogs/                # Qt 对话框（24 个）+ sharing_settings 分包（外壳 1347 行 + 分页 1119 行）
-│   ├── widgets/                # 可复用 Qt 组件（18 个）
+│   ├── widgets/                # 可复用 Qt 组件（19 个）
 │   ├── di/  i18n/  plugin_api/
 ├── webui/                      # React 18 + Vite + TS（105 ts/tsx 生产源码；
 │   │                           #  api 15 工厂 / pages(10) / hooks(17) / stores(2 Context)；
-│   │                           #  103 Vitest 文件 + 6 个 spec E2E）
+│   │                           #  103 Vitest 文件 + 3 个 spec E2E）
 ├── tests/                      # 283 个 test_*.py（unit 106/integration 55/lan 54/
 │   │                           #  desktop 35/core 17/plugins 12/e2e 2/performance 2）
 ├── docs/                       # overview-2026-08-27.md（地图）/ archive/（归档+INDEX）/
@@ -154,6 +154,8 @@ python scripts/check_doc_stats.py     # README 结构统计门（另有 12 个�
 
 ### Cython 编译加速
 
+实验性本地加速（未接入 CI/release）：`.cython-nuitka/setup_cython.py` 编译 8 个 core 模块（cache/lru_cache/database/json_store/tag_store/tag_library/color_utils/path_resolver）；完整方案见 `.cython-nuitka/ACCELERATION_GUIDE.md`。发布链走 PyInstaller，不含编译产物。
+
 
 ### 性能基准
 
@@ -168,11 +170,11 @@ python -m pytest tests/performance/test_baselines.py -v   # perf 标记，CI 默
 ## 构建与部署
 
 ```bash
-python build.py --clean --build --optimize --report   # → dist/AssetManager/AssetManager.exe
+python build.py --clean --build --report   # → dist/AssetManager/AssetManager.exe（--mode onefile|onedir|both 可选）
 ```
 
-- onedir bundle 约 127 MB（历史快照口径）；`--package-smoke` 冻结态冒烟（run.py）。
-- CI（`.github/workflows/ci.yml`，9 job）：lint / hygiene / typecheck / webui / package-smoke(Windows) / windows-regression / python-browser-e2e / test（Python 3.12/3.13/3.14 矩阵）/ webui-e2e（6 个 spec；commerce-real-backend 需环境变量否则自带 skip）。
+- onedir bundle 约 127 MB（历史快照口径）；`--package-smoke` 是 exe/run.py 的冻结态冒烟参数，不是 build.py 的参数。
+- CI（`.github/workflows/ci.yml`，9 job）：lint / hygiene / typecheck / webui / package-smoke(Windows) / windows-regression / python-browser-e2e / test（Python 3.12/3.13/3.14 矩阵）/ webui-e2e（3 个 spec；商城 spec 已随 ADR 0005 剥离删除）。
 - **已知门禁缺口（2026-08-29 复核）**：
   - ~~仓库无 remote，CI 从未真实运行~~ **已过期**：remote 存在（`origin` → GitHub），且本地与远程同步。判断"是否已推送"要跟分支自己的 upstream 比，**不要**拿特性分支去比 `origin/master`（必然领先，会得出错误结论）。
   - ~~release 不依赖测试~~ **已过期**：`release.yml` 已有 `build-windows: needs: pre-release-tests`。
@@ -198,9 +200,8 @@ python build.py --clean --build --optimize --report   # → dist/AssetManager/As
 | `/api/download/{path}`、`/api/download/batch` | 下载/批量 ZIP（先准备响应成功再计数） |
 | `/api/thumbnails/{path}`、`/api/image` | 缩略图/原图（Pillow verify 内容门 + 模糊门） |
 | `/api/auth/*`、`/api/users`、`/api/invites` | 认证/用户/邀请码（限流 + fail-closed） |
-| `/api/shop/*`(54 条) | 商城全套（目录/购物车/结账幂等/订单/投递/卖家/分析） |
 | `/ws` | WebSocket 失效推送（epoch+revision；缺口恢复走 `/api/revision`） |
-| `/s/{id}`、`/browse`、`/storefront/*`、`/seller/*` | SPA 页面 |
+| `/s/{id}`、`/browse` | SPA 页面（商城 SPA 路由 `/storefront/*`、`/seller/*` 已按 ADR 0005 剥离，2026-08-30） |
 
 ### 权限模型
 
@@ -224,7 +225,7 @@ python build.py --clean --build --optimize --report   # → dist/AssetManager/As
 
 | 语言 | 状态 |
 |---|---|
-| English / 中文 / 日本語 | ✅ 完整（en 1051 / zh 1051 / ja 1051 keys，桌面 + Web） |
+| English / 中文 / 日本語 | ✅ 完整（en 1036 / zh 1036 / ja 1036 keys，桌面 + Web） |
 
 添加语言：复制 `AssetsManager/i18n/en.json` → 翻译 → 在 `i18n/__init__.py` 注册。
 
@@ -233,8 +234,8 @@ python build.py --clean --build --optimize --report   # → dist/AssetManager/As
 ## 测试
 
 - `python -m pytest -q -p no:cacheprovider`（全套 283 文件，约 5 分钟；历史基线 2952→3722/3755，当前须附 dated 证据）。
-- 分域：unit 106 / integration 55 / lan 54（含 lan_public_contracts.json 契约）/ desktop 35（PySide6 offscreen）/ core 17 / plugins 12 / e2e 2（Playwright Chromium 真实 LAN）/ performance 2。
-- 前端：`cd webui && npm test && npm run typecheck && npm run build`；`npm run test:e2e`（6 个 spec；默认 51 passed、2 skipped）。
+- 分域（2026-09-04 实测）：unit 115 / integration 63 / lan 51（含 lan_public_contracts.json 契约）/ desktop 63（PySide6 offscreen）/ core 17 / plugins 12 / e2e 2（Playwright Chromium 真实 LAN）/ performance 2。
+- 前端：`cd webui && npm test && npm run typecheck && npm run build`；`npm run test:e2e`（3 个 spec：app/a11y/webui-shell）。
 - fixture：`temp_dir`/`memory_db`/`schema_db` + autouse `_cleanup_stores`（3 全局点 + 测试数据目录清理）。
 
 ---
