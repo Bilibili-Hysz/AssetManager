@@ -18,14 +18,14 @@
       "line": 112,
       "method": "setPointSize",
       "role_hint": "_font_name",
-      "source_text": "self._font_name.setPointSize(scaled_pt(9))",
+      "source_text": "self._font_name.setPointSize(scaled_pt(int(themes.font_size(\"xxs\"))))",
       "unit": "pt",
-      "value": "scaled_pt(9)"
+      "value": "scaled_pt(int(themes.font_size('xxs')))"
     },
     {
       "family": "qfont_set",
       "file": "AssetsManager\\panels\\file_list\\_grid_widget.py",
-      "line": 116,
+      "line": 118,
       "method": "setPointSize",
       "role_hint": "_font_sub",
       "source_text": "self._font_sub.setPointSize(scaled_pt(8))",
@@ -38,14 +38,14 @@
       "line": 82,
       "method": "setPointSize",
       "role_hint": "_font_name",
-      "source_text": "self._font_name.setPointSize(scaled_pt(9))",
+      "source_text": "self._font_name.setPointSize(scaled_pt(int(themes.font_size(\"xxs\"))))",
       "unit": "pt",
-      "value": "scaled_pt(9)"
+      "value": "scaled_pt(int(themes.font_size('xxs')))"
     },
     {
       "family": "qfont_set",
       "file": "AssetsManager\\panels\\file_list\\_grid_widget_data.py",
-      "line": 86,
+      "line": 88,
       "method": "setPointSize",
       "role_hint": "_font_sub",
       "source_text": "self._font_sub.setPointSize(scaled_pt(8))",
@@ -55,7 +55,7 @@
     {
       "family": "qfont_set",
       "file": "AssetsManager\\panels\\file_list\\_grid_widget_data.py",
-      "line": 89,
+      "line": 92,
       "method": "setPointSize",
       "role_hint": "_font_badge",
       "source_text": "self._font_badge.setPointSize(scaled_pt(8))",
@@ -68,9 +68,9 @@
       "line": 155,
       "method": "setPointSize",
       "role_hint": "text_font",
-      "source_text": "text_font.setPointSize(scaled_pt(11))",
+      "source_text": "text_font.setPointSize(scaled_pt(int(themes.font_size(\"caption\"))))",
       "unit": "pt",
-      "value": "scaled_pt(11)"
+      "value": "scaled_pt(int(themes.font_size('caption')))"
     },
     {
       "family": "qfont_set",
@@ -78,9 +78,9 @@
       "line": 877,
       "method": "setPointSize",
       "role_hint": "f",
-      "source_text": "f.setPointSize(scaled_pt(11))",
+      "source_text": "f.setPointSize(scaled_pt(int(themes.font_size(\"caption\"))))",
       "unit": "pt",
-      "value": "scaled_pt(11)"
+      "value": "scaled_pt(int(themes.font_size('caption')))"
     },
     {
       "family": "qfont_set",
@@ -88,9 +88,9 @@
       "line": 915,
       "method": "setPointSize",
       "role_hint": "f3",
-      "source_text": "f3.setPointSize(scaled_pt(9))",
+      "source_text": "f3.setPointSize(scaled_pt(int(themes.font_size(\"xxs\"))))",
       "unit": "pt",
-      "value": "scaled_pt(9)"
+      "value": "scaled_pt(int(themes.font_size('xxs')))"
     },
     {
       "family": "qfont_set",
@@ -98,9 +98,9 @@
       "line": 948,
       "method": "setPointSize",
       "role_hint": "f",
-      "source_text": "f.setPointSize(scaled_pt(12))",
+      "source_text": "f.setPointSize(scaled_pt(int(themes.font_size(\"sm\"))))",
       "unit": "pt",
-      "value": "scaled_pt(12)"
+      "value": "scaled_pt(int(themes.font_size('sm')))"
     },
     {
       "family": "qfont_set",
@@ -108,9 +108,9 @@
       "line": 1003,
       "method": "setPointSize",
       "role_hint": "title_font",
-      "source_text": "title_font.setPointSize(scaled_pt(10))",
+      "source_text": "title_font.setPointSize(scaled_pt(int(themes.font_size(\"xs\"))))",
       "unit": "pt",
-      "value": "scaled_pt(10)"
+      "value": "scaled_pt(int(themes.font_size('xs')))"
     },
     {
       "family": "qfont_set",
@@ -118,9 +118,9 @@
       "line": 1012,
       "method": "setPointSize",
       "role_hint": "body_font",
-      "source_text": "body_font.setPointSize(scaled_pt(9))",
+      "source_text": "body_font.setPointSize(scaled_pt(int(themes.font_size(\"xxs\"))))",
       "unit": "pt",
-      "value": "scaled_pt(9)"
+      "value": "scaled_pt(int(themes.font_size('xxs')))"
     },
     {
       "family": "qfont_set",
@@ -168,9 +168,9 @@
       "line": 270,
       "method": "setPointSize",
       "role_hint": "input_font",
-      "source_text": "input_font.setPointSize(scaled_pt(14))",
+      "source_text": "input_font.setPointSize(scaled_pt(int(themes.font_size(\"lg\"))))",
       "unit": "pt",
-      "value": "scaled_pt(14)"
+      "value": "scaled_pt(int(themes.font_size('lg')))"
     },
     {
       "family": "qfont_set",

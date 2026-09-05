@@ -267,7 +267,7 @@ class CommandPalette(QDialog):
             )
         )
         input_font = self._input.font()
-        input_font.setPointSize(scaled_pt(14))
+        input_font.setPointSize(scaled_pt(int(themes.font_size("lg"))))
         self._input.setFont(input_font)
         self._input.setFrame(False)
         self._input.textChanged.connect(self._on_search_changed)

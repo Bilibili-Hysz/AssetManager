@@ -874,7 +874,7 @@ class ImageViewerOverlay(QFrame):
         count = f"  {self._image_idx + 1} / {len(self._image_list)}" if self._image_list else ""
         p.setPen(QColor(t["heading"]))
         f = QFont()
-        f.setPointSize(scaled_pt(11))
+        f.setPointSize(scaled_pt(int(themes.font_size("caption"))))
         f.setBold(True)
         p.setFont(f)
         p.drawText(QRect(header.x() + 14, header.y(), header.width() - 60, header.height()),
@@ -912,7 +912,7 @@ class ImageViewerOverlay(QFrame):
         # Hint text (plus the "Sequence i/N · keys" suffix while a detected
         # frame sequence is displayed)
         f3 = QFont()
-        f3.setPointSize(scaled_pt(9))
+        f3.setPointSize(scaled_pt(int(themes.font_size("xxs"))))
         p.setFont(f3)
         p.setPen(QColor(t["muted"]))
         p.drawText(QRect(footer.x() + 14, footer.y(), footer.width() - 30, footer.height()),
@@ -945,7 +945,7 @@ class ImageViewerOverlay(QFrame):
             return  # an image is already displayed — keep it while loading
         text = tr("viewer.loading") if self._state == "loading" else tr("viewer.load_failed")
         f = QFont()
-        f.setPointSize(scaled_pt(12))
+        f.setPointSize(scaled_pt(int(themes.font_size("sm"))))
         p.setFont(f)
         p.setPen(QColor(t["muted"]))
         p.drawText(self._view_rect(), Qt.AlignmentFlag.AlignCenter, text)
@@ -1000,7 +1000,7 @@ class ImageViewerOverlay(QFrame):
         p.drawRoundedRect(panel, r_sm, r_sm)
 
         title_font = QFont()
-        title_font.setPointSize(scaled_pt(10))
+        title_font.setPointSize(scaled_pt(int(themes.font_size("xs"))))
         title_font.setBold(True)
         p.setFont(title_font)
         p.setPen(QColor(t["heading"]))
@@ -1009,7 +1009,7 @@ class ImageViewerOverlay(QFrame):
                    tr("viewer.exif_title"))
 
         body_font = QFont()
-        body_font.setPointSize(scaled_pt(9))
+        body_font.setPointSize(scaled_pt(int(themes.font_size("xxs"))))
         p.setFont(body_font)
         if not self._exif:
             p.setPen(QColor(t["muted"]))

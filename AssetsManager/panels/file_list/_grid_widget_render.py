@@ -152,7 +152,7 @@ class RenderMixin:
         icon_name, text = presentation
         icon_size = scaled_px(34)
         text_font = QFont()
-        text_font.setPointSize(scaled_pt(11))
+        text_font.setPointSize(scaled_pt(int(themes.font_size("caption"))))
         text_font.setBold(True)
         text_metrics = QFontMetrics(text_font)
         gap = scaled_px(12)

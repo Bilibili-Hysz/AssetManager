@@ -446,8 +446,8 @@ class StyleKit:
             f"QPushButton:hover {{ {hover_rule} }}"
             f"QPushButton:focus {{ border: 1px solid {self.token('border_focus', self.token('accent'))}; }}"
             f"QPushButton:pressed {{ background: {pressed}; }}"
-            f"QPushButton:disabled {{ background: {self._alpha('muted', 0.25)}; "
-            f"color: {self.token('muted', self.token('body'))}; }}"
+            f"QPushButton:disabled {{ background: {self.token('disabled_bg', self.token('panel', self.token('base')))}; "
+            f"color: {self.token('disabled_text', self.token('muted', self.token('body')))}; }}"
         )
 
     def switch_css(self) -> str:

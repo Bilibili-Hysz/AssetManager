@@ -725,7 +725,7 @@ def stylesheet() -> str:
         border: 1px solid {t['border']}; border-radius: {r_sm}px; padding: {s_sm}px {s_md}px;
         selection-background-color: {t['accent']}; selection-color: {t['on_accent']};
     }}
-    QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QSpinBox:focus {{ border: 1px solid {t['border_focus']}; }}
+    QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QSpinBox:focus {{ border: 2px solid {t['border_focus']}; }}
     QLineEdit:disabled, QTextEdit:disabled, QComboBox:disabled, QSpinBox:disabled {{
         background: {t['disabled_bg']}; color: {t['disabled_text']};
     }}

@@ -297,15 +297,21 @@ def test_caption_pt_and_px_fonts_have_different_metrics(qapp):
 
 
 def test_caption_role_reaches_grid_and_palette_in_different_units():
-    """V01 的具体样本：caption 角色在网格（9/8 pt 手写）与命令面板
-    （caption→pt）处以不同路径进入 QFont —— 用源码证据断言这两处调用
-    现存（防止两处之一被静默删除导致度量对照失去对象）。"""
+    """V01 的具体样本：caption 角色在网格与命令面板处以不同路径进入
+    QFont —— 用源码证据断言这两处调用现存（防止两处之一被静默删除
+    导致度量对照失去对象）。
+
+    阶段 B（2026-09-05）后网格名称字号已迁语义 token（xxs=9，零值
+    迁移）；8pt 副信息/角标无对应 token，按"视觉零漂移优先"保留手写
+    值并注释（阶段 C 校准）——手写 pt 点因此仍在清单中。
+    """
     grid_data = PROD_ROOT / "panels" / "file_list" / "_grid_widget_data.py"
     palette = PROD_ROOT / "widgets" / "command_palette.py"
     grid_src = grid_data.read_text(encoding="utf-8")
     palette_src = palette.read_text(encoding="utf-8")
-    # 网格手写 pt 族（V01 证据行）
-    assert "setPointSize(scaled_pt(9))" in grid_src
+    # 网格名称：语义 token（xxs=9，与原手写 9 等值）
+    assert 'setPointSize(scaled_pt(int(themes.font_size("xxs"))))' in grid_src
+    # 网格手写 pt 族（V01 证据行；8pt 无 token，阶段 C 校准）
     assert "setPointSize(scaled_pt(8))" in grid_src
     # 命令面板语义 token → pt 族（V01 证据行）
     assert 'setPointSize(scaled_pt(int(themes.font_size("caption", 10))))' in palette_src

@@ -109,10 +109,12 @@ class FileListGridWidget(RenderMixin, InteractMixin, DataMixin, QWidget):
         self._clr_danger = QColor(t["danger"])
         self._clr_folder_highlight = _make_folder_highlight(t)
         self._font_name = QFont()
-        self._font_name.setPointSize(scaled_pt(9))
+        self._font_name.setPointSize(scaled_pt(int(themes.font_size("xxs"))))
         self._font_name.setBold(True)
         self._fm_name = QFontMetrics(self._font_name)
         self._font_sub = QFont()
+        # 8pt has no font-size token (smallest is xxs=9) — grid density
+        # special case, keep hand-written value; calibrate in stage C.
         self._font_sub.setPointSize(scaled_pt(8))
         self._fm_sub = QFontMetrics(self._font_sub)
         self._refresh_text_metrics()

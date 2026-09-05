@@ -79,13 +79,16 @@ class DataMixin:
     def _refresh_text_metrics(self) -> None:
         """Refresh card text metrics after theme or UI-scale changes."""
         self._font_name = QFont()
-        self._font_name.setPointSize(scaled_pt(9))
+        self._font_name.setPointSize(scaled_pt(int(themes.font_size("xxs"))))
         self._font_name.setBold(True)
         self._fm_name = QFontMetrics(self._font_name)
         self._font_sub = QFont()
+        # 8pt has no font-size token (smallest is xxs=9) — grid density
+        # special case, keep hand-written value; calibrate in stage C.
         self._font_sub.setPointSize(scaled_pt(8))
         self._fm_sub = QFontMetrics(self._font_sub)
         self._font_badge = QFont()
+        # Same 8pt grid-density special case as _font_sub above.
         self._font_badge.setPointSize(scaled_pt(8))
         self._font_badge.setBold(True)
         self._fm_badge = QFontMetrics(self._font_badge)
