@@ -1,0 +1,110 @@
+{
+  "file_list_details_navy": {
+    "component": "file_list_details_navy",
+    "digest": "900x560|corners=#1a1d28,#1a1d28,#1a1d28,#1a1d28,#1a1d27|rows=716ff9dee736aee60c856cde9d0bfef5d99a559d59467f57ccfdf0789408b806",
+    "pyside_version": "6.11.0",
+    "sample_profile": "representative",
+    "screenshot_date": "2026-09-05",
+    "size": "900x560",
+    "source_head": "112483c889d0389536d3806f3e8cfd0d88c6f341",
+    "state": "hover+selected",
+    "theme": "Navy",
+    "ui_scale": 1.0
+  },
+  "file_list_grid_dawn": {
+    "component": "file_list_grid_dawn",
+    "digest": "900x560|corners=#1a1d28,#1a1d28,#1a1d28,#1a1d28,#faf8f4|rows=5cfd22b9d907ef122e0e2ee277b7f568c24e3e193f69f04ebc31263d51dfad71",
+    "pyside_version": "6.11.0",
+    "sample_profile": "representative",
+    "screenshot_date": "2026-09-05",
+    "size": "900x560",
+    "source_head": "112483c889d0389536d3806f3e8cfd0d88c6f341",
+    "state": "hover+selected",
+    "theme": "Dawn",
+    "ui_scale": 1.0
+  },
+  "file_list_grid_navy": {
+    "component": "file_list_grid_navy",
+    "digest": "900x560|corners=#1a1d28,#1a1d28,#1a1d28,#1a1d28,#1a1d28|rows=8f055863dc8f835b3b5b3537f3b7c2fab1453780405c1209714a56b3d42ef2ad",
+    "pyside_version": "6.11.0",
+    "sample_profile": "representative",
+    "screenshot_date": "2026-09-05",
+    "size": "900x560",
+    "source_head": "112483c889d0389536d3806f3e8cfd0d88c6f341",
+    "state": "hover+selected",
+    "theme": "Navy",
+    "ui_scale": 1.0
+  },
+  "info_panel_focused_navy": {
+    "component": "info_panel_focused_navy",
+    "digest": "360x640|corners=#1a1d28,#1a1d28,#1a1d28,#1a1d28,#1a1d28|rows=71ebb8b694520fc63522394cf8f29e8decfafee394686c434a5eb790db8989cd",
+    "pyside_version": "6.11.0",
+    "sample_profile": "representative",
+    "screenshot_date": "2026-09-05",
+    "size": "360x640",
+    "source_head": "112483c889d0389536d3806f3e8cfd0d88c6f341",
+    "state": "focused",
+    "theme": "Navy",
+    "ui_scale": 1.0
+  },
+  "main_window_empty_navy": {
+    "component": "main_window_empty_navy",
+    "digest": "1200x800|corners=#242838,#242838,#242838,#242838,#1a1d28|rows=90364ba69a673e29c9f682db4263637d1cccea32101f832a4ec32a3acd4efff5",
+    "pyside_version": "6.11.0",
+    "sample_profile": "empty",
+    "screenshot_date": "2026-09-05",
+    "size": "1200x800",
+    "source_head": "112483c889d0389536d3806f3e8cfd0d88c6f341",
+    "state": "idle+empty",
+    "theme": "Navy",
+    "ui_scale": 1.0
+  },
+  "main_window_idle_dawn": {
+    "component": "main_window_idle_dawn",
+    "digest": "1200x800|corners=#e8e0d4,#e8e0d4,#e8e0d4,#e8e0d4,#faf8f4|rows=b93dc8021c940d1a84343e16f1c9197404650561caa056cf98583918c11acc5c",
+    "pyside_version": "6.11.0",
+    "sample_profile": "representative",
+    "screenshot_date": "2026-09-05",
+    "size": "1200x800",
+    "source_head": "112483c889d0389536d3806f3e8cfd0d88c6f341",
+    "state": "idle+info focused",
+    "theme": "Dawn",
+    "ui_scale": 1.0
+  },
+  "main_window_idle_navy": {
+    "component": "main_window_idle_navy",
+    "digest": "1200x800|corners=#242838,#242838,#242838,#242838,#1a1d28|rows=2cb1f2bde5da8d4e305d1d6512a5cc989f2f51d8a7b6f56f458efe72e604d850",
+    "pyside_version": "6.11.0",
+    "sample_profile": "representative",
+    "screenshot_date": "2026-09-05",
+    "size": "1200x800",
+    "source_head": "112483c889d0389536d3806f3e8cfd0d88c6f341",
+    "state": "idle+info focused",
+    "theme": "Navy",
+    "ui_scale": 1.0
+  },
+  "startup_window_navy": {
+    "component": "startup_window_navy",
+    "digest": "740x500|corners=#242838,#242838,#0f1118,#0f1118,#141720|rows=e9f06f892575eb53cf38ce6a644942cd4d4517c8062a09ecba16ae8c797cd284",
+    "pyside_version": "6.11.0",
+    "sample_profile": "none",
+    "screenshot_date": "2026-09-05",
+    "size": "740x500",
+    "source_head": "112483c889d0389536d3806f3e8cfd0d88c6f341",
+    "state": "idle",
+    "theme": "Navy",
+    "ui_scale": 1.0
+  },
+  "theme_preview_dialog_navy": {
+    "component": "theme_preview_dialog_navy",
+    "digest": "800x500|corners=#1a1d28,#1a1d28,#1a1d28,#1a1d28,#0f1118|rows=34e3598783e248e193619fb5855b59b89bc15ed5bcb19b85edc6416276defbd1",
+    "pyside_version": "6.11.0",
+    "sample_profile": "none",
+    "screenshot_date": "2026-09-05",
+    "size": "800x500",
+    "source_head": "112483c889d0389536d3806f3e8cfd0d88c6f341",
+    "state": "idle",
+    "theme": "Navy",
+    "ui_scale": 1.0
+  }
+}

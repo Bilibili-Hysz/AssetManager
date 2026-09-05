@@ -196,6 +196,10 @@ def test_container_panel_zoom_and_scroll_animations_are_panel_owned(monkeypatch)
     container = TabContainer()
     panel = container.current_file_list()
     assert panel is not None
+    # The panel skips both animations under the machine's persisted
+    # reduce_motion preference (grid reads AppSettings at __init__); this
+    # test asserts animation ownership, so pin the animation-enabled mode.
+    panel._grid_widget._animator._reduce_motion = False
     zoom_event = type("_Event", (), {"angleDelta": lambda _self: type("_Delta", (), {"y": lambda _delta: 1})()})()
     try:
         panel._on_zoom_changed("128px")

@@ -1,0 +1,999 @@
+{
+  "generated_by": "tests/desktop/test_font_metric_baseline_a.py",
+  "generated_date": "2026-09-05",
+  "qfont_set": [
+    {
+      "family": "qfont_set",
+      "file": "AssetsManager\\app.py",
+      "line": 163,
+      "method": "setPointSize",
+      "role_hint": "font",
+      "source_text": "font.setPointSize(scaled_pt(base_pt))",
+      "unit": "pt",
+      "value": "scaled_pt(base_pt)"
+    },
+    {
+      "family": "qfont_set",
+      "file": "AssetsManager\\panels\\file_list\\_grid_widget.py",
+      "line": 112,
+      "method": "setPointSize",
+      "role_hint": "_font_name",
+      "source_text": "self._font_name.setPointSize(scaled_pt(9))",
+      "unit": "pt",
+      "value": "scaled_pt(9)"
+    },
+    {
+      "family": "qfont_set",
+      "file": "AssetsManager\\panels\\file_list\\_grid_widget.py",
+      "line": 116,
+      "method": "setPointSize",
+      "role_hint": "_font_sub",
+      "source_text": "self._font_sub.setPointSize(scaled_pt(8))",
+      "unit": "pt",
+      "value": "scaled_pt(8)"
+    },
+    {
+      "family": "qfont_set",
+      "file": "AssetsManager\\panels\\file_list\\_grid_widget_data.py",
+      "line": 82,
+      "method": "setPointSize",
+      "role_hint": "_font_name",
+      "source_text": "self._font_name.setPointSize(scaled_pt(9))",
+      "unit": "pt",
+      "value": "scaled_pt(9)"
+    },
+    {
+      "family": "qfont_set",
+      "file": "AssetsManager\\panels\\file_list\\_grid_widget_data.py",
+      "line": 86,
+      "method": "setPointSize",
+      "role_hint": "_font_sub",
+      "source_text": "self._font_sub.setPointSize(scaled_pt(8))",
+      "unit": "pt",
+      "value": "scaled_pt(8)"
+    },
+    {
+      "family": "qfont_set",
+      "file": "AssetsManager\\panels\\file_list\\_grid_widget_data.py",
+      "line": 89,
+      "method": "setPointSize",
+      "role_hint": "_font_badge",
+      "source_text": "self._font_badge.setPointSize(scaled_pt(8))",
+      "unit": "pt",
+      "value": "scaled_pt(8)"
+    },
+    {
+      "family": "qfont_set",
+      "file": "AssetsManager\\panels\\file_list\\_grid_widget_render.py",
+      "line": 155,
+      "method": "setPointSize",
+      "role_hint": "text_font",
+      "source_text": "text_font.setPointSize(scaled_pt(11))",
+      "unit": "pt",
+      "value": "scaled_pt(11)"
+    },
+    {
+      "family": "qfont_set",
+      "file": "AssetsManager\\panels\\image_viewer.py",
+      "line": 877,
+      "method": "setPointSize",
+      "role_hint": "f",
+      "source_text": "f.setPointSize(scaled_pt(11))",
+      "unit": "pt",
+      "value": "scaled_pt(11)"
+    },
+    {
+      "family": "qfont_set",
+      "file": "AssetsManager\\panels\\image_viewer.py",
+      "line": 915,
+      "method": "setPointSize",
+      "role_hint": "f3",
+      "source_text": "f3.setPointSize(scaled_pt(9))",
+      "unit": "pt",
+      "value": "scaled_pt(9)"
+    },
+    {
+      "family": "qfont_set",
+      "file": "AssetsManager\\panels\\image_viewer.py",
+      "line": 948,
+      "method": "setPointSize",
+      "role_hint": "f",
+      "source_text": "f.setPointSize(scaled_pt(12))",
+      "unit": "pt",
+      "value": "scaled_pt(12)"
+    },
+    {
+      "family": "qfont_set",
+      "file": "AssetsManager\\panels\\image_viewer.py",
+      "line": 1003,
+      "method": "setPointSize",
+      "role_hint": "title_font",
+      "source_text": "title_font.setPointSize(scaled_pt(10))",
+      "unit": "pt",
+      "value": "scaled_pt(10)"
+    },
+    {
+      "family": "qfont_set",
+      "file": "AssetsManager\\panels\\image_viewer.py",
+      "line": 1012,
+      "method": "setPointSize",
+      "role_hint": "body_font",
+      "source_text": "body_font.setPointSize(scaled_pt(9))",
+      "unit": "pt",
+      "value": "scaled_pt(9)"
+    },
+    {
+      "family": "qfont_set",
+      "file": "AssetsManager\\widgets\\command_palette.py",
+      "line": 88,
+      "method": "setPointSize",
+      "role_hint": "font",
+      "source_text": "font.setPointSize(scaled_pt(int(themes.font_size(\"caption\", 10))))",
+      "unit": "pt",
+      "value": "scaled_pt(int(themes.font_size('caption', 10)))"
+    },
+    {
+      "family": "qfont_set",
+      "file": "AssetsManager\\widgets\\command_palette.py",
+      "line": 138,
+      "method": "setPointSize",
+      "role_hint": "badge_font",
+      "source_text": "badge_font.setPointSize(scaled_pt(int(themes.font_size(\"xxs\", 9))))",
+      "unit": "pt",
+      "value": "scaled_pt(int(themes.font_size('xxs', 9)))"
+    },
+    {
+      "family": "qfont_set",
+      "file": "AssetsManager\\widgets\\command_palette.py",
+      "line": 169,
+      "method": "setPointSize",
+      "role_hint": "desc_font",
+      "source_text": "desc_font.setPointSize(scaled_pt(int(themes.font_size(\"caption\", 10))))",
+      "unit": "pt",
+      "value": "scaled_pt(int(themes.font_size('caption', 10)))"
+    },
+    {
+      "family": "qfont_set",
+      "file": "AssetsManager\\widgets\\command_palette.py",
+      "line": 187,
+      "method": "setPointSize",
+      "role_hint": "title_font",
+      "source_text": "title_font.setPointSize(scaled_pt(int(themes.font_size(\"sm\", 12))))",
+      "unit": "pt",
+      "value": "scaled_pt(int(themes.font_size('sm', 12)))"
+    },
+    {
+      "family": "qfont_set",
+      "file": "AssetsManager\\widgets\\command_palette.py",
+      "line": 270,
+      "method": "setPointSize",
+      "role_hint": "input_font",
+      "source_text": "input_font.setPointSize(scaled_pt(14))",
+      "unit": "pt",
+      "value": "scaled_pt(14)"
+    },
+    {
+      "family": "qfont_set",
+      "file": "AssetsManager\\widgets\\command_palette.py",
+      "line": 307,
+      "method": "setPointSize",
+      "role_hint": "footer_font",
+      "source_text": "footer_font.setPointSize(scaled_pt(int(themes.font_size(\"xxs\", 9))))",
+      "unit": "pt",
+      "value": "scaled_pt(int(themes.font_size('xxs', 9)))"
+    },
+    {
+      "family": "qfont_set",
+      "file": "AssetsManager\\widgets\\tray.py",
+      "line": 73,
+      "method": "setPixelSize",
+      "role_hint": "font",
+      "source_text": "font.setPixelSize(20)",
+      "unit": "px",
+      "value": "20"
+    },
+    {
+      "family": "qfont_set",
+      "file": "AssetsManager\\window.py",
+      "line": 1439,
+      "method": "setPointSize",
+      "role_hint": "font",
+      "source_text": "font.setPointSize(scaled_pt(base_pt))",
+      "unit": "pt",
+      "value": "scaled_pt(base_pt)"
+    }
+  ],
+  "qss_px": [
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\core\\themes.py",
+      "line": 682,
+      "role_hint": "font",
+      "unit": "px",
+      "value": "{f_sm}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\core\\themes.py",
+      "line": 737,
+      "role_hint": "font",
+      "unit": "px",
+      "value": "{f_sm}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\core\\themes.py",
+      "line": 934,
+      "role_hint": "font",
+      "unit": "px",
+      "value": "{f_sm}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\plugin_manager_dialog.py",
+      "line": 114,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{scaled_pt(int(themes.prop('font_size', 'xl')))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\plugin_manager_dialog.py",
+      "line": 116,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{scaled_pt(int(themes.prop('font_size', 'sm')))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\sharing_settings_dialog.py",
+      "line": 293,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{sk.pt(int(sk.prop('font_size', 'md')))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\sharing_settings_dialog.py",
+      "line": 1135,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{sk.pt(int(sk.prop('font_size', 'sm')))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\sharing_settings_dialog.py",
+      "line": 1150,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{sk.pt(int(sk.prop('font_size', 'sm')))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 62,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('xxs')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 70,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('xl')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 78,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('xs')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 146,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('xxs')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 149,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('xl')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 152,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('xs')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 178,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('caption')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 184,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('caption')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 228,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('md')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 232,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('xs')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 310,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('md')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 313,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('xs')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 418,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('lg')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 421,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('sm')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 537,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('xxl')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 543,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('sm')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 550,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('caption')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 583,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('xxs')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 606,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('xxs')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 692,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('sm')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 751,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('xs')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 864,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('xxs')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 874,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('xxl')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 877,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('sm')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 880,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('caption')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\startup.py",
+      "line": 883,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{_font('xxs')}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\tabbed_dialog.py",
+      "line": 656,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{shape['font']}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dialogs\\tabbed_dialog.py",
+      "line": 682,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{shape['font']}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dock_factory.py",
+      "line": 134,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{scaled_pt(themes.font_size('sm'))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\dock_factory.py",
+      "line": 152,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{scaled_pt(themes.font_size('lg'))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\panels\\file_list\\_base_layout.py",
+      "line": 382,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{scaled_pt(themes.font_size('sm'))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\panels\\file_list\\_base_layout.py",
+      "line": 386,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{scaled_pt(themes.font_size('sm'))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\panels\\file_list\\_base_layout.py",
+      "line": 409,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{scaled_pt(themes.font_size('sm'))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\panels\\file_list\\_base_layout.py",
+      "line": 423,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{scaled_pt(int(themes.prop('font_size', 'sm')))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\panels\\file_list\\_base_layout.py",
+      "line": 681,
+      "role_hint": "label_font",
+      "unit": "px",
+      "value": "{scaled_pt(int(themes.prop('font_size', 'sm')))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\panels\\file_list\\_base_layout.py",
+      "line": 854,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{scaled_pt(int(themes.prop('font_size', 'sm')))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\panels\\file_list\\_navigation.py",
+      "line": 324,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{sk.pt(sk.font_size('sm'))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\panels\\file_list\\_navigation.py",
+      "line": 345,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{sk.pt(sk.font_size('sm'))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\panels\\info.py",
+      "line": 241,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{sk.pt(int(themes.prop('font_size', 'sm')))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\panels\\info.py",
+      "line": 256,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{sk.pt(int(themes.prop('font_size', 'sm')))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\panels\\info.py",
+      "line": 272,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{sk.pt(int(themes.prop('font_size', 'sm')))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\panels\\info.py",
+      "line": 290,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{sk.pt(int(themes.prop('font_size', 'sm')))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\panels\\info.py",
+      "line": 413,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{sk.pt(int(themes.prop('font_size', 'sm')))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\panels\\info.py",
+      "line": 488,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{sk.pt(int(themes.prop('font_size', 'sm')))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\panels\\info.py",
+      "line": 861,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{sk.pt(sk.font_size('caption'))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\panels\\info.py",
+      "line": 873,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{sk.pt(sk.font_size('caption'))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\panels\\sidebar.py",
+      "line": 1285,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{font_size}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\panels\\sidebar.py",
+      "line": 1319,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{font_size}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\dominant_palette_strip.py",
+      "line": 121,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{font_sm}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\micro_tab_bar.py",
+      "line": 402,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{font_pt}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\plugin_ui.py",
+      "line": 103,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{scaled_pt(int(themes.prop('font_size', 'md')))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\plugin_ui.py",
+      "line": 105,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{scaled_pt(int(themes.prop('font_size', 'sm')))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\plugin_ui.py",
+      "line": 107,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{scaled_pt(int(themes.prop('font_size', 'sm')))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\plugin_ui.py",
+      "line": 258,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{scaled_pt(int(themes.prop('font_size', 'sm')))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\plugin_ui.py",
+      "line": 294,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{scaled_pt(int(themes.prop('font_size', 'sm')))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\plugin_ui.py",
+      "line": 342,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{fs_sm}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\plugin_ui.py",
+      "line": 349,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{fs_sm}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\quick_look_overlay.py",
+      "line": 431,
+      "role_hint": "font",
+      "unit": "px",
+      "value": "{fs_md}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\quick_look_overlay.py",
+      "line": 440,
+      "role_hint": "font",
+      "unit": "px",
+      "value": "{fs_xs}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\quick_look_overlay.py",
+      "line": 446,
+      "role_hint": "font",
+      "unit": "px",
+      "value": "{fs_sm}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\quick_look_overlay.py",
+      "line": 463,
+      "role_hint": "font",
+      "unit": "px",
+      "value": "{fs_xs}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\quick_look_overlay.py",
+      "line": 468,
+      "role_hint": "font",
+      "unit": "px",
+      "value": "{fs_sm}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\quick_tagger_overlay.py",
+      "line": 99,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{scaled_pt(themes.font_size('md'))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\quick_tagger_overlay.py",
+      "line": 103,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{scaled_pt(themes.font_size('xs'))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\quick_tagger_overlay.py",
+      "line": 108,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{scaled_pt(themes.font_size('sm'))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\quick_tagger_overlay.py",
+      "line": 114,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{scaled_pt(themes.font_size('sm'))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\quick_tagger_overlay.py",
+      "line": 118,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{scaled_pt(themes.font_size('xxs'))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\stylekit.py",
+      "line": 178,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{self.pt(size)}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\stylekit.py",
+      "line": 189,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{self.pt(size)}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\stylekit.py",
+      "line": 372,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{fs_sm}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\stylekit.py",
+      "line": 375,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{fs_sm}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\stylekit.py",
+      "line": 445,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{size}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\stylekit.py",
+      "line": 509,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{font_size}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\stylekit.py",
+      "line": 538,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{size}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\stylekit.py",
+      "line": 577,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{self.pt(11)}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\tag_chip.py",
+      "line": 96,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{scaled_pt(themes.font_size('caption'))}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\theme_preview.py",
+      "line": 512,
+      "role_hint": "font",
+      "unit": "px",
+      "value": "{pt_heading}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\theme_preview.py",
+      "line": 524,
+      "role_hint": "font",
+      "unit": "px",
+      "value": "{pt_body}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\theme_preview.py",
+      "line": 529,
+      "role_hint": "font",
+      "unit": "px",
+      "value": "{pt_heading}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\theme_preview.py",
+      "line": 561,
+      "role_hint": "font",
+      "unit": "px",
+      "value": "{pt_body}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\theme_preview.py",
+      "line": 593,
+      "role_hint": "font",
+      "unit": "px",
+      "value": "{pt_body}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\theme_preview.py",
+      "line": 611,
+      "role_hint": "font",
+      "unit": "px",
+      "value": "{pt_body}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\theme_preview.py",
+      "line": 632,
+      "role_hint": "font",
+      "unit": "px",
+      "value": "{pt_body}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\theme_preview.py",
+      "line": 647,
+      "role_hint": "font",
+      "unit": "px",
+      "value": "{pt_body}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\theme_preview.py",
+      "line": 660,
+      "role_hint": "font",
+      "unit": "px",
+      "value": "{pt_heading}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\theme_preview.py",
+      "line": 680,
+      "role_hint": "font",
+      "unit": "px",
+      "value": "{pt_body}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\theme_preview.py",
+      "line": 711,
+      "role_hint": "font",
+      "unit": "px",
+      "value": "{pt_progress}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\workspace_bar.py",
+      "line": 102,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{font_caption}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\widgets\\workspace_bar.py",
+      "line": 111,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{font_caption}"
+    },
+    {
+      "family": "qss_px",
+      "file": "AssetsManager\\window_coordinator.py",
+      "line": 79,
+      "role_hint": "f",
+      "unit": "px",
+      "value": "{font_sm}"
+    }
+  ],
+  "scope": "AssetsManager/ (production code only)",
+  "summary": {
+    "qfont_pt_calls": 19,
+    "qfont_px_calls": 1,
+    "qfont_set_calls": 20,
+    "qss_px_literals": 98
+  }
+}

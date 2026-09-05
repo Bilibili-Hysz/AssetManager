@@ -810,6 +810,9 @@ def test_grid_empty_role_data_change_invalidates_static_texture():
 
 def test_grid_selection_change_preserves_cached_textures():
     widget = FileListGridWidget()
+    # The persisted machine reduce_motion preference must not steer these
+    # animator-progress assertions (the widget reads AppSettings at __init__).
+    widget._animator._reduce_motion = False
     cached = object()
     widget._cache._textures[3] = cached
     widget._selection = {3}
@@ -826,6 +829,8 @@ def test_grid_selection_change_preserves_cached_textures():
 def test_grid_hover_transition_preserves_cached_textures():
     app = QApplication.instance() or QApplication([])
     widget = FileListGridWidget()
+    # Same machine-preference guard as the selection test above.
+    widget._animator._reduce_motion = False
     old_cached = object()
     new_cached = object()
     widget._cache._textures[1] = old_cached

@@ -1,0 +1,16 @@
+{
+  "caption_token_value": 11,
+  "generated_by": "tests/desktop/test_font_metric_baseline_a.py",
+  "metrics_equal": false,
+  "note": "metrics are DPI/font-engine dependent; recorded as evidence that same-token pt vs px construction yields different metrics (V01), not as a normative choice",
+  "pt_font": {
+    "average_char_width_px": 15,
+    "height_px": 15,
+    "point_size": 11
+  },
+  "px_font": {
+    "average_char_width_px": 11,
+    "height_px": 11,
+    "pixel_size": 11
+  }
+}
