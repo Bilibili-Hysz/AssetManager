@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from sqlite3 import OperationalError
 from math import isfinite
@@ -26,6 +27,9 @@ from AssetsManager.repositories.asset_index_repository import AssetIndexRevision
 if TYPE_CHECKING:
     from AssetsManager.application.asset_index_service import AssetIndexService
     from AssetsManager.application.context import LibrarySession
+
+
+_log = logging.getLogger(__name__)
 
 
 class ReconciliationWorkerStopTimeout(RuntimeError):
@@ -89,6 +93,9 @@ class AssetIndexReconciliationService:
         transition_outbox_ack_retention_seconds: float = 7 * 24 * 60 * 60,
         transition_outbox_dead_letter_retention_seconds: float = 30 * 24 * 60 * 60,
         transition_outbox_prune_limit: int = 1000,
+        transition_outbox_pending_alert_threshold: int = 1000,
+        transition_outbox_dead_letter_alert_threshold: int = 100,
+        transition_outbox_oldest_pending_alert_age_seconds: float = 3600.0,
     ) -> None:
         self.session = session
         self.asset_index_service = asset_index_service
@@ -191,6 +198,32 @@ class AssetIndexReconciliationService:
             or transition_outbox_prune_limit < 1
         ):
             raise ValueError("transition_outbox_prune_limit must be a positive integer")
+        for name, threshold in (
+            (
+                "transition_outbox_pending_alert_threshold",
+                transition_outbox_pending_alert_threshold,
+            ),
+            (
+                "transition_outbox_dead_letter_alert_threshold",
+                transition_outbox_dead_letter_alert_threshold,
+            ),
+        ):
+            if (
+                not isinstance(threshold, int)
+                or isinstance(threshold, bool)
+                or threshold < 0
+            ):
+                raise ValueError(f"{name} must be a non-negative integer")
+        if (
+            not isinstance(transition_outbox_oldest_pending_alert_age_seconds, (int, float))
+            or isinstance(transition_outbox_oldest_pending_alert_age_seconds, bool)
+            or not isfinite(float(transition_outbox_oldest_pending_alert_age_seconds))
+            or transition_outbox_oldest_pending_alert_age_seconds < 0
+        ):
+            raise ValueError(
+                "transition_outbox_oldest_pending_alert_age_seconds must be "
+                "finite and non-negative"
+            )
         self._clock = clock
         self._wall_clock = wall_clock
         self._max_consecutive_errors = max_consecutive_errors
@@ -211,6 +244,16 @@ class AssetIndexReconciliationService:
             transition_outbox_dead_letter_retention_seconds
         )
         self._transition_outbox_prune_limit = transition_outbox_prune_limit
+        self._transition_outbox_pending_alert_threshold = (
+            transition_outbox_pending_alert_threshold
+        )
+        self._transition_outbox_dead_letter_alert_threshold = (
+            transition_outbox_dead_letter_alert_threshold
+        )
+        self._transition_outbox_oldest_pending_alert_age_seconds = float(
+            transition_outbox_oldest_pending_alert_age_seconds
+        )
+        self._outbox_alert_state: set[str] = set()
         self._lifecycle_lock = threading.RLock()
         self._stop_event: threading.Event | None = None
         self._worker: threading.Thread | None = None
@@ -334,6 +377,64 @@ class AssetIndexReconciliationService:
                 self._worker = None
                 self._stop_event = None
 
+    def _observe_transition_outbox_metrics(self, metrics) -> None:
+        """Emit edge-triggered capacity/age warnings for durable delivery.
+
+        Thresholds are advisory.  They never evict pending work and warning
+        state is edge-triggered so a stuck outbox does not fill the log every
+        ten seconds.  A zero threshold disables the corresponding warning.
+        """
+        checks = (
+            (
+                "pending_count",
+                self._transition_outbox_pending_alert_threshold,
+                getattr(metrics, "pending_count", 0),
+                "pending transition outbox rows",
+            ),
+            (
+                "dead_letter_count",
+                self._transition_outbox_dead_letter_alert_threshold,
+                getattr(metrics, "dead_letter_count", 0),
+                "transition outbox dead-letter rows",
+            ),
+        )
+        pending_age = getattr(metrics, "oldest_pending_age_seconds", None)
+        checks += (
+            (
+                "oldest_pending_age_seconds",
+                self._transition_outbox_oldest_pending_alert_age_seconds,
+                pending_age,
+                "oldest pending transition outbox age",
+            ),
+        )
+        for key, threshold, value, description in checks:
+            active = (
+                threshold > 0
+                and value is not None
+                and float(value) >= float(threshold)
+            )
+            was_active = key in self._outbox_alert_state
+            if active and not was_active:
+                self._outbox_alert_state.add(key)
+                _log.warning(
+                    "Reconciliation transition outbox threshold exceeded "
+                    "(library_root=%s, metric=%s, value=%s, threshold=%s)",
+                    self.session.root_str,
+                    description,
+                    value,
+                    threshold,
+                )
+            elif not active and was_active:
+                self._outbox_alert_state.remove(key)
+                _log.info(
+                    "Reconciliation transition outbox threshold cleared "
+                    "(library_root=%s, metric=%s, value=%s, threshold=%s)",
+                    self.session.root_str,
+                    description,
+                    value,
+                    threshold,
+                )
+
     def _run_sweeper(self, stop_event: _SweeperStopEvent) -> None:
         """Periodically reclaim leases and prune expired outbox history.
 
@@ -363,6 +464,7 @@ class AssetIndexReconciliationService:
                 # event; a transient SQLite/listener failure must not take the
                 # worker supervisor down.
                 pass
+            now_wallclock = None
             try:
                 now_wallclock = self._wall_clock()
                 if now_wallclock >= next_outbox_prune_at:
@@ -389,6 +491,21 @@ class AssetIndexReconciliationService:
             except BaseException:
                 # Prune is strictly retention-only.  Its SQLite failure must
                 # leave pending rows untouched and retry on the next sweep.
+                pass
+            try:
+                metrics = getattr(
+                    self.reconciliation_queue,
+                    "transition_outbox_metrics",
+                    None,
+                )
+                if callable(metrics) and now_wallclock is not None:
+                    self._observe_transition_outbox_metrics(
+                        metrics(now=now_wallclock)
+                    )
+            except BaseException:
+                # Observability must never interfere with delivery or lease
+                # recovery, especially when an older adapter has no metrics
+                # table or returns malformed diagnostic data.
                 pass
             try:
                 self.reconciliation_queue.recover_expired_running(

@@ -690,6 +690,15 @@ class ApplicationBootstrap:
                 transition_outbox_prune_limit=(
                     self._app_settings.get_reconciliation_outbox_prune_limit()
                 ),
+                transition_outbox_pending_alert_threshold=(
+                    self._app_settings.get_reconciliation_outbox_pending_alert_threshold()
+                ),
+                transition_outbox_dead_letter_alert_threshold=(
+                    self._app_settings.get_reconciliation_outbox_dead_letter_alert_threshold()
+                ),
+                transition_outbox_oldest_pending_alert_age_seconds=(
+                    self._app_settings.get_reconciliation_outbox_oldest_pending_alert_age_seconds()
+                ),
                 # A runtime worker may recover from a bounded burst of
                 # unexpected infrastructure failures, but it must still
                 # become visibly faulted instead of retrying forever.

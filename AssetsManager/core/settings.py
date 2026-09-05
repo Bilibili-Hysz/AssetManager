@@ -40,6 +40,15 @@ RECONCILIATION_OUTBOX_DEAD_LETTER_RETENTION_KEY = (
     "reconciliation_outbox_dead_letter_retention_seconds"
 )
 RECONCILIATION_OUTBOX_PRUNE_LIMIT_KEY = "reconciliation_outbox_prune_limit"
+RECONCILIATION_OUTBOX_PENDING_ALERT_THRESHOLD_KEY = (
+    "reconciliation_outbox_pending_alert_threshold"
+)
+RECONCILIATION_OUTBOX_DEAD_LETTER_ALERT_THRESHOLD_KEY = (
+    "reconciliation_outbox_dead_letter_alert_threshold"
+)
+RECONCILIATION_OUTBOX_OLDEST_PENDING_ALERT_AGE_KEY = (
+    "reconciliation_outbox_oldest_pending_alert_age_seconds"
+)
 THUMBNAIL_CACHE_MAX_BYTES_KEY = "thumbnail_cache_max_bytes"
 AI_TAGGING_ENABLED_KEY = "ai_tagging_enabled"
 AI_TAGGING_ENDPOINT_KEY = "ai_tagging_endpoint"
@@ -51,6 +60,9 @@ DEFAULT_RECONCILIATION_OUTBOX_PRUNE_INTERVAL = 3600.0
 DEFAULT_RECONCILIATION_OUTBOX_ACK_RETENTION_SECONDS = 7 * 24 * 60 * 60
 DEFAULT_RECONCILIATION_OUTBOX_DEAD_LETTER_RETENTION_SECONDS = 30 * 24 * 60 * 60
 DEFAULT_RECONCILIATION_OUTBOX_PRUNE_LIMIT = 1000
+DEFAULT_RECONCILIATION_OUTBOX_PENDING_ALERT_THRESHOLD = 1000
+DEFAULT_RECONCILIATION_OUTBOX_DEAD_LETTER_ALERT_THRESHOLD = 100
+DEFAULT_RECONCILIATION_OUTBOX_OLDEST_PENDING_ALERT_AGE_SECONDS = 3600.0
 DEFAULT_SHARE_SAFETY_ACK_VERSION = 0
 DEFAULT_TRUSTED_NETWORK_CONFIRMED = False
 DEFAULT_SHARE_LAST_SUCCESSFUL_BIND = None
@@ -70,6 +82,15 @@ def _positive_finite_number(value) -> bool:
         and not isinstance(value, bool)
         and isfinite(float(value))
         and value > 0
+    )
+
+
+def _nonnegative_finite_number(value) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and isfinite(float(value))
+        and value >= 0
     )
 
 
@@ -103,6 +124,13 @@ _VALIDATORS: dict[str, Callable] = {
     RECONCILIATION_OUTBOX_PRUNE_LIMIT_KEY: (
         lambda v: isinstance(v, int) and not isinstance(v, bool) and v >= 1
     ),
+    RECONCILIATION_OUTBOX_PENDING_ALERT_THRESHOLD_KEY: (
+        lambda v: isinstance(v, int) and not isinstance(v, bool) and v >= 0
+    ),
+    RECONCILIATION_OUTBOX_DEAD_LETTER_ALERT_THRESHOLD_KEY: (
+        lambda v: isinstance(v, int) and not isinstance(v, bool) and v >= 0
+    ),
+    RECONCILIATION_OUTBOX_OLDEST_PENDING_ALERT_AGE_KEY: _nonnegative_finite_number,
     # AI tagging (H2-c). The feature is off until explicitly enabled; the
     # endpoint must be an absolute http(s) URL; max_tags stays in 1-20 so a
     # corrupted value can never flood an asset with machine tags.
@@ -413,6 +441,54 @@ class AppSettings:
 
     def set_reconciliation_outbox_prune_limit(self, limit: int) -> None:
         self.set(RECONCILIATION_OUTBOX_PRUNE_LIMIT_KEY, limit)
+
+    def get_reconciliation_outbox_pending_alert_threshold(self) -> int:
+        """Return the pending-row count that activates a capacity warning.
+
+        Zero disables this count-based warning without affecting delivery or
+        retention.  The queue remains lossless: this is an operator signal,
+        not an eviction limit.
+        """
+        value = self.get(
+            RECONCILIATION_OUTBOX_PENDING_ALERT_THRESHOLD_KEY,
+            DEFAULT_RECONCILIATION_OUTBOX_PENDING_ALERT_THRESHOLD,
+        )
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            return value
+        return DEFAULT_RECONCILIATION_OUTBOX_PENDING_ALERT_THRESHOLD
+
+    def set_reconciliation_outbox_pending_alert_threshold(self, threshold: int) -> None:
+        self.set(RECONCILIATION_OUTBOX_PENDING_ALERT_THRESHOLD_KEY, threshold)
+
+    def get_reconciliation_outbox_dead_letter_alert_threshold(self) -> int:
+        """Return the dead-letter count that activates a capacity warning."""
+        value = self.get(
+            RECONCILIATION_OUTBOX_DEAD_LETTER_ALERT_THRESHOLD_KEY,
+            DEFAULT_RECONCILIATION_OUTBOX_DEAD_LETTER_ALERT_THRESHOLD,
+        )
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            return value
+        return DEFAULT_RECONCILIATION_OUTBOX_DEAD_LETTER_ALERT_THRESHOLD
+
+    def set_reconciliation_outbox_dead_letter_alert_threshold(
+        self, threshold: int
+    ) -> None:
+        self.set(RECONCILIATION_OUTBOX_DEAD_LETTER_ALERT_THRESHOLD_KEY, threshold)
+
+    def get_reconciliation_outbox_oldest_pending_alert_age_seconds(self) -> float:
+        """Return the pending age that activates a delivery-latency warning."""
+        value = self.get(
+            RECONCILIATION_OUTBOX_OLDEST_PENDING_ALERT_AGE_KEY,
+            DEFAULT_RECONCILIATION_OUTBOX_OLDEST_PENDING_ALERT_AGE_SECONDS,
+        )
+        if _nonnegative_finite_number(value):
+            return float(cast(int | float, value))
+        return DEFAULT_RECONCILIATION_OUTBOX_OLDEST_PENDING_ALERT_AGE_SECONDS
+
+    def set_reconciliation_outbox_oldest_pending_alert_age_seconds(
+        self, seconds
+    ) -> None:
+        self.set(RECONCILIATION_OUTBOX_OLDEST_PENDING_ALERT_AGE_KEY, seconds)
 
     def get_share_safety_ack_version(self) -> int:
         """Return the persisted share-safety acknowledgement version.

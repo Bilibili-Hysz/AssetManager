@@ -14,10 +14,16 @@ from AssetsManager.core.settings import (
     DEFAULT_RECONCILIATION_OUTBOX_DEAD_LETTER_RETENTION_SECONDS,
     DEFAULT_RECONCILIATION_OUTBOX_PRUNE_INTERVAL,
     DEFAULT_RECONCILIATION_OUTBOX_PRUNE_LIMIT,
+    DEFAULT_RECONCILIATION_OUTBOX_PENDING_ALERT_THRESHOLD,
+    DEFAULT_RECONCILIATION_OUTBOX_DEAD_LETTER_ALERT_THRESHOLD,
+    DEFAULT_RECONCILIATION_OUTBOX_OLDEST_PENDING_ALERT_AGE_SECONDS,
     RECONCILIATION_OUTBOX_ACK_RETENTION_KEY,
     RECONCILIATION_OUTBOX_DEAD_LETTER_RETENTION_KEY,
     RECONCILIATION_OUTBOX_PRUNE_INTERVAL_KEY,
     RECONCILIATION_OUTBOX_PRUNE_LIMIT_KEY,
+    RECONCILIATION_OUTBOX_PENDING_ALERT_THRESHOLD_KEY,
+    RECONCILIATION_OUTBOX_DEAD_LETTER_ALERT_THRESHOLD_KEY,
+    RECONCILIATION_OUTBOX_OLDEST_PENDING_ALERT_AGE_KEY,
     SHARE_LAST_SUCCESSFUL_AUTH_KEY,
     SHARE_LAST_SUCCESSFUL_BIND_KEY,
     SHARE_SAFETY_ACK_VERSION_KEY,
@@ -130,16 +136,25 @@ def test_reconciliation_outbox_retention_settings_round_trip(tmp_path):
     assert settings.get_reconciliation_outbox_ack_retention_seconds() == DEFAULT_RECONCILIATION_OUTBOX_ACK_RETENTION_SECONDS
     assert settings.get_reconciliation_outbox_dead_letter_retention_seconds() == DEFAULT_RECONCILIATION_OUTBOX_DEAD_LETTER_RETENTION_SECONDS
     assert settings.get_reconciliation_outbox_prune_limit() == DEFAULT_RECONCILIATION_OUTBOX_PRUNE_LIMIT
+    assert settings.get_reconciliation_outbox_pending_alert_threshold() == DEFAULT_RECONCILIATION_OUTBOX_PENDING_ALERT_THRESHOLD
+    assert settings.get_reconciliation_outbox_dead_letter_alert_threshold() == DEFAULT_RECONCILIATION_OUTBOX_DEAD_LETTER_ALERT_THRESHOLD
+    assert settings.get_reconciliation_outbox_oldest_pending_alert_age_seconds() == DEFAULT_RECONCILIATION_OUTBOX_OLDEST_PENDING_ALERT_AGE_SECONDS
 
     settings.set_reconciliation_outbox_prune_interval_seconds(90.0)
     settings.set_reconciliation_outbox_ack_retention_seconds(3600)
     settings.set_reconciliation_outbox_dead_letter_retention_seconds(7200.5)
     settings.set_reconciliation_outbox_prune_limit(37)
+    settings.set_reconciliation_outbox_pending_alert_threshold(41)
+    settings.set_reconciliation_outbox_dead_letter_alert_threshold(9)
+    settings.set_reconciliation_outbox_oldest_pending_alert_age_seconds(12.5)
 
     assert settings.get_reconciliation_outbox_prune_interval_seconds() == 90.0
     assert settings.get_reconciliation_outbox_ack_retention_seconds() == 3600.0
     assert settings.get_reconciliation_outbox_dead_letter_retention_seconds() == 7200.5
     assert settings.get_reconciliation_outbox_prune_limit() == 37
+    assert settings.get_reconciliation_outbox_pending_alert_threshold() == 41
+    assert settings.get_reconciliation_outbox_dead_letter_alert_threshold() == 9
+    assert settings.get_reconciliation_outbox_oldest_pending_alert_age_seconds() == 12.5
 
 
 def test_reconciliation_outbox_retention_settings_fail_closed_on_malformed_values(tmp_path):
@@ -150,6 +165,9 @@ def test_reconciliation_outbox_retention_settings_fail_closed_on_malformed_value
         RECONCILIATION_OUTBOX_ACK_RETENTION_KEY: float("nan"),
         RECONCILIATION_OUTBOX_DEAD_LETTER_RETENTION_KEY: "30 days",
         RECONCILIATION_OUTBOX_PRUNE_LIMIT_KEY: True,
+        RECONCILIATION_OUTBOX_PENDING_ALERT_THRESHOLD_KEY: "1000",
+        RECONCILIATION_OUTBOX_DEAD_LETTER_ALERT_THRESHOLD_KEY: -1,
+        RECONCILIATION_OUTBOX_OLDEST_PENDING_ALERT_AGE_KEY: float("inf"),
     }
     settings._dirty = False
 
@@ -157,6 +175,9 @@ def test_reconciliation_outbox_retention_settings_fail_closed_on_malformed_value
     assert settings.get_reconciliation_outbox_ack_retention_seconds() == DEFAULT_RECONCILIATION_OUTBOX_ACK_RETENTION_SECONDS
     assert settings.get_reconciliation_outbox_dead_letter_retention_seconds() == DEFAULT_RECONCILIATION_OUTBOX_DEAD_LETTER_RETENTION_SECONDS
     assert settings.get_reconciliation_outbox_prune_limit() == DEFAULT_RECONCILIATION_OUTBOX_PRUNE_LIMIT
+    assert settings.get_reconciliation_outbox_pending_alert_threshold() == DEFAULT_RECONCILIATION_OUTBOX_PENDING_ALERT_THRESHOLD
+    assert settings.get_reconciliation_outbox_dead_letter_alert_threshold() == DEFAULT_RECONCILIATION_OUTBOX_DEAD_LETTER_ALERT_THRESHOLD
+    assert settings.get_reconciliation_outbox_oldest_pending_alert_age_seconds() == DEFAULT_RECONCILIATION_OUTBOX_OLDEST_PENDING_ALERT_AGE_SECONDS
 
 
 def test_reconciliation_outbox_retention_settings_reject_invalid_writes():
@@ -172,6 +193,12 @@ def test_reconciliation_outbox_retention_settings_reject_invalid_writes():
         settings.set_reconciliation_outbox_dead_letter_retention_seconds(-1)
     with pytest.raises(ValueError):
         settings.set_reconciliation_outbox_prune_limit(0)
+    with pytest.raises(ValueError):
+        settings.set_reconciliation_outbox_pending_alert_threshold(-1)
+    with pytest.raises(ValueError):
+        settings.set_reconciliation_outbox_dead_letter_alert_threshold(True)
+    with pytest.raises(ValueError):
+        settings.set_reconciliation_outbox_oldest_pending_alert_age_seconds(-1)
 
 
 def test_list_operations():

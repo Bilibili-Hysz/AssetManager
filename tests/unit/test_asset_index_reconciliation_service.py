@@ -418,6 +418,78 @@ def test_sweeper_retries_outbox_prune_after_failure(tmp_path, monkeypatch):
     )
 
 
+def test_sweeper_emits_edge_triggered_outbox_capacity_alerts(
+    tmp_path, caplog, monkeypatch
+):
+    from types import SimpleNamespace
+
+    service, queue, _index = _service(
+        tmp_path,
+        [],
+        transition_outbox_pending_alert_threshold=3,
+        transition_outbox_dead_letter_alert_threshold=2,
+        transition_outbox_oldest_pending_alert_age_seconds=30.0,
+    )
+    snapshots = iter(
+        (
+            SimpleNamespace(
+                pending_count=3,
+                dead_letter_count=2,
+                oldest_pending_age_seconds=30.0,
+            ),
+            SimpleNamespace(
+                pending_count=4,
+                dead_letter_count=5,
+                oldest_pending_age_seconds=45.0,
+            ),
+            SimpleNamespace(
+                pending_count=0,
+                dead_letter_count=0,
+                oldest_pending_age_seconds=None,
+            ),
+        )
+    )
+    monkeypatch.setattr(queue, "transition_outbox_metrics", lambda **_kwargs: next(snapshots))
+    caplog.set_level("WARNING")
+
+    for snapshot in (1, 2, 3):
+        service._observe_transition_outbox_metrics(
+            queue.transition_outbox_metrics(now=float(snapshot))
+        )
+
+    warnings = [record for record in caplog.records if record.levelname == "WARNING"]
+    assert len(warnings) == 3
+    assert {record.args[1] for record in warnings} == {
+        "pending transition outbox rows",
+        "transition outbox dead-letter rows",
+        "oldest pending transition outbox age",
+    }
+    assert service._outbox_alert_state == set()
+
+
+def test_sweeper_alert_threshold_zero_disables_metric(tmp_path, caplog):
+    from types import SimpleNamespace
+
+    service, _queue, _index = _service(
+        tmp_path,
+        [],
+        transition_outbox_pending_alert_threshold=0,
+        transition_outbox_dead_letter_alert_threshold=0,
+        transition_outbox_oldest_pending_alert_age_seconds=0,
+    )
+    caplog.set_level("WARNING")
+    service._observe_transition_outbox_metrics(
+        SimpleNamespace(
+            pending_count=100,
+            dead_letter_count=100,
+            oldest_pending_age_seconds=100.0,
+        )
+    )
+
+    assert not caplog.records
+    assert service._outbox_alert_state == set()
+
+
 def test_worker_start_failure_resets_lifecycle_state(tmp_path, monkeypatch):
     import threading
 
