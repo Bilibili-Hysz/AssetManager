@@ -74,6 +74,34 @@ def test_elevation_reuses_existing_graphics_effect():
         app.processEvents()
 
 
+def test_elevation_zero_horizontal_offset_stays_zero_under_scale(monkeypatch):
+    """V06: the symmetric shadow's 0 x-offset must not become 1px at any scale.
+
+    scaled_px() clamps its minimum to 1, so routing the zero offset through it
+    nudged every elevated surface one pixel right of its card. All three
+    depth levels define offset_x=0; each must keep QPointF(0, y) under a
+    non-1.0 ui_scale while blur and the vertical drop keep scaling.
+    """
+    from AssetsManager.widgets import elevation
+
+    monkeypatch.setattr(elevation, "scaled_px", lambda v: max(1, round(v * 1.5)))
+    # Sanity: the patch mirrors scaled_px's clamp at a 1.5 ui_scale.
+    assert elevation.scaled_px(18) == 27
+    assert elevation.scaled_px(0) == 1  # the trap this test guards against
+
+    app = QApplication.instance() or QApplication([])
+    widget = QWidget()
+    try:
+        for level in (1, 2, 3):
+            effect = apply_elevation(widget, level=level)
+            assert effect.xOffset() == 0.0
+            assert effect.yOffset() > 0  # vertical drop still scales
+            assert effect.blurRadius() > 0
+    finally:
+        widget.deleteLater()
+        app.processEvents()
+
+
 # ── Dialog QSS coverage tests ──────────────────────────────────
 
 

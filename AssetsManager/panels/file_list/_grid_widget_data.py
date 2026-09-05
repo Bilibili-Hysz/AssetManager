@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING, Any, cast
 from PySide6.QtCore import Qt, QRect, QSize, QPoint
 from PySide6.QtGui import QColor, QFont, QFontMetrics
 
+from dataclasses import dataclass
+
 from AssetsManager.core import themes
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.i18n import tr
@@ -29,11 +31,55 @@ if TYPE_CHECKING:
     from AssetsManager.panels.file_list._grid_texture_cache import GridTextureCache
     from AssetsManager.panels.file_list._animator import Animator
 
-# Layout constants — matching GridDelegate exactly (scaled for DPI)
-_CARD_PAD = scaled_px(6)
-_PREVIEW_MARGIN = scaled_px(4)
-_TEXT_TOP_GAP = scaled_px(5)
-_TEXT_LINE_GAP = scaled_px(1)
+
+# ── Runtime card metrics (V04) ─────────────────────────────────
+#
+# Unscaled design values are fixed; the scaled runtime values live in a
+# module-level container that is REBUILT on theme/ui-scale refresh. The old
+# module-level ``scaled_px(...)`` constants froze at import-time scale, so a
+# 1.0→1.5→1.0 round trip left corners/margins at the stale scale even after
+# ``refresh_scale()`` cleared the texture cache. Rendering constants of the
+# same family live in _grid_widget_render.py and are rebuilt by the same
+# ``rebuild_grid_runtime_metrics`` entry point.
+_CARD_PAD_D = 6
+_PREVIEW_MARGIN_D = 4
+_TEXT_TOP_GAP_D = 5
+_TEXT_LINE_GAP_D = 1
+
+
+@dataclass(frozen=True)
+class _GridMetrics:
+    """Scale-applied card layout metrics shared by data + render mixins."""
+    card_pad: int
+    preview_margin: int
+    text_top_gap: int
+    text_line_gap: int
+
+
+def _build_grid_metrics() -> _GridMetrics:
+    return _GridMetrics(
+        card_pad=scaled_px(_CARD_PAD_D),
+        preview_margin=scaled_px(_PREVIEW_MARGIN_D),
+        text_top_gap=scaled_px(_TEXT_TOP_GAP_D),
+        text_line_gap=scaled_px(_TEXT_LINE_GAP_D),
+    )
+
+
+# Rebuilt by rebuild_grid_runtime_metrics() on every theme/scale refresh.
+_M = _build_grid_metrics()
+
+
+def rebuild_grid_runtime_metrics() -> None:
+    """Re-derive runtime card metrics from the current ui_scale/theme.
+
+    Called by DataMixin.refresh_theme/refresh_scale BEFORE the texture cache
+    is cleared, so newly baked textures use the new metrics; refresh paths
+    that do not rebuild would keep baking stale-scale textures into a fresh
+    cache (V04). Kept at module level (not a mixin method) so the render
+    module can share the same single source.
+    """
+    global _M
+    _M = _build_grid_metrics()
 
 # Trailing-edge debounce for the selection-changed accessibility announcement:
 # rubber-band / shift-range batch selections report one summary instead of one
@@ -69,11 +115,13 @@ class DataMixin:
         def _relayout_scrollbar(self) -> None: ...
         def _cancel_frame(self) -> None: ...
         def _render_item(self, row: int, item_rect: QRect) -> QPixmap | None: ...
+        def _rebuild_render_metrics(self) -> None: ...
 
     def _update_item_hint(self):
         """Item size matching GridDelegate.sizeHint."""
-        self._item_w = _CARD_PAD * 2 + _PREVIEW_MARGIN * 2 + self._thumb_size + 2
-        self._item_h = _CARD_PAD * 2 + _PREVIEW_MARGIN * 2 + self._thumb_size + self._t_h + 2
+        m = _M
+        self._item_w = m.card_pad * 2 + m.preview_margin * 2 + self._thumb_size + 2
+        self._item_h = m.card_pad * 2 + m.preview_margin * 2 + self._thumb_size + self._t_h + 2
         self._item_hint = QSize(self._item_w, self._item_h)
 
     def _refresh_text_metrics(self) -> None:
@@ -92,7 +140,7 @@ class DataMixin:
         self._font_badge.setPointSize(scaled_pt(8))
         self._font_badge.setBold(True)
         self._fm_badge = QFontMetrics(self._font_badge)
-        self._t_h = _TEXT_TOP_GAP + self._fm_name.height() + _TEXT_LINE_GAP + self._fm_sub.height()
+        self._t_h = _M.text_top_gap + self._fm_name.height() + _M.text_line_gap + self._fm_sub.height()
         self._update_item_hint()
 
     # ── Accessibility baseline ───────────────────────────────
@@ -250,8 +298,8 @@ class DataMixin:
         self._zoom_start_size = self._thumb_size
         self._zoom_target_size = target_size
         target_hint = QSize(
-            _CARD_PAD * 2 + _PREVIEW_MARGIN * 2 + target_size + 2,
-            _CARD_PAD * 2 + _PREVIEW_MARGIN * 2 + target_size + self._t_h + 2,
+            _M.card_pad * 2 + _M.preview_margin * 2 + target_size + 2,
+            _M.card_pad * 2 + _M.preview_margin * 2 + target_size + self._t_h + 2,
         )
         target_layout = GridLayout()
         target_layout.compute(
@@ -516,9 +564,10 @@ class DataMixin:
 
     def _card_rect_in_item(self, item_rect: QRect) -> QRect:
         """Card within item: inset by CARD_PAD on all sides (matches delegate)."""
+        pad = _M.card_pad
         return QRect(
-            item_rect.x() + _CARD_PAD, item_rect.y() + _CARD_PAD,
-            item_rect.width() - _CARD_PAD * 2, item_rect.height() - _CARD_PAD * 2,
+            item_rect.x() + pad, item_rect.y() + pad,
+            item_rect.width() - pad * 2, item_rect.height() - pad * 2,
         )
 
     def _record_performance(
@@ -619,13 +668,13 @@ class DataMixin:
         """Return the subtitle band inside ``item_rect`` (matches _render_item)."""
         card = self._card_rect_in_item(QRect(0, 0, item_rect.width(), item_rect.height()))
         preview = QRect(
-            card.x() + _PREVIEW_MARGIN,
-            card.y() + _PREVIEW_MARGIN,
+            card.x() + _M.preview_margin,
+            card.y() + _M.preview_margin,
             self._thumb_size,
             self._thumb_size,
         )
-        name_y = preview.bottom() + _TEXT_TOP_GAP
-        sub_y = name_y + self._fm_name.height() + _TEXT_LINE_GAP
+        name_y = preview.bottom() + _M.text_top_gap
+        sub_y = name_y + self._fm_name.height() + _M.text_line_gap
         return QRect(preview.left(), sub_y, max(1, preview.width()), self._fm_sub.height())
 
     def _patch_subtitle_texture(self, row: int) -> bool:
@@ -765,6 +814,12 @@ class DataMixin:
             f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}")
 
     def refresh_theme(self):
+        # Metrics first (V04): new values must apply before the cache is
+        # cleared so subsequent texture bakes use the refreshed metrics.
+        # The render metrics are rebuilt through the composed host (render
+        # module cannot be imported here — data is imported by render).
+        self._rebuild_render_metrics()
+        rebuild_grid_runtime_metrics()
         previous_count = self._cache.texture_count
         self._full_rebuild_epoch += 1
         self._rebuild_theme()
@@ -777,6 +832,9 @@ class DataMixin:
 
     def refresh_scale(self):
         """Refresh scale-dependent metrics and repaint cached card textures."""
+        # Metrics first (V04): see refresh_theme.
+        self._rebuild_render_metrics()
+        rebuild_grid_runtime_metrics()
         previous_count = self._cache.texture_count
         self._full_rebuild_epoch += 1
         self._refresh_text_metrics()

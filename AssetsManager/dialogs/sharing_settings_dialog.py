@@ -18,7 +18,7 @@ from AssetsManager.application.desktop_ports import (
     ShareSettingsPort,
 )
 from AssetsManager.domain.auth import hash_password
-from AssetsManager.dialogs.tabbed_dialog import TabbedDialog
+from AssetsManager.dialogs.tabbed_dialog import TabbedDialog, DialogButtonBar
 from AssetsManager.dialogs.sharing_settings import (
     SharedUiMixin,
     EndpointPageMixin,
@@ -181,18 +181,28 @@ class SharingSettingsDialog(
         body.addWidget(self._page_stack, 1)
         root.addLayout(body, 1)
 
-        btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        # Shared bar (stage C / V03): fixed stretch|Cancel|Apply|OK order,
+        # identical to TabbedDialog's own shell and StandardModalDialog.
+        btn_box = DialogButtonBar()
         apply_btn = btn_box.addButton(tr("dialog.apply"), QDialogButtonBox.ButtonRole.ApplyRole)
-        self._dialog_apply_btn = apply_btn
+        # _apply_btn is the TabbedDialog-standard attribute the base
+        # _on_language_changed refreshes; _dialog_apply_btn is kept as the
+        # historical alias (no other readers today, verified by grep).
+        self._apply_btn = self._dialog_apply_btn = apply_btn
         apply_btn.clicked.connect(lambda: self._apply_configuration_changes(force=True))
         btn_box.accepted.connect(self._accept_configuration_changes)
         btn_box.rejected.connect(self.reject)
+        for btn in btn_box.buttons():
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
         themes.set_button_variant(
             btn_box.button(QDialogButtonBox.StandardButton.Ok), "primary")
         themes.set_button_variant(apply_btn, "secondary")
         themes.set_button_variant(
             btn_box.button(QDialogButtonBox.StandardButton.Cancel), "ghost")
         root.addWidget(btn_box)
+        # Named _button_box so TabbedDialog._on_language_changed refreshes the
+        # OK/Cancel/Apply labels on a live language switch (D6 contract).
+        self._button_box = btn_box
         self._select_page(self._initial_page)
         self._update_navigation_mode()
 

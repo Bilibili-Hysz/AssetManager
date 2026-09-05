@@ -17,6 +17,8 @@ from PySide6.QtCore import Qt, QRect, QRectF, QSize, QPoint
 from PySide6.QtGui import QPainter, QPixmap, QColor, QPen, QFont, QFontMetrics, QPolygon
 from PySide6.QtWidgets import QWidget
 
+from dataclasses import dataclass
+
 from AssetsManager.core import icons
 from AssetsManager.core import themes
 from AssetsManager.core.color_utils import contrast_on
@@ -28,9 +30,7 @@ from AssetsManager.panels.file_list._common import (
     EXT_TO_CATEGORY, badge_color_for_extension, badge_label_for_extension,
 )
 from AssetsManager.panels.file_list._model import FileSystemModel
-from AssetsManager.panels.file_list._grid_widget_data import (
-    _PREVIEW_MARGIN, _TEXT_TOP_GAP, _TEXT_LINE_GAP,
-)
+from AssetsManager.panels.file_list._grid_widget_data import _M
 
 if TYPE_CHECKING:
     from AssetsManager.panels.file_list._grid_layout import GridLayout
@@ -39,14 +39,46 @@ if TYPE_CHECKING:
 
 tr = i18n.tr
 
-# Card drawing constants — matching GridDelegate exactly (scaled for DPI)
-_CORNER_R = scaled_px(10)
-_PREVIEW_R = scaled_px(8)
-# Folder-tab glyph corner, canonical source: themes.metrics("radius_badge").
-_BADGE_R = scaled_px(int(themes.metrics("radius_badge")))
-_BADGE_H = scaled_px(14)
+# Card drawing metrics — matching GridDelegate exactly (scaled for DPI).
+#
+# Unscaled design values are fixed; scaled runtime values live in the module
+# container ``_RM`` (V04). The previous module-level ``scaled_px(...)`` values
+# froze at import-time ui_scale, so a 1.0→1.5→1.0 round trip kept painting
+# with the stale radii even after ``refresh_scale()`` cleared the texture
+# cache. ``RenderMixin._rebuild_render_metrics`` (called by
+# DataMixin.refresh_theme/refresh_scale before the cache clear) rebuilds it.
+_CORNER_R_D = 10  # keep literal, NOT themes.prop("border_radius","md"): all
+# 24 themes define md=10 today, but deriving would drift visuals the moment a
+# theme changes — stage D calibrates per-theme radii explicitly.
+_PREVIEW_R_D = 8
+_BADGE_H_D = 14
+_BADGE_PAD_H_D = 5
 
-_BADGE_PAD_H = scaled_px(5)
+
+@dataclass(frozen=True)
+class _GridRenderMetrics:
+    """Scale-applied drawing metrics for the grid canvas."""
+    corner_r: int
+    preview_r: int
+    badge_r: int
+    badge_h: int
+    badge_pad_h: int
+
+
+def _build_render_metrics() -> _GridRenderMetrics:
+    return _GridRenderMetrics(
+        corner_r=scaled_px(_CORNER_R_D),
+        preview_r=scaled_px(_PREVIEW_R_D),
+        # Folder-tab glyph corner, canonical source: themes.metrics("radius_badge").
+        badge_r=scaled_px(int(themes.metrics("radius_badge"))),
+        badge_h=scaled_px(_BADGE_H_D),
+        badge_pad_h=scaled_px(_BADGE_PAD_H_D),
+    )
+
+
+# Rebuilt by RenderMixin._rebuild_render_metrics on theme/scale refresh.
+_RM = _build_render_metrics()
+
 _FULL_REBUILD_TEXTURE_BUDGET = 12
 _ZOOM_FALLBACK_TEXTURE_BUDGET = 2
 _ZOOM_TARGET_TEXTURE_BUDGET = 6
@@ -124,6 +156,17 @@ class RenderMixin:
         ) -> None: ...
 
     # ── Painting ────────────────────────────────────────────
+
+    @staticmethod
+    def _rebuild_render_metrics() -> None:
+        """Re-derive the drawing metrics container from current ui_scale/theme.
+
+        DataMixin.refresh_theme / refresh_scale call this BEFORE clearing the
+        texture cache (V04); same contract as the data module's
+        ``rebuild_grid_runtime_metrics``.
+        """
+        global _RM
+        _RM = _build_render_metrics()
 
     def _empty_state_presentation(self) -> tuple[str, str] | None:
         """Return the semantic icon and localized copy for an empty canvas."""
@@ -496,9 +539,9 @@ class RenderMixin:
         border = QColor(r2, g2, b2, 24)
         tp.setPen(QPen(border, 1.0))
         tp.setBrush(bg)
-        tp.drawRoundedRect(card_f, float(_CORNER_R), float(_CORNER_R))
+        tp.drawRoundedRect(card_f, float(_RM.corner_r), float(_RM.corner_r))
 
-        preview = QRect(card.x() + _PREVIEW_MARGIN, card.y() + _PREVIEW_MARGIN,
+        preview = QRect(card.x() + _M.preview_margin, card.y() + _M.preview_margin,
                         self._thumb_size, self._thumb_size)
         if is_dir:
             self._draw_folder(tp, preview, pixmap)
@@ -523,7 +566,7 @@ class RenderMixin:
 
         tp.setFont(self._font_name)
         tp.setPen(self._clr_heading)
-        name_y = preview.bottom() + _TEXT_TOP_GAP
+        name_y = preview.bottom() + _M.text_top_gap
         text_left = preview.left()
         text_width = max(1, preview.width())
         name_rect = QRect(text_left, name_y, text_width, self._fm_name.height())
@@ -534,7 +577,7 @@ class RenderMixin:
         if subtitle:
             tp.setFont(self._font_sub)
             tp.setPen(self._clr_muted)
-            sub_y = name_rect.bottom() + _TEXT_LINE_GAP
+            sub_y = name_rect.bottom() + _M.text_line_gap
             sub_rect = QRect(text_left, sub_y, text_width, self._fm_sub.height())
             elided_sub = self._fm_sub.elidedText(
                 subtitle or "", Qt.TextElideMode.ElideRight, sub_rect.width())
@@ -551,7 +594,7 @@ class RenderMixin:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setPen(QPen(self._clr_border, 1))
         painter.setBrush(QColor(self._clr_heading.red(), self._clr_heading.green(), self._clr_heading.blue(), 6))
-        painter.drawRoundedRect(card, _CORNER_R, _CORNER_R)
+        painter.drawRoundedRect(card, _RM.corner_r, _RM.corner_r)
         painter.restore()
 
     def _draw_failure_marker(self, tp: QPainter, preview: QRect) -> None:
@@ -598,7 +641,7 @@ class RenderMixin:
             int(spread_outer * progress),
         )
         p.setBrush(QColor(0, 0, 0, int(a_outer * progress)))
-        p.drawRoundedRect(s1, _CORNER_R + 2, _CORNER_R + 2)
+        p.drawRoundedRect(s1, _RM.corner_r + 2, _RM.corner_r + 2)
 
         # Layer 2: Mid ambient layer
         s2 = card_rect.adjusted(
@@ -608,7 +651,7 @@ class RenderMixin:
             int(spread_mid * progress),
         )
         p.setBrush(QColor(0, 0, 0, int(a_mid * progress)))
-        p.drawRoundedRect(s2, _CORNER_R + 1, _CORNER_R + 1)
+        p.drawRoundedRect(s2, _RM.corner_r + 1, _RM.corner_r + 1)
 
         # Layer 3: Contact/core shadow layer
         s3 = card_rect.adjusted(
@@ -618,7 +661,7 @@ class RenderMixin:
             int(spread_contact * progress),
         )
         p.setBrush(QColor(0, 0, 0, int(a_contact * progress)))
-        p.drawRoundedRect(s3, _CORNER_R, _CORNER_R)
+        p.drawRoundedRect(s3, _RM.corner_r, _RM.corner_r)
         p.restore()
 
     def _draw_interaction_overlay(self, p: QPainter, row: int, item_rect: QRect, opacity: float):
@@ -657,7 +700,7 @@ class RenderMixin:
             border.setAlphaF((50 / 255) * hover_progress)
             p.setPen(QPen(border, 1))
             p.setBrush(fill)
-        p.drawRoundedRect(card, _CORNER_R, _CORNER_R)
+        p.drawRoundedRect(card, _RM.corner_r, _RM.corner_r)
         if row == focus_row:
             # Modern 2px double-layer rounded glowing solid ring:
             # Translucent faint glow ring overlaid with outer 2px highlight solid line.
@@ -666,10 +709,10 @@ class RenderMixin:
             glow.setAlpha(65)
             # Translucent faint glow ring
             p.setPen(QPen(glow, 3.5, Qt.PenStyle.SolidLine))
-            p.drawRoundedRect(card.adjusted(1, 1, -1, -1), max(1, _CORNER_R - 1), max(1, _CORNER_R - 1))
+            p.drawRoundedRect(card.adjusted(1, 1, -1, -1), max(1, _RM.corner_r - 1), max(1, _RM.corner_r - 1))
             # Outer highlight solid line (2px)
             p.setPen(QPen(self._clr_accent, 2.0, Qt.PenStyle.SolidLine))
-            p.drawRoundedRect(card.adjusted(1, 1, -1, -1), max(1, _CORNER_R - 1), max(1, _CORNER_R - 1))
+            p.drawRoundedRect(card.adjusted(1, 1, -1, -1), max(1, _RM.corner_r - 1), max(1, _RM.corner_r - 1))
         p.restore()
 
     # ── Folder / Image rendering ────────────────────────────
@@ -704,15 +747,15 @@ class RenderMixin:
         p.save()
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QColor(0, 0, 0, 20))
-        p.drawRoundedRect(tab_rect.adjusted(1, 1, 1, 1), _BADGE_R, _BADGE_R)
-        p.drawRoundedRect(folder.adjusted(1, 2, -1, -1), _BADGE_R, _BADGE_R)
+        p.drawRoundedRect(tab_rect.adjusted(1, 1, 1, 1), _RM.badge_r, _RM.badge_r)
+        p.drawRoundedRect(folder.adjusted(1, 2, -1, -1), _RM.badge_r, _RM.badge_r)
         p.restore()
 
         # Tab + Body (two overlapping rects matching delegate — avoids antialias seam)
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(body_c)
-        p.drawRoundedRect(tab_rect, _BADGE_R, _BADGE_R)
-        p.drawRoundedRect(folder, _BADGE_R, _BADGE_R)
+        p.drawRoundedRect(tab_rect, _RM.badge_r, _RM.badge_r)
+        p.drawRoundedRect(folder, _RM.badge_r, _RM.badge_r)
 
         if has_image and pixmap is not None:
             img_rect = folder.adjusted(6, -15, -6, -8)
@@ -727,7 +770,7 @@ class RenderMixin:
 
         p.setBrush(front_c)
         p.setPen(Qt.PenStyle.NoPen)
-        p.drawRoundedRect(front_rect, _BADGE_R, _BADGE_R)
+        p.drawRoundedRect(front_rect, _RM.badge_r, _RM.badge_r)
         p.setPen(QPen(self._clr_folder_highlight, 1))
         p.drawLine(front_rect.left() + 2, front_rect.top(),
                     front_rect.right() - 2, front_rect.top())
@@ -736,7 +779,7 @@ class RenderMixin:
         bg = self._clr_base.lighter(120)
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(bg)
-        p.drawRoundedRect(rect, _PREVIEW_R, _PREVIEW_R)
+        p.drawRoundedRect(rect, _RM.preview_r, _RM.preview_r)
         inner = rect.adjusted(3, 3, -3, -3)
         scaled = pixmap.scaled(inner.size(), Qt.AspectRatioMode.KeepAspectRatio,
                                Qt.TransformationMode.SmoothTransformation)
@@ -751,14 +794,14 @@ class RenderMixin:
                            rect.width(), int(rect.height() * 0.85))
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(body_c)
-            p.drawRoundedRect(folder, _BADGE_R, _BADGE_R)
+            p.drawRoundedRect(folder, _RM.badge_r, _RM.badge_r)
         else:
             ext = name[name.rfind("."):].lower() if "." in name else ""
             clr = QColor(badge_color_for_extension(ext))
             clr.setAlpha(50)
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(clr)
-            p.drawRoundedRect(rect, _PREVIEW_R, _PREVIEW_R)
+            p.drawRoundedRect(rect, _RM.preview_r, _RM.preview_r)
             p.setFont(self._font_sub)
             p.setPen(self._clr_muted)
             cat = EXT_TO_CATEGORY.get(ext, "Other")
@@ -773,14 +816,14 @@ class RenderMixin:
         color = badge_color_for_extension(ext)
         label = badge_label_for_extension(ext)
         p.setFont(self._font_badge)
-        bw = self._fm_badge.horizontalAdvance(label) + _BADGE_PAD_H * 2
+        bw = self._fm_badge.horizontalAdvance(label) + _RM.badge_pad_h * 2
         badge_rect = QRect(
             preview_rect.right() - bw - 2, preview_rect.top() + 2,
-            bw, _BADGE_H,
+            bw, _RM.badge_h,
         )
         qc = QColor(color)
         p.setBrush(qc)
-        p.drawRoundedRect(badge_rect, _BADGE_R, _BADGE_R)
+        p.drawRoundedRect(badge_rect, _RM.badge_r, _RM.badge_r)
         text_color = QColor(contrast_on(qc.name()))
         p.setPen(text_color)
         p.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, label)

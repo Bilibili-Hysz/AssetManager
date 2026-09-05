@@ -43,7 +43,13 @@ def apply_elevation(widget: QWidget, level: int = 1) -> QGraphicsDropShadowEffec
         widget.setGraphicsEffect(effect)
 
     effect.setBlurRadius(scaled_px(blur))
-    effect.setOffset(scaled_px(offset_x), scaled_px(offset_y))
+    # Zero offsets stay exactly zero (V06): scaled_px clamps its minimum to 1,
+    # which would nudge a symmetric shadow 1px to the right. Only non-zero
+    # offsets (none in the current vocabulary) go through the scaler.
+    effect.setOffset(
+        offset_x if offset_x == 0 else scaled_px(offset_x),
+        scaled_px(offset_y),
+    )
     effect.setColor(QColor(0, 0, 0, opacity))
     return effect
 

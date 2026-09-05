@@ -144,10 +144,14 @@ class QuickTaggerOverlay(QDialog):
         header_layout.addWidget(count_badge)
         header_layout.addStretch()
 
-        close_btn = QPushButton()
-        close_btn.setFixedSize(scaled_px(22), scaled_px(22))
-        close_btn.setIcon(icons.icon("close", color="icon_muted", size=scaled_px(12)))
-        close_btn.setIconSize(QSize(scaled_px(12), scaled_px(12)))
+        self._close_btn = close_btn = QPushButton()
+        # V06: same hit-area/icon tokens as QuickLookOverlay's close button
+        # (metrics("hit_area")=24 / icon_sm=16) — was hand-written 22×22/12.
+        hit_area = scaled_px(themes.metrics("hit_area"))
+        icon_sm = scaled_px(themes.metrics("icon_sm"))
+        close_btn.setFixedSize(hit_area, hit_area)
+        close_btn.setIcon(icons.icon("close", color="icon_muted", size=icon_sm))
+        close_btn.setIconSize(QSize(icon_sm, icon_sm))
         close_btn.setToolTip(tr("common.close", default="关闭 (Esc)"))
         themes.set_button_variant(close_btn, "ghost")
         close_btn.clicked.connect(self.reject)

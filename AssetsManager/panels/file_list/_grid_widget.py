@@ -1,7 +1,9 @@
 """GPU-free custom QWidget canvas for file list grid rendering.
 
 Matches GridDelegate layout exactly: CARD_PAD=6, PREVIEW_MARGIN=4,
-_TEXT_TOP_GAP=5, _TEXT_LINE_GAP=1, font 9pt bold + 8pt sub.
+TEXT_TOP_GAP=5, TEXT_LINE_GAP=1, font 9pt bold + 8pt sub (unscaled design
+values; runtime-scaled copies live in _grid_widget_data._M and
+_grid_widget_render._RM — V04).
 
 The class body is split by responsibility into three mixin modules:
 

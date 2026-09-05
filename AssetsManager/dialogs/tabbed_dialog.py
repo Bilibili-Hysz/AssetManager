@@ -140,6 +140,11 @@ class _DialogButtonBar(QWidget):
         return QDialogButtonBox.ButtonRole.ApplyRole
 
 
+# Public alias: sibling dialogs (e.g. SharingSettingsDialog) reuse the bar
+# without importing a private name across modules (stage C / V03).
+DialogButtonBar = _DialogButtonBar
+
+
 class TabbedDialog(QDialog):
     """Unified theme template — handles QSS, tabs, buttons, and theme refresh."""
 

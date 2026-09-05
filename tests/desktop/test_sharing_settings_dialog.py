@@ -1,15 +1,24 @@
 from unittest.mock import Mock
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QDialogButtonBox
 
 from AssetsManager.dialogs.sharing_settings_dialog import SharingSettingsDialog
 
 
-def test_sharing_shell_uses_named_pages_and_desktop_navigation(monkeypatch):
+def _patch_settings(monkeypatch, settings=None):
+    if settings is None:
+        settings = type(
+            "_Settings", (), {"get": lambda _self, _key, default=None: default}
+        )()
     monkeypatch.setattr(
         "AssetsManager.dialogs.sharing_settings_dialog.AppSettings.instance",
-        classmethod(lambda _cls: type("_Settings", (), {"get": lambda _self, _key, default=None: default})()),
+        classmethod(lambda _cls: settings),
     )
+    return settings
+
+
+def test_sharing_shell_uses_named_pages_and_desktop_navigation(monkeypatch):
+    _patch_settings(monkeypatch)
     dialog = SharingSettingsDialog()
 
     assert dialog.width() == 980
@@ -36,11 +45,67 @@ def test_sharing_shell_uses_named_pages_and_desktop_navigation(monkeypatch):
     assert dialog._top_nav.isVisible() is True
 
 
+def test_button_bar_uses_shared_order_and_semantic_callbacks(monkeypatch):
+    """V03: the dialog's bar must be the shared DialogButtonBar with the fixed
+    stretch|Cancel|Apply|OK visual order and the original apply/accept/reject
+    semantics (primary/secondary/ghost variants preserved)."""
+    _patch_settings(monkeypatch)
+    dialog = SharingSettingsDialog()
+
+    ok_btn = dialog._button_box.button(QDialogButtonBox.StandardButton.Ok)
+    cancel_btn = dialog._button_box.button(QDialogButtonBox.StandardButton.Cancel)
+    bar_layout = dialog._button_box.layout()
+    order = [
+        bar_layout.itemAt(i).widget()
+        for i in range(bar_layout.count())
+        if bar_layout.itemAt(i).widget() is not None
+    ]
+    assert order == [cancel_btn, dialog._dialog_apply_btn, ok_btn]
+    assert ok_btn.property("buttonVariant") == "primary"
+    assert dialog._dialog_apply_btn.property("buttonVariant") == "secondary"
+    assert cancel_btn.property("buttonVariant") == "ghost"
+    assert ok_btn.isDefault()
+
+    # Semantic preservation: Apply force-persists, OK accepts, Cancel rejects.
+    forced = []
+    dialog._apply_configuration_changes = lambda force=False: forced.append(force)
+    dialog._dialog_apply_btn.click()
+    assert forced == [True]
+
+    accepted = []
+    dialog._accept_configuration_changes = lambda: accepted.append(True)
+    ok_btn.click()
+    assert accepted == [True]
+
+    rejected = []
+    dialog.reject = lambda: rejected.append(True)
+    cancel_btn.click()
+    assert rejected == [True]
+
+    dialog.close()
+
+
+def test_button_bar_labels_refresh_on_language_change(monkeypatch):
+    """D6 contract: the shared bar's OK/Cancel/Apply labels retranslate live
+    because the bar is registered as _button_box on the TabbedDialog base
+    (pattern: test_dialog_runtime_refresh.test_language_changed_refreshes_button_box)."""
+    from AssetsManager.dialogs import tabbed_dialog
+
+    _patch_settings(monkeypatch)
+    dialog = SharingSettingsDialog()
+    monkeypatch.setattr(tabbed_dialog, "tr", lambda key, **kw: f"[{key}]")
+    dialog._on_language_changed("zh")
+
+    ok_btn = dialog._button_box.button(QDialogButtonBox.StandardButton.Ok)
+    cancel_btn = dialog._button_box.button(QDialogButtonBox.StandardButton.Cancel)
+    assert ok_btn.text() == "[dialog.ok]"
+    assert cancel_btn.text() == "[dialog.cancel]"
+    assert dialog._dialog_apply_btn.text() == "[dialog.apply]"
+    dialog.close()
+
+
 def test_configuration_navigation_is_named_and_theme_refreshes(monkeypatch):
-    monkeypatch.setattr(
-        "AssetsManager.dialogs.sharing_settings_dialog.AppSettings.instance",
-        classmethod(lambda _cls: type("_Settings", (), {"get": lambda _self, _key, default=None: default})()),
-    )
+    _patch_settings(monkeypatch)
     dialog = SharingSettingsDialog()
     refresh = Mock(wraps=dialog._apply_configuration_theme)
     dialog._apply_configuration_theme = refresh

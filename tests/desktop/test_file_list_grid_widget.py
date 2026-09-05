@@ -1661,7 +1661,7 @@ def test_grid_failure_marker_rendered_for_failed_thumbnail(tmp_path):
     """A file cell whose thumbnail load failed paints a danger corner wedge,
     distinct from the blank "still loading" placeholder (no marker)."""
     from AssetsManager.core import themes
-    from AssetsManager.panels.file_list._grid_widget_data import _PREVIEW_MARGIN
+    from AssetsManager.panels.file_list._grid_widget_data import _M
 
     broken = tmp_path / "broken.png"
     broken.write_bytes(b"not a decodable image", )
@@ -1674,7 +1674,7 @@ def test_grid_failure_marker_rendered_for_failed_thumbnail(tmp_path):
 
     def preview_bottom_right_pixel():
         card = widget._card_rect_in_item(QRect(0, 0, rect.width(), rect.height()))
-        preview = QRect(card.x() + _PREVIEW_MARGIN, card.y() + _PREVIEW_MARGIN,
+        preview = QRect(card.x() + _M.preview_margin, card.y() + _M.preview_margin,
                         widget._thumb_size, widget._thumb_size)
         px = preview.bottomRight() - QPoint(2, 2)
         tex = widget._render_item(row, rect)
@@ -1796,6 +1796,86 @@ def test_hover_lift_ground_shadow_rendering():
     assert painter.drawRoundedRect.call_count == 3
     assert painter.save.called
     assert painter.restore.called
+
+
+def test_grid_scale_round_trip_restores_metrics_and_texture_identity(tmp_path):
+    """V04: 1.0→1.5→1.0 ui_scale round trip must fully restore card metrics.
+
+    The pre-C2 module-level ``scaled_px(...)`` constants froze at import-time
+    scale: after the round trip the corners/margins stayed at 1.5-scale while
+    ``refresh_scale()`` had already cleared the cache — mixed-metric textures.
+    Runtime metrics now rebuild inside refresh_scale/refresh_theme, so the
+    widget's metrics and first-frame texture hash return to the 1.0 values.
+    """
+    from AssetsManager.core import themes
+    from AssetsManager.core.settings import AppSettings
+    from AssetsManager.core import signal_bus
+    from AssetsManager.panels.file_list import (
+        _grid_widget_data as grid_data,
+        _grid_widget_render as grid_render,
+    )
+
+    app, model, widget = _visible_grid(tmp_path)
+    rect = widget._layout.rect_at(0)
+    settings = AppSettings.instance()
+    original_scale = settings.get("ui_scale", 1.0)
+    original_badge_r = themes.metrics("radius_badge")
+    try:
+        settings.set("ui_scale", 1.0)
+        signal_bus.get().ui_scale_changed.emit(1.0)
+        app.processEvents()
+
+        base_data = grid_data._M
+        base_render = grid_render._RM
+        assert (base_data.card_pad, base_data.preview_margin) == (6, 4)
+        assert (base_data.text_top_gap, base_data.text_line_gap) == (5, 1)
+        assert (base_render.corner_r, base_render.preview_r) == (10, 8)
+        assert base_render.badge_r == original_badge_r
+        assert base_render.badge_h == 14
+        assert base_render.badge_pad_h == 5
+        texture_100 = widget._render_item(0, rect)
+
+        # 1.0 → 1.5: metrics and textures must both move to the new scale.
+        # The live path is FileListPanel._on_ui_scale_changed →
+        # grid.refresh_scale(); call the widget entry point directly here
+        # (the standalone grid widget does not subscribe to the bus itself).
+        settings.set("ui_scale", 1.5)
+        signal_bus.get().ui_scale_changed.emit(1.5)
+        widget.refresh_scale()
+        app.processEvents()
+
+        assert grid_data._M.card_pad == 9
+        assert grid_render._RM.corner_r == 15
+        texture_150 = widget._render_item(0, rect)
+        assert texture_150 is not None
+        # Same rect size, different pixels: the 15px corner/badge metrics are
+        # baked into the new texture (frozen constants would repaint identical
+        # pixels here — the V04 regression this test locks out).
+        assert bytes(texture_150.toImage().constBits()[:texture_150.toImage().sizeInBytes()]) != (
+            bytes(texture_100.toImage().constBits()[:texture_100.toImage().sizeInBytes()])
+        )
+
+        # 1.5 → 1.0: everything returns to the original values.
+        settings.set("ui_scale", 1.0)
+        signal_bus.get().ui_scale_changed.emit(1.0)
+        widget.refresh_scale()
+        app.processEvents()
+
+        assert grid_data._M == base_data
+        assert grid_render._RM == base_render
+        texture_back = widget._render_item(0, rect)
+        # Full image identity after the round trip: the rebuilt 1.0-scale
+        # texture is pixel-identical to the original first-frame texture.
+        assert texture_back.toImage() == texture_100.toImage()
+    finally:
+        settings.set("ui_scale", original_scale)
+        signal_bus.get().ui_scale_changed.emit(original_scale)
+        app.processEvents()
+        grid_data.rebuild_grid_runtime_metrics()
+        widget._rebuild_render_metrics()
+        widget.deleteLater()
+        model.shutdown()
+        app.processEvents()
 
 
 def test_icon_detect_dpr_and_cross_screen_scaling(monkeypatch):

@@ -74,6 +74,25 @@ def test_quick_tagger_overlay_lifecycle():
             app.processEvents()
 
 
+def test_quick_tagger_close_button_matches_token_hit_area():
+    """V06: the close button uses the shared hit_area/icon_sm tokens — the
+    same 24×24 hot zone as QuickLookOverlay's close button (was 22×22/12)."""
+    from AssetsManager.core import themes
+    from AssetsManager.core.ui_scale import scaled_px
+
+    app = QApplication.instance() or QApplication([])
+    svc = _FakeTagService()
+    dlg = QuickTaggerOverlay(["/path/to/a.png"], "/root", tag_service=svc)
+    try:
+        expected = scaled_px(themes.metrics("hit_area"))
+        assert (dlg._close_btn.width(), dlg._close_btn.height()) == (expected, expected)
+        assert dlg._close_btn.iconSize().width() == scaled_px(themes.metrics("icon_sm"))
+    finally:
+        dlg.close()
+        dlg.deleteLater()
+        app.processEvents()
+
+
 def test_shortcuts_dispatches_t_key():
     class _MockPanel:
         def __init__(self):

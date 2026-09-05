@@ -15,7 +15,7 @@
     {
       "family": "qfont_set",
       "file": "AssetsManager\\panels\\file_list\\_grid_widget.py",
-      "line": 112,
+      "line": 114,
       "method": "setPointSize",
       "role_hint": "_font_name",
       "source_text": "self._font_name.setPointSize(scaled_pt(int(themes.font_size(\"xxs\"))))",
@@ -25,7 +25,7 @@
     {
       "family": "qfont_set",
       "file": "AssetsManager\\panels\\file_list\\_grid_widget.py",
-      "line": 118,
+      "line": 120,
       "method": "setPointSize",
       "role_hint": "_font_sub",
       "source_text": "self._font_sub.setPointSize(scaled_pt(8))",
@@ -35,7 +35,7 @@
     {
       "family": "qfont_set",
       "file": "AssetsManager\\panels\\file_list\\_grid_widget_data.py",
-      "line": 82,
+      "line": 130,
       "method": "setPointSize",
       "role_hint": "_font_name",
       "source_text": "self._font_name.setPointSize(scaled_pt(int(themes.font_size(\"xxs\"))))",
@@ -45,7 +45,7 @@
     {
       "family": "qfont_set",
       "file": "AssetsManager\\panels\\file_list\\_grid_widget_data.py",
-      "line": 88,
+      "line": 136,
       "method": "setPointSize",
       "role_hint": "_font_sub",
       "source_text": "self._font_sub.setPointSize(scaled_pt(8))",
@@ -55,7 +55,7 @@
     {
       "family": "qfont_set",
       "file": "AssetsManager\\panels\\file_list\\_grid_widget_data.py",
-      "line": 92,
+      "line": 140,
       "method": "setPointSize",
       "role_hint": "_font_badge",
       "source_text": "self._font_badge.setPointSize(scaled_pt(8))",
@@ -65,7 +65,7 @@
     {
       "family": "qfont_set",
       "file": "AssetsManager\\panels\\file_list\\_grid_widget_render.py",
-      "line": 155,
+      "line": 198,
       "method": "setPointSize",
       "role_hint": "text_font",
       "source_text": "text_font.setPointSize(scaled_pt(int(themes.font_size(\"caption\"))))",
@@ -247,7 +247,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\dialogs\\sharing_settings_dialog.py",
-      "line": 293,
+      "line": 303,
       "role_hint": "f",
       "unit": "px",
       "value": "{sk.pt(int(sk.prop('font_size', 'md')))}"
@@ -255,7 +255,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\dialogs\\sharing_settings_dialog.py",
-      "line": 1135,
+      "line": 1145,
       "role_hint": "f",
       "unit": "px",
       "value": "{sk.pt(int(sk.prop('font_size', 'sm')))}"
@@ -263,7 +263,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\dialogs\\sharing_settings_dialog.py",
-      "line": 1150,
+      "line": 1160,
       "role_hint": "f",
       "unit": "px",
       "value": "{sk.pt(int(sk.prop('font_size', 'sm')))}"
@@ -479,7 +479,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\dialogs\\tabbed_dialog.py",
-      "line": 656,
+      "line": 661,
       "role_hint": "f",
       "unit": "px",
       "value": "{shape['font']}"
@@ -487,7 +487,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\dialogs\\tabbed_dialog.py",
-      "line": 682,
+      "line": 687,
       "role_hint": "f",
       "unit": "px",
       "value": "{shape['font']}"
