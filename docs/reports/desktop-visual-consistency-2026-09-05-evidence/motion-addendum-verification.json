@@ -1,0 +1,18 @@
+{
+  "time_utc": "2026-09-05T02:04:29.658817+00:00",
+  "documents": [
+    {
+      "path": "docs\\reports\\desktop-visual-consistency-2026-09-05.md",
+      "sha256": "f4eadc7addb9f8e98d1f3070e4749d1085992d2ed166c79af9508f7066ebf93b",
+      "local_links": 78
+    },
+    {
+      "path": "docs\\reports\\desktop-motion-direction-2026-09-05.md",
+      "sha256": "d643d4e243d5fe376478ffb3519e7474b53ad0a00a799c99f84395c9a1509584",
+      "local_links": 7
+    }
+  ],
+  "source_hashes_checked": 136,
+  "problems": [],
+  "note": "Documentation-only addendum. Existing static checks were not rerun. This record supersedes the earlier verification.json report digest only; earlier gate results retain their original scope and timestamp."
+}

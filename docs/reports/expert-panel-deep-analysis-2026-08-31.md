@@ -381,11 +381,13 @@ v46 将暂态投递失败与 poison 隔离保持分离：canonical durable consu
 
 retention 已接入同一 runtime-owned sweeper：每 10 秒的 lifecycle pass 仍负责 retry/drain 与 lease recovery，每小时另以 bounded `prune_transition_outbox()` 删除默认 7 天前的 ACK 和 30 天前的 dead-letter（每类最多 1000 条）。prune 失败不会阻断投递或 lease 回收，并会在下一次 10 秒 pass 重试；pending/leased 行仍由 store 层拒绝删除。新增频率/cutoff/limit 和故障重试门禁后，reconciliation service 定向集合为 `22 passed`。
 
+2026-09-05 的后续切片将 retention 周期、ACK/dead-letter 保留窗口、prune 批量上限接入 `AppSettings`，并把 pending 数、dead-letter 数和 oldest pending age 作为可配置的容量/延迟告警阈值。非法值 fail-closed 回退到 1 小时、7 天、30 天、1000 行及默认阈值；阈值为 0 可禁用对应告警。sweeper 以 edge-triggered warning/info 记录跨越和恢复，不对 pending/leased 行做驱逐，也不改变 delivery 顺序或至少一次语义。settings + reconciliation service 定向验证为 `60 passed`，`ruff check` 与 `git diff --check` 通过。
+
 这仍不是 H1 退出。专家复核确认以下边界：
 
-- v45 dead-letter 表已处理损坏 immutable payload/delivery metadata 与默认第八次普通 delivery failure；v46 已压低普通投递失败的重复频率。应用层现已补齐 fail-closed dead-letter 列表、event-id/CAS 人工 replay、ACK/dead-letter bounded retention/prune 与 pending/ACK/dead-letter/lease/attempt/age 指标；runtime 已正式调度有界 retention，仍需定义告警阈值、容量预算和可配置保留窗口，并评估 ACK 后完整 JSON snapshot 的长期存储成本。
+- v45 dead-letter 表已处理损坏 immutable payload/delivery metadata 与默认第八次普通 delivery failure；v46 已压低普通投递失败的重复频率。应用层现已补齐 fail-closed dead-letter 列表、event-id/CAS 人工 replay、ACK/dead-letter bounded retention/prune 与 pending/ACK/dead-letter/lease/attempt/age 指标；runtime 已正式调度有界 retention，告警阈值、容量/年龄预算和可配置保留窗口也已有 fail-closed 配置与 edge-triggered 记录。仍需评估 ACK 后完整 JSON snapshot 的长期存储成本、统一告警出口和优雅关闭时 live lease 的产品策略。
 - 已收敛为唯一 `import_manifest_recovery` canonical durable consumer：它必须显式返回 `APPLIED`、`STALE` 或 `RETRY`，通用 listener 的 `None` 不再是 durable 接受，且 observer 不参与 `delivered_at`。当前没有第二个生产 durable consumer，因此不提前增加 v47。产品将来引入第二个独立 projection 时，必须先增加 `(event_id, consumer_id)` receipt/inbox、持久 registry、历史起点与 retention 语义，不能复用单一全局 ACK。
 - decoder 的 identity/scope 校验已由 v45 收紧；SQLite delivery lease 已有有界 renew 与 callback age。它不能强制终止业务 callback，因此 deadline 后以停止续租和拒绝迟到 ACK 来保证可接管，幂等重放仍是契约前提；manifest CAS 后、ACK 前的独立进程 crash/replay，以及长运行 callback age 到期后的第二进程 lease 接管均已覆盖。
 - 双进程 manifest claim winner、token lease，以及 worker durable success、outbox delivery、manifest CAS、ACK 前崩溃和另一进程 `STALE` 重放的完整链路均已验证；合并 terminal 与 eviction event 的首项 CAS 后崩溃、长 callback age 到期后的接管也已覆盖。
 
-建议顺序：保持当前单 canonical consumer 契约；delivery dead-letter 的人工 replay/retention 和指标、核心 crash-replay 门禁已有实现，下一步补 retention 告警阈值、容量预算、可配置保留窗口和优雅关闭时 live lease 策略。只有产品出现第二个独立 durable projection 时，再先做 per-consumer receipt/inbox 设计。
+建议顺序：保持当前单 canonical consumer 契约；delivery dead-letter 的人工 replay/retention、指标、告警/容量预算和核心 crash-replay 门禁已有实现，下一步补 ACK snapshot 成本测量、统一告警出口和优雅关闭时 live lease 策略。只有产品出现第二个独立 durable projection 时，再先做 per-consumer receipt/inbox 设计。
