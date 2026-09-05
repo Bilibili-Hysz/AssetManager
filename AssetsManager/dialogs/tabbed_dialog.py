@@ -56,6 +56,7 @@ Architecture:
 from __future__ import annotations
 
 import logging
+from typing import cast
 
 from PySide6.QtCore import Qt, Signal, QSize, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QColor
@@ -110,7 +111,10 @@ class _DialogButtonBar(QWidget):
     def addButton(self, text: str, role: QDialogButtonBox.ButtonRole) -> QPushButton:
         """Add a custom button; TabbedDialog only ever adds Apply."""
         btn = QPushButton(text, self)
-        self.layout().insertWidget(self._insert_index, btn)
+        # __init__ installs a QHBoxLayout as this widget's layout, so the
+        # optional in QWidget.layout() is never taken here.
+        bar = cast("QHBoxLayout", self.layout())
+        bar.insertWidget(self._insert_index, btn)
         self._insert_index += 1
         self._apply_btn = btn
         return btn
@@ -141,7 +145,18 @@ class TabbedDialog(QDialog):
 
     settings_changed = Signal()
     _ID_SEQ = 0
-    supports_runtime_refresh = False
+    # Duck-typed optional chrome owned by StandardModalDialog subclasses;
+    # the base language refresh probes them without importing the subclass.
+    _ok_btn: QPushButton
+    _cancel_btn: QPushButton | None
+    _apply_btn: QPushButton | None
+    # D6 (dialect unification P2): language/ui-scale live refresh is the
+    # DEFAULT so an open dialog never shows frozen translations after a
+    # language switch. The base contract covers window title, dialog button
+    # box, and tab labels; subclasses refresh their own widgets in
+    # ``retranslate_ui`` (no-op by default). Opt out ONLY with a comment
+    # explaining why (e.g. ephemeral dialogs dismissed in seconds).
+    supports_runtime_refresh = True
 
     def __init__(self, parent=None, title="Dialog", min_size=(360, 400)):
         super().__init__(parent)
@@ -306,8 +321,19 @@ class TabbedDialog(QDialog):
                 ok_btn.setText(tr("dialog.ok"))
             if cancel_btn:
                 cancel_btn.setText(tr("dialog.cancel"))
-            if hasattr(self, "_apply_btn"):
-                self._apply_btn.setText(tr("dialog.apply"))
+            apply_btn = getattr(self, "_apply_btn", None)
+            if apply_btn is not None:
+                apply_btn.setText(tr("dialog.apply"))
+        # StandardModalDialog's custom button row (no QDialogButtonBox).
+        ok_btn = getattr(self, "_ok_btn", None)
+        if ok_btn is not None:
+            ok_btn.setText(tr("dialog.ok", default="OK"))
+        cancel_btn = getattr(self, "_cancel_btn", None)
+        if cancel_btn is not None:
+            cancel_btn.setText(tr("dialog.cancel", default="Cancel"))
+        apply_btn = getattr(self, "_apply_btn", None)
+        if apply_btn is not None and not hasattr(self, "_button_box"):
+            apply_btn.setText(tr("dialog.apply", default="Apply"))
         if hasattr(self, "_tabs"):
             for index, key in self._tab_label_keys.items():
                 self._tabs.setTabText(index, tr(key))

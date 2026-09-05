@@ -146,6 +146,21 @@ class ActivityPanelDialog(TabbedDialog):
         cutoff = _cutoff_timestamp(self._filter_combo.currentIndex())
         return self._recorder.recent(cutoff=cutoff, limit=MAX_ROWS)
 
+    def retranslate_ui(self) -> None:
+        """Refresh the filter combo labels, preserving the selection."""
+        self.setWindowTitle(tr("activity_panel.title"))
+        keys = [
+            "activity_panel.filter_today",
+            "activity_panel.filter_7d",
+            "activity_panel.filter_30d",
+            "activity_panel.filter_all",
+        ]
+        if self._filter_combo.count() == len(keys):
+            index = self._filter_combo.currentIndex()
+            for i, key in enumerate(keys):
+                self._filter_combo.setItemText(i, tr(key))
+            self._filter_combo.setCurrentIndex(index)
+
     def _refresh(self):
         rows = self._fetch_rows()
         if rows is None:

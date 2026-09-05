@@ -28,7 +28,6 @@ from AssetsManager.dialogs.sharing_settings import (
 )
 from AssetsManager.dialogs._share_api import ShareApiTask
 from AssetsManager.dialogs._sharing_helpers import (
-    _msg,
     _endpoint_state,
     _endpoint_primary_action,
 )
@@ -141,7 +140,8 @@ class SharingSettingsDialog(
         root.setSpacing(scaled_px(12))
 
         header = QHBoxLayout()
-        title = self.make_heading(tr("sharing.dialog_title"))
+        self._title_label = self.make_heading(tr("sharing.dialog_title"))
+        title = self._title_label
         title.setStyleSheet(sk.label_css("heading", size=18, bold=True))
         header.addWidget(title)
         header.addStretch()
@@ -206,6 +206,28 @@ class SharingSettingsDialog(
         button.clicked.connect(lambda _checked=False, page=index: self._select_page(page))
         layout.addWidget(button)
         return button
+
+    _NAV_KEYS = (
+        "sharing.nav.endpoint",
+        "sharing.nav.links",
+        "sharing.nav.access",
+        "sharing.nav.configuration",
+    )
+
+    def retranslate_ui(self) -> None:
+        """Refresh the nav rail / top-nav labels and dialog title (D6)."""
+        self.setWindowTitle(tr("sharing.dialog_title"))
+        if getattr(self, "_title_label", None) is not None:
+            self._title_label.setText(tr("sharing.dialog_title"))
+        nav_keys = self._NAV_KEYS
+        for rail in (self._nav_buttons, self._top_nav_buttons):
+            if len(rail) != len(nav_keys):
+                continue
+            for button, key in zip(rail, nav_keys, strict=True):
+                text = tr(key)
+                button.setText(text)
+                button.setAccessibleName(text)
+                button.setToolTip(text)
 
     def _select_page(self, index):
         self._page_stack.setCurrentIndex(index)
@@ -357,9 +379,9 @@ class SharingSettingsDialog(
             if planned_count:
                 text = "{} · {}".format(
                     text,
-                    _msg(
+                    tr(
                         "sharing.configuration.planned_note",
-                        "{count} planned — not yet active",
+                        default="{count} planned — not yet active",
                     ).format(count=planned_count),
                 )
         self._configuration_summary_label.setText(text)
@@ -542,10 +564,10 @@ class SharingSettingsDialog(
         if starting and has_config_state and self._configuration_changes():
             reply = QMessageBox.question(
                 self,
-                _msg("sharing.configuration.unapplied_title", "Unapplied settings"),
-                _msg(
+                tr("sharing.configuration.unapplied_title", default="Unapplied settings"),
+                tr(
                     "sharing.configuration.unapplied_start_message",
-                    "The server will start with the current form values; "
+                    default="The server will start with the current form values; "
                     "unapplied changes will be saved automatically. Continue?",
                 ),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -1140,9 +1162,9 @@ class SharingSettingsDialog(
         if server is not None:
             block_reason = getattr(server, "tunnel_start_block_reason", None) or ""
         if block_reason == "authentication_required":
-            return _msg(
+            return tr(
                 "sharing.tunnel.auth_required",
-                "Public tunnel requires password authentication. "
+                default="Public tunnel requires password authentication. "
                 "Enable Password in the Protection settings first.",
             )
         return tr("sharing.tunnel_failed")
@@ -1157,9 +1179,9 @@ class SharingSettingsDialog(
             self._auth_error_label.setVisible(False)
 
     def _show_password_required_error(self):
-        message = _msg(
+        message = tr(
             "sharing.configuration.password_required",
-            "Password protection requires a password. Enter one to enable it.",
+            default="Password protection requires a password. Enter one to enable it.",
         )
         self._auth_error_label.setText(message)
         self._auth_error_label.setVisible(True)

@@ -175,3 +175,14 @@ class StandardModalDialog(TabbedDialog):
             self._icon_label.setPixmap(
                 icons.icon(self._header_icon_name, color="icon_primary", size=sz).pixmap(QSize(sz, sz))
             )
+
+    def retranslate_ui(self) -> None:
+        """Refresh the modal title bar; the base refreshes the button row.
+
+        The header title/subtitle may be either literal text or a
+        pre-translated string captured at construction; only the window
+        chrome is safe to re-derive here because ``set_header`` callers
+        own the strings they passed.
+        """
+        if getattr(self, "_dialog_title_text", ""):
+            self.setWindowTitle(self._dialog_title_text)

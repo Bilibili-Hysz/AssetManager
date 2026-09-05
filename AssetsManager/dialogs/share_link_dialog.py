@@ -173,6 +173,34 @@ class ShareLinkDialog(TabbedDialog):
 
         layout.addStretch()
 
+    def retranslate_ui(self) -> None:
+        """Refresh live translations (D6 default contract).
+
+        Group boxes and labels constructed from local variables are not
+        tracked — the value-dense interactive surface below is what a
+        user holding this dialog open through a language switch sees.
+        """
+        self.setWindowTitle(tr("sharelink.title"))
+        self._selection_hint.setText(tr("sharelink.hint.select_items"))
+        self._password_input.setPlaceholderText(tr("sharelink.placeholder.password"))
+        expiry_keys = [
+            "sharelink.expiry.never", "sharelink.expiry.1hour",
+            "sharelink.expiry.6hours", "sharelink.expiry.24hours",
+            "sharelink.expiry.7days", "sharelink.expiry.30days",
+        ]
+        if len(expiry_keys) == self._expiry_combo.count():
+            index = self._expiry_combo.currentIndex()
+            for i, key in enumerate(expiry_keys):
+                self._expiry_combo.setItemText(i, tr(key))
+            self._expiry_combo.setCurrentIndex(index)
+        self._max_downloads_spin.setSpecialValueText(tr("sharelink.spin.unlimited"))
+        self._allow_preview_check.setText(tr("sharelink.checkbox.allow_preview"))
+        self._copy_btn.setText(tr("sharelink.btn.copy_link"))
+        self._open_btn.setText(tr("sharelink.btn.open_browser"))
+        self._qr_btn.setText(tr("sharing.qr.show"))
+        self._create_btn.setText(tr("sharelink.btn.create_link"))
+        self._close_btn.setText(tr("sharelink.btn.close"))
+
     def _create_link(self):
         """Create the share link through the Runtime service without blocking."""
         if self._creating or self._share_url:
