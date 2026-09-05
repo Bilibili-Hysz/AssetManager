@@ -4,13 +4,11 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 import re
-import threading
 import time
 from contextlib import contextmanager
-from functools import wraps
 from pathlib import Path
 from sqlite3 import Connection, IntegrityError, OperationalError
-from typing import Any, Callable, TypeVar
+from typing import Any
 
 from AssetsManager.core.database import DatabaseManager, db_write_lock
 from AssetsManager.core.path_resolver import (
@@ -18,9 +16,13 @@ from AssetsManager.core.path_resolver import (
     root_identity,
     sql_like_descendant_pattern,
 )
-from AssetsManager.core.session_contract import require_library_session
+from AssetsManager.repositories._common import (
+    _SessionBoundRepository,
+    _repository_operation,
+    _require_session_contract,
+    _session_root,
+)
 
-_R = TypeVar("_R")
 _SAVEPOINT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 # Structured-search ORDER BY whitelist. Column names never come from user
@@ -59,43 +61,7 @@ class AssetIndexEntry:
     library_root: str
 
 
-def _repository_operation(method: Callable[..., _R]) -> Callable[..., _R]:
-    """Lease a canonical session for one complete repository operation."""
-    @wraps(method)
-    def wrapped(self: Any, *args: Any, **kwargs: Any) -> _R:
-        with self._operation_scope():
-            return method(self, *args, **kwargs)
-
-    return wrapped
-
-
-def _session_root(session: Any) -> RootIdentity:
-    identity = getattr(getattr(session, "context", None), "root_identity", None)
-    if isinstance(identity, RootIdentity):
-        return identity
-    raise TypeError(
-        "AssetIndexRepository canonical session must expose a captured root identity"
-    )
-
-
-def _require_session_contract(
-    session: Any,
-) -> tuple[Callable[..., Any], Callable[..., Any]]:
-    require_library_session(session)
-    operation = getattr(session, "operation", None)
-    if not callable(operation):
-        raise TypeError(
-            "AssetIndexRepository canonical session requires callable operation()"
-        )
-    connection_for = getattr(session, "connection_for", None)
-    if not callable(connection_for):
-        raise TypeError(
-            "AssetIndexRepository canonical session requires callable connection_for()"
-        )
-    return operation, connection_for
-
-
-class AssetIndexRepository:
+class AssetIndexRepository(_SessionBoundRepository):
     """Encapsulate SQL access to the ``assets`` index table.
 
     ``AssetIndexRepository(conn)`` remains the explicit raw compatibility path.
@@ -111,53 +77,14 @@ class AssetIndexRepository:
         library_root: str | Path | RootIdentity | None = None,
         session: Any | None = None,
     ):
-        self._conn = conn
-        self._session: Any | None = None
+        # Set before super().__init__ so the base's _apply_root_identity hook
+        # can populate it on every binding path.
         self._root_identity: RootIdentity | None = None
-        self._library_root_key: str | None = None
-        self._library_root: Path | None = None
-        self._binding_lock = threading.RLock()
-        self._raw_operation_started = False
-        if library_root is not None:
-            identity = root_identity(library_root, strict=False)
-            self._set_root_identity(identity)
-            DatabaseManager.validate_connection_owner(identity, conn, allow_unmanaged=True)
-        if session is not None:
-            self._bind_session(session, library_root=library_root)
+        super().__init__(conn, library_root=library_root, session=session)
 
-    @classmethod
-    def for_session(
-        cls,
-        session: Any,
-        *,
-        library_root: str | Path | RootIdentity | None = None,
-    ) -> "AssetIndexRepository":
-        """Build a strictly session/root-bound asset-index repository."""
-        operation, connection_for = _require_session_contract(session)
-        with operation():
-            session_root = _session_root(session)
-            conn = connection_for(session_root)
-            conn = DatabaseManager.require_managed_connection_owner(session_root, conn)
-            repository = cls(conn)
-            repository._bind_session(session, library_root=library_root)
-            return repository
-
-    @contextmanager
-    def _operation_scope(self):
-        with self._binding_lock:
-            session = self._session
-            if session is None:
-                self._raw_operation_started = True
-        if session is None:
-            yield
-            return
-        with session.operation():
-            yield
-
-    def _set_root_identity(self, identity: RootIdentity) -> None:
+    def _apply_root_identity(self, identity: RootIdentity) -> None:
+        super()._apply_root_identity(identity)
         self._root_identity = identity
-        self._library_root_key = identity.map_key
-        self._library_root = identity.display_path
 
     def _bind_session(
         self,
@@ -165,8 +92,10 @@ class AssetIndexRepository:
         *,
         library_root: str | Path | RootIdentity | None = None,
     ) -> None:
-        operation, connection_for = _require_session_contract(session)
-        session_identity = _session_root(session)
+        operation, connection_for = _require_session_contract(
+            session, "AssetIndexRepository"
+        )
+        session_identity = _session_root(session, "AssetIndexRepository")
         if library_root is not None:
             explicit_identity = root_identity(library_root, strict=False)
             if explicit_identity.map_key != session_identity.map_key:
@@ -202,7 +131,7 @@ class AssetIndexRepository:
                     )
 
                 def publish_binding() -> None:
-                    self._set_root_identity(session_identity)
+                    self._apply_root_identity(session_identity)
                     self._session = session
 
                 session._publish_while_live(publish_binding)
@@ -228,6 +157,7 @@ class AssetIndexRepository:
                 f"(root {self._library_root})"
             )
         return str(target)
+
 
     def _entry_values(
         self,

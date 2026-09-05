@@ -8,20 +8,17 @@ pure references: the repository never moves or copies files.
 """
 from __future__ import annotations
 
-import threading
 import time
-from contextlib import contextmanager
-from functools import wraps
 from pathlib import Path
-from sqlite3 import Connection, IntegrityError
-from typing import Any, Callable, Literal, TypeVar
+from sqlite3 import IntegrityError
+from typing import Literal
 
-from AssetsManager.core.database import DatabaseManager, db_write_lock, locked_read
-from AssetsManager.core.path_resolver import RootIdentity, root_identity
-from AssetsManager.core.session_contract import require_library_session
+from AssetsManager.core.database import db_write_lock, locked_read
+from AssetsManager.repositories._common import (
+    _SessionBoundRepository,
+    _repository_operation,
+)
 from AssetsManager.domain.errors import DuplicateError, NotFoundError
-
-_R = TypeVar("_R")
 
 CollectionKind = Literal["manual", "smart"]
 
@@ -35,44 +32,7 @@ def _collection_kind(kind: str) -> CollectionKind:
     return kind  # type: ignore[return-value]
 
 
-def _repository_operation(method: Callable[..., _R]) -> Callable[..., _R]:
-    """Lease a canonical session for one complete repository operation."""
-    @wraps(method)
-    def wrapped(self: Any, *args: Any, **kwargs: Any) -> _R:
-        with self._operation_scope():
-            return method(self, *args, **kwargs)
-
-    return wrapped
-
-
-def _session_root(session: Any) -> RootIdentity:
-    identity = getattr(getattr(session, "context", None), "root_identity", None)
-    if isinstance(identity, RootIdentity):
-        return identity
-    raise TypeError(
-        "CollectionRepository canonical session must expose a captured root identity"
-    )
-
-
-def _require_session_contract(
-    session: Any,
-) -> tuple[Callable[..., Any], Callable[..., Any]]:
-    """Validate the real-session marker and the lifecycle/provider surface."""
-    require_library_session(session)
-    operation = getattr(session, "operation", None)
-    if not callable(operation):
-        raise TypeError(
-            "CollectionRepository canonical session requires callable operation()"
-        )
-    connection_for = getattr(session, "connection_for", None)
-    if not callable(connection_for):
-        raise TypeError(
-            "CollectionRepository canonical session requires callable connection_for()"
-        )
-    return operation, connection_for
-
-
-class CollectionRepository:
+class CollectionRepository(_SessionBoundRepository):
     """Encapsulate all user-collection database operations.
 
     ``CollectionRepository(conn)`` remains the explicit raw compatibility
@@ -81,113 +41,13 @@ class CollectionRepository:
     semantics to one real ``LibrarySession``.
     """
 
-    def __init__(
-        self,
-        conn: Connection,
-        *,
-        library_root: str | Path | RootIdentity | None = None,
-        session: Any | None = None,
-    ):
-        self._conn = conn
-        self._session: Any | None = None
-        self._library_root_key: str | None = None
-        self._library_root: Path | None = None
-        self._binding_lock = threading.RLock()
-        self._raw_operation_started = False
-        if library_root is not None:
-            identity = root_identity(library_root, strict=False)
-            self._library_root_key = identity.map_key
-            self._library_root = identity.display_path
-            DatabaseManager.validate_connection_owner(
-                identity, conn, allow_unmanaged=True
-            )
-        if session is not None:
-            self._bind_session(session, library_root=library_root)
-
-    @classmethod
-    def for_session(
-        cls,
-        session: Any,
-        *,
-        library_root: str | Path | RootIdentity | None = None,
-    ) -> "CollectionRepository":
-        """Build a strictly session/root-bound collection repository."""
-        operation, connection_for = _require_session_contract(session)
-        with operation():
-            session_root = _session_root(session)
-            conn = connection_for(session_root)
-            conn = DatabaseManager.require_managed_connection_owner(
-                session_root, conn
-            )
-            repository = cls(conn)
-            repository._bind_session(session, library_root=library_root)
-            return repository
-
-    @contextmanager
-    def _operation_scope(self):
-        with self._binding_lock:
-            session = self._session
-            if session is None:
-                self._raw_operation_started = True
-        if session is None:
-            yield
-            return
-        with session.operation():
-            yield
-
-    def _bind_session(
-        self,
-        session: Any,
-        *,
-        library_root: str | Path | RootIdentity | None = None,
-    ) -> None:
-        operation, connection_for = _require_session_contract(session)
-        session_identity = _session_root(session)
-        if library_root is not None:
-            explicit_identity = root_identity(library_root, strict=False)
-            if explicit_identity.map_key != session_identity.map_key:
-                raise ValueError(
-                    "CollectionRepository library_root does not match the LibrarySession"
-                )
-
-        with self._binding_lock:
-            if self._session is not None:
-                if self._session is session:
-                    return
-                raise RuntimeError(
-                    "CollectionRepository is already bound to another LibrarySession"
-                )
-            if self._raw_operation_started:
-                raise RuntimeError(
-                    "CollectionRepository cannot bind after raw operations have started"
-                )
-            if (
-                self._library_root_key is not None
-                and self._library_root_key != session_identity.map_key
-            ):
-                raise ValueError(
-                    "CollectionRepository belongs to a different library root"
-                )
-
-            with operation():
-                conn = connection_for(session_identity)
-                conn = DatabaseManager.require_managed_connection_owner(
-                    session_identity, conn
-                )
-                if conn is not self._conn:
-                    raise ValueError(
-                        "CollectionRepository connection does not belong to the LibrarySession"
-                    )
-
-                def publish_binding() -> None:
-                    self._library_root_key = session_identity.map_key
-                    self._library_root = session_identity.display_path
-                    self._session = session
-
-                session._publish_while_live(publish_binding)
-
     def _path_key(self, file_path: str | Path) -> str:
-        """Return a canonical path and enforce bound-root containment."""
+        """Return a canonical path and enforce bound-root containment.
+
+        The raw path keeps the historical pass-through: collection members
+        are pure references written with caller-resolved paths, and raw
+        callers (export/restore snapshots) operate on connection-owned paths.
+        """
         if self._library_root is None:
             return str(file_path)
         target = Path(file_path).resolve()
@@ -198,56 +58,8 @@ class CollectionRepository:
             )
         return str(target)
 
-    @contextmanager
-    def _write_scope(
-        self, operation_name: str, *, require_clean_transaction: bool = False
-    ):
-        """Commit raw writes, but preserve caller transactions when bound."""
-        with db_write_lock(self._conn):
-            if self._session is None:
-                yield
-                self._conn.commit()
-                return
-
-            if require_clean_transaction and self._conn.in_transaction:
-                raise RuntimeError(
-                    "CollectionRepository mutation requires a clean transaction boundary"
-                )
-            outer_transaction = self._conn.in_transaction
-            savepoint = (
-                f"collection_{operation_name}_{id(self):x}_{time.monotonic_ns():x}"
-            )
-            savepoint_active = False
-            try:
-                self._conn.execute(f"SAVEPOINT {savepoint}")
-                savepoint_active = True
-                yield
-                self._conn.execute(f"RELEASE SAVEPOINT {savepoint}")
-                savepoint_active = False
-                if not outer_transaction:
-                    self._conn.commit()
-            except BaseException as exc:
-                cleanup_errors: list[BaseException] = []
-                if savepoint_active:
-                    for statement in (
-                        f"ROLLBACK TO SAVEPOINT {savepoint}",
-                        f"RELEASE SAVEPOINT {savepoint}",
-                    ):
-                        try:
-                            self._conn.execute(statement)
-                        except BaseException as cleanup_exc:
-                            cleanup_errors.append(cleanup_exc)
-                if not outer_transaction and self._conn.in_transaction:
-                    try:
-                        self._conn.rollback()
-                    except BaseException as cleanup_exc:
-                        cleanup_errors.append(cleanup_exc)
-                if cleanup_errors:
-                    exc.add_note(
-                        "CollectionRepository transaction cleanup also failed: "
-                        + "; ".join(str(error) for error in cleanup_errors)
-                    )
-                raise
+    def _path_keys(self, file_paths: list[str]) -> list[str]:
+        return [self._path_key(file_path) for file_path in file_paths]
 
     # ── Reads ─────────────────────────────────────────────────────
 

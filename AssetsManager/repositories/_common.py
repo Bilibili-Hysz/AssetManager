@@ -7,8 +7,14 @@ analytics, free-download quotas) and by two application services. Those
 symbols live here now; ``shop_repository`` re-exports them so existing
 import paths keep working, and new code imports them from this module.
 
-It also hosts the two cross-repository write-safety mechanisms:
+It also hosts the cross-repository write-safety mechanisms:
 
+- :class:`_SessionBoundRepository` — the single canonical base for the
+  repository family: real-session token check (``require_library_session``),
+  captured ``RootIdentity`` binding, the raw-operation one-way door, the
+  bind-session four-way guard, and the ``_write_scope`` savepoint contract.
+  ``_CommerceRepository`` is retained as a legacy alias (pre-rename import
+  paths and historical tests reference it).
 - :func:`_guarded_commit` — commit a repository write only when the call
   owns its transaction, so a caller's outer transaction is never truncated.
 - :func:`_with_sqlite_busy_retry` / :func:`_retry_sqlite_busy` — the shared
@@ -42,11 +48,13 @@ from AssetsManager.core.schema_defs import (
     validate_schema_object,
     validate_schema_objects,
 )
+from AssetsManager.core.session_contract import require_library_session
 
 _R = TypeVar("_R")
 
 
 def _repository_operation(method: Callable[..., _R]) -> Callable[..., _R]:
+    """Lease a canonical session for one complete repository operation."""
     @wraps(method)
     def wrapped(self: Any, *args: Any, **kwargs: Any) -> _R:
         with self._operation_scope():
@@ -55,22 +63,34 @@ def _repository_operation(method: Callable[..., _R]) -> Callable[..., _R]:
     return wrapped
 
 
-def _session_root(session: Any, repository_name: str) -> str | Path | RootIdentity:
-    root = getattr(session, "root", None)
-    if root is None:
-        root = getattr(session, "root_str", None)
-    if root is None:
-        raise TypeError(f"{repository_name} canonical session requires root or root_str")
-    return root
+def _session_root(session: Any, repository_name: str) -> RootIdentity:
+    """Resolve the session's captured root identity (the strict dialect).
+
+    Unlike the legacy duck-typed ``session.root``/``root_str`` lookup, this
+    requires the canonical ``LibrarySession`` shape: a ``context.root_identity``
+    captured once at session construction. Sessions that only duck-type the
+    old attributes are rejected — the identity must be captured, not derived
+    per call, so binding and every later containment check agree.
+    """
+    identity = getattr(getattr(session, "context", None), "root_identity", None)
+    if isinstance(identity, RootIdentity):
+        return identity
+    raise TypeError(
+        f"{repository_name} canonical session must expose a captured root identity"
+    )
 
 
 def _require_session_contract(
     session: Any, repository_name: str
 ) -> tuple[Callable[..., Any], Callable[..., Any]]:
+    """Validate the real-session marker and the lifecycle/provider surface."""
+    require_library_session(session)
     operation = getattr(session, "operation", None)
-    connection_for = getattr(session, "connection_for", None)
     if not callable(operation):
-        raise TypeError(f"{repository_name} canonical session requires callable operation()")
+        raise TypeError(
+            f"{repository_name} canonical session requires callable operation()"
+        )
+    connection_for = getattr(session, "connection_for", None)
     if not callable(connection_for):
         raise TypeError(
             f"{repository_name} canonical session requires callable connection_for()"
@@ -133,8 +153,32 @@ def _ensure_commerce_schema(conn: Connection) -> None:
         validate_schema_objects(conn, tables)
 
 
-class _CommerceRepository:
-    """Shared strict LibrarySession/connection/root binding contract."""
+class _SessionBoundRepository:
+    """The canonical strict LibrarySession/connection/root binding contract.
+
+    One implementation of the scaffolding every repository in this family
+    used to copy verbatim (D1/W-3 dialect unification, 2026-09-04):
+
+    - ``for_session`` — require the real-session token, resolve the captured
+      ``RootIdentity``, take the connection through
+      ``require_managed_connection_owner``, then bind.
+    - ``_operation_scope`` — the raw-operation one-way door: the first raw
+      (sessionless) operation permanently closes the session-binding channel,
+      so a published session binding can never coexist with unleased raw
+      writes on the same instance.
+    - ``_bind_session`` — the four-way guard: no rebind to a different
+      session, no bind after raw operations, explicit ``library_root`` must
+      match the session identity, and the connection must be the session's
+      managed connection. Publication runs under
+      ``session._publish_while_live`` when available so a closing session
+      rejects the binding atomically.
+    - ``_write_scope`` — raw mode commits directly; bound mode opens a
+      per-operation SAVEPOINT so caller transactions are never truncated,
+      with failed-cleanup diagnostics attached via ``add_note``.
+    - ``_path_key`` — bound-root containment; unbound repositories must
+      override with an explicit policy (the base raises rather than
+      silently passing raw paths through, closing the old no-op hole).
+    """
 
     def __init__(
         self,
@@ -146,32 +190,56 @@ class _CommerceRepository:
         self._conn = conn
         self._session: Any | None = None
         self._library_root_key: str | None = None
+        self._library_root: Path | None = None
         self._binding_lock = threading.RLock()
+        self._raw_operation_started = False
         if library_root is not None:
             identity = root_identity(library_root, strict=False)
-            self._library_root_key = identity.map_key
+            self._apply_root_identity(identity)
             DatabaseManager.validate_connection_owner(identity, conn, allow_unmanaged=True)
         if session is not None:
             self._bind_session(session, library_root=library_root)
 
+    def _apply_root_identity(self, identity: RootIdentity) -> None:
+        """Record the bound root identity (subclass override point).
+
+        Subclasses that keep extra root-derived state (e.g. the asset index
+        ``_root_identity``) override this instead of re-deriving after
+        ``super().__init__``; every binding path (constructor ``library_root``,
+        ``_bind_session`` publication) funnels through here so the extra state
+        can never lag the base fields.
+        """
+        self._library_root_key = identity.map_key
+        self._library_root = identity.display_path
+
     @classmethod
-    def for_session(cls, session: Any):
+    def for_session(
+        cls,
+        session: Any,
+        *,
+        library_root: str | Path | RootIdentity | None = None,
+    ):
+        """Build a strictly session/root-bound repository for a canonical session."""
         repository_name = cls.__name__
         operation, connection_for = _require_session_contract(session, repository_name)
         with operation():
-            root = _session_root(session, repository_name)
-            conn = connection_for(root)
-            conn = DatabaseManager.require_managed_connection_owner(root, conn)
+            session_root = _session_root(session, repository_name)
+            conn = connection_for(session_root)
+            conn = DatabaseManager.require_managed_connection_owner(session_root, conn)
             repository = cls(conn)
-            repository._bind_session(session, library_root=root)
+            repository._bind_session(session, library_root=library_root)
             return repository
 
     @contextmanager
     def _operation_scope(self) -> Iterator[None]:
-        if self._session is None:
+        with self._binding_lock:
+            session = self._session
+            if session is None:
+                self._raw_operation_started = True
+        if session is None:
             yield
             return
-        with self._session.operation():
+        with session.operation():
             yield
 
     @contextmanager
@@ -187,6 +255,15 @@ class _CommerceRepository:
         library_root: str | Path | RootIdentity | None = None,
     ) -> None:
         repository_name = type(self).__name__
+        operation, connection_for = _require_session_contract(session, repository_name)
+        session_identity = _session_root(session, repository_name)
+        if library_root is not None:
+            explicit_identity = root_identity(library_root, strict=False)
+            if explicit_identity.map_key != session_identity.map_key:
+                raise ValueError(
+                    f"{repository_name} library_root does not match the LibrarySession"
+                )
+
         with self._binding_lock:
             if self._session is not None:
                 if self._session is session:
@@ -194,26 +271,20 @@ class _CommerceRepository:
                 raise RuntimeError(
                     f"{repository_name} is already bound to another LibrarySession"
                 )
-
-            operation, connection_for = _require_session_contract(
-                session, repository_name
-            )
-            session_root = _session_root(session, repository_name)
-            session_identity = root_identity(session_root, strict=False)
-            if library_root is not None:
-                explicit_identity = root_identity(library_root, strict=False)
-                if explicit_identity.map_key != session_identity.map_key:
-                    raise ValueError(
-                        f"{repository_name} library_root does not match the LibrarySession"
-                    )
+            if self._raw_operation_started:
+                raise RuntimeError(
+                    f"{repository_name} cannot bind after raw operations have started"
+                )
             if (
                 self._library_root_key is not None
                 and self._library_root_key != session_identity.map_key
             ):
-                raise ValueError(f"{repository_name} belongs to a different library root")
+                raise ValueError(
+                    f"{repository_name} belongs to a different library root"
+                )
 
             with operation():
-                conn = connection_for(session_root)
+                conn = connection_for(session_identity)
                 conn = DatabaseManager.require_managed_connection_owner(
                     session_identity, conn
                 )
@@ -223,7 +294,7 @@ class _CommerceRepository:
                     )
 
                 def publish_binding() -> None:
-                    self._library_root_key = session_identity.map_key
+                    self._apply_root_identity(session_identity)
                     self._session = session
 
                 publish_while_live = getattr(session, "_publish_while_live", None)
@@ -232,10 +303,90 @@ class _CommerceRepository:
                 else:
                     publish_binding()
 
+    def _path_key(self, file_path: str | Path) -> str:
+        """Return a canonical path and enforce bound-root containment.
+
+        The base contract refuses unbound repositories outright: a sessionless
+        ``_path_key`` historically returned the raw string (a containment
+        no-op — the W-5 dialect hole), so subclasses that genuinely support
+        the raw path must override this with an explicit policy.
+        """
+        if self._library_root is None:
+            raise ValueError(
+                f"{type(self).__name__} path containment requires a bound library root"
+            )
+        target = Path(file_path).resolve()
+        if not target.is_relative_to(self._library_root):
+            raise ValueError(
+                f"{type(self).__name__} path must be under library_root: {target} "
+                f"(root {self._library_root})"
+            )
+        return str(target)
+
+    @contextmanager
+    def _write_scope(
+        self,
+        operation_name: str,
+        *,
+        require_clean_transaction: bool = False,
+    ) -> Iterator[None]:
+        """Commit raw writes, but preserve caller transactions when bound."""
+        with db_write_lock(self._conn):
+            if self._session is None:
+                yield
+                self._conn.commit()
+                return
+
+            if require_clean_transaction and self._conn.in_transaction:
+                raise RuntimeError(
+                    f"{type(self).__name__} mutation requires a clean transaction boundary"
+                )
+            outer_transaction = self._conn.in_transaction
+            savepoint = (
+                f"{type(self).__name__.lower()}_{operation_name}_"
+                f"{id(self):x}_{time.monotonic_ns():x}"
+            )
+            savepoint_active = False
+            try:
+                self._conn.execute(f"SAVEPOINT {savepoint}")
+                savepoint_active = True
+                yield
+                self._conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+                savepoint_active = False
+                if not outer_transaction:
+                    self._conn.commit()
+            except BaseException as exc:
+                cleanup_errors: list[BaseException] = []
+                if savepoint_active:
+                    for statement in (
+                        f"ROLLBACK TO SAVEPOINT {savepoint}",
+                        f"RELEASE SAVEPOINT {savepoint}",
+                    ):
+                        try:
+                            self._conn.execute(statement)
+                        except BaseException as cleanup_exc:
+                            cleanup_errors.append(cleanup_exc)
+                if not outer_transaction and self._conn.in_transaction:
+                    try:
+                        self._conn.rollback()
+                    except BaseException as cleanup_exc:
+                        cleanup_errors.append(cleanup_exc)
+                if cleanup_errors:
+                    exc.add_note(
+                        f"{type(self).__name__} transaction cleanup also failed: "
+                        + "; ".join(str(error) for error in cleanup_errors)
+                    )
+                raise
+
     @_repository_operation
     def init_tables(self) -> None:
         """Compatibility ensure for raw connections; migration v8 owns the schema."""
         _ensure_commerce_schema(self._conn)
+
+
+# Legacy alias: the base predates the family-wide rename (2026-09-04) and the
+# commerce-era name still appears in historical import paths and tests.
+_CommerceRepository = _SessionBoundRepository
 
 
 def _guarded_commit(conn: Connection, *, outer_transaction: bool) -> bool:
@@ -319,6 +470,7 @@ def _with_sqlite_busy_retry(method: Callable[..., _R]) -> Callable[..., _R]:
 
 __all__ = [
     "_CommerceRepository",
+    "_SessionBoundRepository",
     "_ensure_commerce_schema",
     "_guarded_commit",
     "_json_dump",

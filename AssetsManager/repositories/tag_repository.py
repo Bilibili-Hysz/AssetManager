@@ -1,26 +1,20 @@
 """Tag repository — CRUD operations for the physical tag tables."""
 from __future__ import annotations
 
-import threading
-import time
-from contextlib import contextmanager
-from functools import wraps
 from pathlib import Path
-from sqlite3 import Connection
-from typing import Any, Callable, Literal, TypeVar
+from typing import Literal
 
-from AssetsManager.core.database import DatabaseManager, db_write_lock, locked_read
+from AssetsManager.core.database import db_write_lock, locked_read
 from AssetsManager.core.path_resolver import (
-    RootIdentity,
     path_key_separator,
     remap_path_subtree,
-    root_identity,
     sql_like_descendant_pattern,
 )
-from AssetsManager.core.session_contract import require_library_session
+from AssetsManager.repositories._common import (
+    _SessionBoundRepository,
+    _repository_operation,
+)
 from AssetsManager.domain.errors import DuplicateError
-
-_R = TypeVar("_R")
 
 # Tag provenance partitions. ``file_tags`` remains the human-curated catalog;
 # ``ai_asset_tags`` / ``plugin_derived_fields`` (migration v36) are physical
@@ -49,157 +43,24 @@ def _tag_table(source: str) -> str:
         raise ValueError(f"unknown tag source: {source!r}") from None
 
 
-def _repository_operation(method: Callable[..., _R]) -> Callable[..., _R]:
-    """Lease a canonical session for one complete repository operation."""
-    @wraps(method)
-    def wrapped(self: Any, *args: Any, **kwargs: Any) -> _R:
-        with self._operation_scope():
-            return method(self, *args, **kwargs)
-
-    return wrapped
-
-
-def _session_root(session: Any) -> RootIdentity:
-    identity = getattr(getattr(session, "context", None), "root_identity", None)
-    if isinstance(identity, RootIdentity):
-        return identity
-    raise TypeError(
-        "TagRepository canonical session must expose a captured root identity"
-    )
-
-
-def _require_session_contract(
-    session: Any,
-) -> tuple[Callable[..., Any], Callable[..., Any]]:
-    """Validate the real-session marker and the lifecycle/provider surface."""
-    require_library_session(session)
-    operation = getattr(session, "operation", None)
-    if not callable(operation):
-        raise TypeError(
-            "TagRepository canonical session requires callable operation()"
-        )
-    connection_for = getattr(session, "connection_for", None)
-    if not callable(connection_for):
-        raise TypeError(
-            "TagRepository canonical session requires callable connection_for()"
-        )
-    return operation, connection_for
-
-
-class TagRepository:
+class TagRepository(_SessionBoundRepository):
     """Encapsulate all tag-related database operations.
 
     ``TagRepository(conn)`` remains the explicit raw compatibility path.
     Canonical callers should use :meth:`for_session`, which binds connection
     ownership, root containment, transaction lifetime, and close semantics to
-    one real ``LibrarySession``.
+    one real ``LibrarySession`` (scaffolding shared with the repository
+    family via ``_SessionBoundRepository``).
     """
 
-    def __init__(
-        self,
-        conn: Connection,
-        *,
-        library_root: str | Path | RootIdentity | None = None,
-        session: Any | None = None,
-    ):
-        self._conn = conn
-        self._session: Any | None = None
-        self._library_root_key: str | None = None
-        self._library_root: Path | None = None
-        self._binding_lock = threading.RLock()
-        self._raw_operation_started = False
-        if library_root is not None:
-            identity = root_identity(library_root, strict=False)
-            self._library_root_key = identity.map_key
-            self._library_root = identity.display_path
-            DatabaseManager.validate_connection_owner(
-                identity, conn, allow_unmanaged=True
-            )
-        if session is not None:
-            self._bind_session(session, library_root=library_root)
-
-    @classmethod
-    def for_session(
-        cls,
-        session: Any,
-        *,
-        library_root: str | Path | RootIdentity | None = None,
-    ) -> "TagRepository":
-        """Build a strictly session/root-bound tag repository."""
-        operation, connection_for = _require_session_contract(session)
-        with operation():
-            session_root = _session_root(session)
-            conn = connection_for(session_root)
-            conn = DatabaseManager.require_managed_connection_owner(
-                session_root, conn
-            )
-            repository = cls(conn)
-            repository._bind_session(session, library_root=library_root)
-            return repository
-
-    @contextmanager
-    def _operation_scope(self):
-        with self._binding_lock:
-            session = self._session
-            if session is None:
-                self._raw_operation_started = True
-        if session is None:
-            yield
-            return
-        with session.operation():
-            yield
-
-    def _bind_session(
-        self,
-        session: Any,
-        *,
-        library_root: str | Path | RootIdentity | None = None,
-    ) -> None:
-        operation, connection_for = _require_session_contract(session)
-        session_identity = _session_root(session)
-        if library_root is not None:
-            explicit_identity = root_identity(library_root, strict=False)
-            if explicit_identity.map_key != session_identity.map_key:
-                raise ValueError(
-                    "TagRepository library_root does not match the LibrarySession"
-                )
-
-        with self._binding_lock:
-            if self._session is not None:
-                if self._session is session:
-                    return
-                raise RuntimeError(
-                    "TagRepository is already bound to another LibrarySession"
-                )
-            if self._raw_operation_started:
-                raise RuntimeError(
-                    "TagRepository cannot bind after raw operations have started"
-                )
-            if (
-                self._library_root_key is not None
-                and self._library_root_key != session_identity.map_key
-            ):
-                raise ValueError("TagRepository belongs to a different library root")
-
-            with operation():
-                conn = connection_for(session_identity)
-                conn = DatabaseManager.require_managed_connection_owner(
-                    session_identity, conn
-                )
-                if conn is not self._conn:
-                    raise ValueError(
-                        "TagRepository connection does not belong to the LibrarySession"
-                    )
-
-                def publish_binding() -> None:
-                    self._library_root_key = session_identity.map_key
-                    self._library_root = session_identity.display_path
-                    self._session = session
-
-                session._publish_while_live(publish_binding)
-
     def _path_key(self, file_path: str | Path) -> str:
-        """Return a canonical path and enforce bound-root containment."""
+        """Return a canonical path and enforce bound-root containment.
+
+        The raw path keeps the historical pass-through: the tag tables are
+        written from file-operation paths that are resolved against the
+        library root by the caller, and raw callers (export snapshots,
+        filesystem repair) deliberately operate on connection-owned paths.
+        """
         if self._library_root is None:
             return str(file_path)
         target = Path(file_path).resolve()
@@ -212,57 +73,6 @@ class TagRepository:
 
     def _path_keys(self, file_paths: list[str]) -> list[str]:
         return [self._path_key(file_path) for file_path in file_paths]
-
-    @contextmanager
-    def _write_scope(
-        self, operation_name: str, *, require_clean_transaction: bool = False
-    ):
-        """Commit raw writes, but preserve caller transactions when bound."""
-        with db_write_lock(self._conn):
-            if self._session is None:
-                yield
-                self._conn.commit()
-                return
-
-            if require_clean_transaction and self._conn.in_transaction:
-                raise RuntimeError(
-                    "TagRepository mutation requires a clean transaction boundary"
-                )
-            outer_transaction = self._conn.in_transaction
-            savepoint = (
-                f"tag_{operation_name}_{id(self):x}_{time.monotonic_ns():x}"
-            )
-            savepoint_active = False
-            try:
-                self._conn.execute(f"SAVEPOINT {savepoint}")
-                savepoint_active = True
-                yield
-                self._conn.execute(f"RELEASE SAVEPOINT {savepoint}")
-                savepoint_active = False
-                if not outer_transaction:
-                    self._conn.commit()
-            except BaseException as exc:
-                cleanup_errors: list[BaseException] = []
-                if savepoint_active:
-                    for statement in (
-                        f"ROLLBACK TO SAVEPOINT {savepoint}",
-                        f"RELEASE SAVEPOINT {savepoint}",
-                    ):
-                        try:
-                            self._conn.execute(statement)
-                        except BaseException as cleanup_exc:
-                            cleanup_errors.append(cleanup_exc)
-                if not outer_transaction and self._conn.in_transaction:
-                    try:
-                        self._conn.rollback()
-                    except BaseException as cleanup_exc:
-                        cleanup_errors.append(cleanup_exc)
-                if cleanup_errors:
-                    exc.add_note(
-                        "TagRepository transaction cleanup also failed: "
-                        + "; ".join(str(error) for error in cleanup_errors)
-                    )
-                raise
 
     # ── Reads ─────────────────────────────────────────────────────
 

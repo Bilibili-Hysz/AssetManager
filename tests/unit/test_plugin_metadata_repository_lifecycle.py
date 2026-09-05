@@ -157,7 +157,7 @@ def test_session_bound_repository_rejects_foreign_connection(tmp_path):
     try:
         second = service.open_session(tmp_path / "second")
         try:
-            with pytest.raises(ValueError, match="does not belong"):
+            with pytest.raises(ValueError, match="belongs to a different library root"):
                 PluginMetadataRepository(
                     second.connection_for(second.root),
                     session=first,

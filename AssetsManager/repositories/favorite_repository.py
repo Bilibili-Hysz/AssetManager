@@ -1,15 +1,33 @@
-"""Repository for principal-scoped library favorites."""
+"""Repository for principal-scoped library favorites.
+
+Dialect (P2/Q1 onboarding, 2026-09-05): the repository inherits the strict
+``_SessionBoundRepository`` binding contract. ``FavoriteRepository(conn)``
+remains the explicit raw compatibility path (file-operation projection
+cleanup, LAN route tests); canonical callers should use
+:meth:`for_session`, which binds connection ownership, root containment,
+transaction lifetime, and close semantics to one real ``LibrarySession``.
+
+Favorites are per-library rows keyed by ``file_path`` like tags/collections
+(the ``library_favorites`` table lives in the owning library database), so
+the migration follows the P1 tag/collection/metadata pattern exactly,
+including the deliberate ``_path_key`` raw pass-through override with its
+rationale (see the override docstring).
+"""
 from __future__ import annotations
 
-from sqlite3 import Connection
+from pathlib import Path
 
-from AssetsManager.core.database import db_write_lock
+from AssetsManager.core.database import db_write_lock, locked_read
 from AssetsManager.core.path_resolver import remap_path_subtree, sql_like_descendant_pattern
 from AssetsManager.core.schema_defs import LIBRARY_FAVORITES_SCHEMA
-from AssetsManager.repositories._common import _guarded_commit
+from AssetsManager.repositories._common import (
+    _SessionBoundRepository,
+    _guarded_commit,
+    _repository_operation,
+)
 
 
-class FavoriteRepository:
+class FavoriteRepository(_SessionBoundRepository):
     """Persist favorite paths in the owning library database."""
 
     # Mirrors application.favorite_service.MAX_FAVORITES_PER_OWNER (importing
@@ -18,8 +36,25 @@ class FavoriteRepository:
     # silently truncated below the per-owner cap.
     LIMIT_CEILING = 10_000
 
-    def __init__(self, conn: Connection):
-        self._conn = conn
+    def _path_key(self, file_path: str | Path) -> str:
+        """Return a canonical path and enforce bound-root containment.
+
+        The raw path keeps the historical pass-through (the same deliberate
+        deviation tag/collection/metadata carry, P1): favorites are stored
+        with caller-resolved absolute paths, and raw callers
+        (file-operation projection cleanup, export/restore snapshots)
+        operate on connection-owned paths where the repository has no
+        session identity to enforce containment against.
+        """
+        if self._library_root is None:
+            return str(file_path)
+        target = Path(file_path).resolve()
+        if not target.is_relative_to(self._library_root):
+            raise ValueError(
+                f"favorite path must be under library_root: {target} "
+                f"(root {self._library_root})"
+            )
+        return str(target)
 
     def init_table(self) -> None:
         """Create the favorites table for explicit legacy/test compatibility."""
@@ -28,6 +63,8 @@ class FavoriteRepository:
             self._conn.executescript(LIBRARY_FAVORITES_SCHEMA)
             _guarded_commit(self._conn, outer_transaction=outer_transaction)
 
+    @_repository_operation
+    @locked_read
     def list_paths(self, owner_key: str, *, limit: int = LIMIT_CEILING) -> list[str]:
         rows = self._conn.execute(
             "SELECT file_path FROM library_favorites WHERE owner_key=? "
@@ -36,14 +73,18 @@ class FavoriteRepository:
         ).fetchall()
         return [str(row[0]) for row in rows]
 
+    @_repository_operation
+    @locked_read
     def contains(self, owner_key: str, file_path: str) -> bool:
         return self._conn.execute(
             "SELECT 1 FROM library_favorites WHERE owner_key=? AND file_path=?",
-            (owner_key, file_path),
+            (owner_key, self._path_key(file_path)),
         ).fetchone() is not None
 
+    @_repository_operation
     def add(self, owner_key: str, file_path: str, *, max_items: int = LIMIT_CEILING) -> bool:
         """Add a favorite atomically. False if already present; OverflowError at limit."""
+        file_path = self._path_key(file_path)
         with db_write_lock(self._conn):
             # Single statement: the duplicate check, the per-owner count check
             # and the insert commit together, so concurrent adds cannot slip
@@ -64,7 +105,9 @@ class FavoriteRepository:
                 return False
             raise OverflowError("favorite limit reached")
 
+    @_repository_operation
     def remove(self, owner_key: str, file_path: str) -> bool:
+        file_path = self._path_key(file_path)
         with db_write_lock(self._conn):
             outer_transaction = self._conn.in_transaction
             cursor = self._conn.execute(
@@ -74,8 +117,10 @@ class FavoriteRepository:
             _guarded_commit(self._conn, outer_transaction=outer_transaction)
             return cursor.rowcount > 0
 
+    @_repository_operation
     def delete_path(self, file_path: str, *, commit: bool = True) -> int:
         """Delete favorites for one path and all descendants, across owners."""
+        file_path = self._path_key(file_path)
         descendant_pattern = sql_like_descendant_pattern(file_path)
         with db_write_lock(self._conn):
             outer_transaction = self._conn.in_transaction
@@ -88,8 +133,11 @@ class FavoriteRepository:
                 _guarded_commit(self._conn, outer_transaction=outer_transaction)
             return cursor.rowcount
 
+    @_repository_operation
     def migrate_path(self, old_path: str, new_path: str, *, commit: bool = True) -> int:
         """Remap favorites for a moved path and its descendants."""
+        old_path = self._path_key(old_path)
+        new_path = self._path_key(new_path)
         descendant_pattern = sql_like_descendant_pattern(old_path)
         with db_write_lock(self._conn):
             outer_transaction = self._conn.in_transaction

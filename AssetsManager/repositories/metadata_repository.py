@@ -2,182 +2,30 @@ from __future__ import annotations
 
 import json
 import logging
-import threading
-import time
-from contextlib import contextmanager
-from functools import wraps
 from pathlib import Path
-from sqlite3 import Connection
-from typing import Any, Callable, TypeVar
 
-from AssetsManager.core.database import DatabaseManager, db_write_lock, locked_read
+from AssetsManager.core.database import db_write_lock, locked_read
 from AssetsManager.core.path_resolver import (
-    RootIdentity,
     path_key_separator,
     remap_path_subtree,
     root_identity,
     sql_like_descendant_pattern,
 )
-from AssetsManager.core.session_contract import require_library_session
+from AssetsManager.repositories._common import (
+    _SessionBoundRepository,
+    _repository_operation,
+)
 
 _log = logging.getLogger(__name__)
-_R = TypeVar("_R")
 
 
-def _repository_operation(method: Callable[..., _R]) -> Callable[..., _R]:
-    @wraps(method)
-    def wrapped(self: Any, *args: Any, **kwargs: Any) -> _R:
-        with self._operation_scope():
-            return method(self, *args, **kwargs)
-
-    return wrapped
-
-
-def _session_root(session: Any) -> RootIdentity:
-    identity = getattr(getattr(session, "context", None), "root_identity", None)
-    if isinstance(identity, RootIdentity):
-        return identity
-    raise TypeError(
-        "MetadataRepository canonical session must expose a captured root identity"
-    )
-
-
-def _require_session_contract(
-    session: Any,
-) -> tuple[Callable[..., Any], Callable[..., Any]]:
-    # A managed connection alone is not a lifecycle lease.  Reject structural
-    # fakes whose null operation scope would let close race an in-flight query.
-    require_library_session(session)
-    operation = getattr(session, "operation", None)
-    if not callable(operation):
-        raise TypeError(
-            "MetadataRepository canonical session requires callable operation()"
-        )
-    connection_for = getattr(session, "connection_for", None)
-    if not callable(connection_for):
-        raise TypeError(
-            "MetadataRepository canonical session requires callable connection_for()"
-        )
-    return operation, connection_for
-
-
-class MetadataRepository:
+class MetadataRepository(_SessionBoundRepository):
     """Encapsulates all file_meta database operations.
 
     Raw ``MetadataRepository(conn)`` remains the explicit legacy adapter.
     Canonical callers should use :meth:`for_session`, which binds connection
     ownership, path containment, and repository lifetime to one LibrarySession.
     """
-
-    def __init__(
-        self,
-        conn: Connection,
-        *,
-        library_root: str | Path | RootIdentity | None = None,
-        session: Any | None = None,
-    ):
-        self._conn = conn
-        self._session: Any | None = None
-        self._library_root_key: str | None = None
-        self._library_root: Path | None = None
-        self._binding_lock = threading.RLock()
-        self._raw_operation_started = False
-        if library_root is not None:
-            identity = root_identity(library_root, strict=False)
-            self._library_root_key = identity.map_key
-            self._library_root = identity.display_path
-            DatabaseManager.validate_connection_owner(
-                identity, conn, allow_unmanaged=True
-            )
-        if session is not None:
-            self._bind_session(session, library_root=library_root)
-
-    @classmethod
-    def for_session(
-        cls,
-        session: Any,
-        *,
-        library_root: str | Path | RootIdentity | None = None,
-    ) -> "MetadataRepository":
-        """Build a strictly session/root-bound metadata repository."""
-        operation, connection_for = _require_session_contract(session)
-        with operation():
-            session_root = _session_root(session)
-            conn = connection_for(session_root)
-            conn = DatabaseManager.require_managed_connection_owner(
-                session_root, conn
-            )
-            repository = cls(conn)
-            repository._bind_session(session, library_root=library_root)
-            return repository
-
-    @contextmanager
-    def _operation_scope(self):
-        with self._binding_lock:
-            session = self._session
-            if session is None:
-                # Once a published raw repository has admitted work, converting
-                # it into a session-bound object would leave an unleased operation
-                # running through the binding publication point.
-                self._raw_operation_started = True
-        if session is None:
-            yield
-            return
-        with session.operation():
-            yield
-
-    def _bind_session(
-        self,
-        session: Any,
-        *,
-        library_root: str | Path | RootIdentity | None = None,
-    ) -> None:
-        operation, connection_for = _require_session_contract(session)
-        session_identity = _session_root(session)
-        if library_root is not None:
-            explicit_identity = root_identity(library_root, strict=False)
-            if explicit_identity.map_key != session_identity.map_key:
-                raise ValueError(
-                    "MetadataRepository library_root does not match "
-                    "the LibrarySession"
-                )
-
-        with self._binding_lock:
-            if self._session is not None:
-                if self._session is session:
-                    return
-                raise RuntimeError(
-                    "MetadataRepository is already bound to another LibrarySession"
-                )
-            if self._raw_operation_started:
-                raise RuntimeError(
-                    "MetadataRepository cannot bind after raw operations have started"
-                )
-            if (
-                self._library_root_key is not None
-                and self._library_root_key != session_identity.map_key
-            ):
-                raise ValueError(
-                    "MetadataRepository belongs to a different library root"
-                )
-
-            with operation():
-                conn = connection_for(session_identity)
-                conn = DatabaseManager.require_managed_connection_owner(
-                    session_identity, conn
-                )
-                if conn is not self._conn:
-                    raise ValueError(
-                        "MetadataRepository connection does not belong to "
-                        "the LibrarySession"
-                    )
-
-                def publish_binding() -> None:
-                    self._library_root_key = session_identity.map_key
-                    self._library_root = session_identity.display_path
-                    self._session = session
-
-                session._publish_while_live(publish_binding)
 
     def _path_key(self, file_path: str | Path) -> str:
         """Return a canonical key and enforce bound-root containment.
@@ -208,51 +56,6 @@ class MetadataRepository:
                 "metadata library_path does not match the bound library root"
             )
         return str(self._library_root)
-
-    @contextmanager
-    def _write_scope(self, operation_name: str):
-        """Commit raw writes, but preserve caller transactions when bound."""
-        with db_write_lock(self._conn):
-            if self._session is None:
-                yield
-                self._conn.commit()
-                return
-
-            outer_transaction = self._conn.in_transaction
-            savepoint = (
-                f"metadata_{operation_name}_{id(self):x}_{time.monotonic_ns():x}"
-            )
-            savepoint_active = False
-            try:
-                self._conn.execute(f"SAVEPOINT {savepoint}")
-                savepoint_active = True
-                yield
-                self._conn.execute(f"RELEASE SAVEPOINT {savepoint}")
-                savepoint_active = False
-                if not outer_transaction:
-                    self._conn.commit()
-            except BaseException as exc:
-                cleanup_errors: list[BaseException] = []
-                if savepoint_active:
-                    for statement in (
-                        f"ROLLBACK TO SAVEPOINT {savepoint}",
-                        f"RELEASE SAVEPOINT {savepoint}",
-                    ):
-                        try:
-                            self._conn.execute(statement)
-                        except BaseException as cleanup_exc:
-                            cleanup_errors.append(cleanup_exc)
-                if not outer_transaction and self._conn.in_transaction:
-                    try:
-                        self._conn.rollback()
-                    except BaseException as cleanup_exc:
-                        cleanup_errors.append(cleanup_exc)
-                if cleanup_errors:
-                    exc.add_note(
-                        "MetadataRepository transaction cleanup also failed: "
-                        + "; ".join(str(error) for error in cleanup_errors)
-                    )
-                raise
 
     # ── Notes ────────────────────────────────────────────────────
 

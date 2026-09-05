@@ -4,6 +4,29 @@ Simple-password LAN tokens are signed with the persisted password hash and
 survive app restarts; their revocations must too. Rows live in the library
 database so a revoked token cannot resurrect when the in-memory revocation
 table dies with the process.
+
+Dialect audit (2026-09-05) — deliberately raw-only:
+
+Why raw: token revocation is an *auth-host* concept, not a library-data
+concept. The repository's sole consumer is AuthService
+(``_revocation_repo``), which is constructed once per auth host with a
+``db_conn`` owned by the host (bootstrap wires ``AuthService(connection,
+...)``) and then serves the process-wide LAN request path — the revocation
+check runs for every authenticated request regardless of which library
+session the request rides on, and the in-memory positive cache in
+``lan/token_revocations.py`` is host-scoped, not session-scoped. Binding
+the repository to one ``LibrarySession`` would be semantically wrong: it
+would tie "is this token revoked" to a session that has nothing to do with
+the token's issuance, and the strict base's four-way guard (one session,
+one connection, one root) would forbid the host's shared-connection reuse
+that AuthService deliberately keeps. There is also no path dimension at
+all (the key is a SHA256 token digest), so ``_path_key`` root containment
+has nothing to enforce.
+
+When revisit: only if token issuance ever becomes per-library (e.g. tokens
+scoped to one root with revocation checked inside that root's session).
+Until then the auth host owns the connection and this repository stays a
+small raw table adapter.
 """
 from __future__ import annotations
 

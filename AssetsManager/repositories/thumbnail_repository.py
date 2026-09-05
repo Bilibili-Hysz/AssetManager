@@ -1,4 +1,42 @@
-"""Thumbnail cache repository — thin wrapper around thumbnail_cache table."""
+"""Thumbnail cache repository — thin wrapper around thumbnail_cache table.
+
+Dialect audit (2026-09-05) — deliberately raw-only:
+
+Why raw: the thumbnail cache is a *version-keyed derived-artifact cache*,
+not library data, and its row identity is deliberately decoupled from the
+session model. Three structural reasons:
+
+1. The primary key is a versioned cache key (``thumbnail_cache_key`` /
+   ``profiled_thumbnail_cache_key_v3``, see application/thumbnail_service),
+   not a library path. Rows for the same source file coexist under several
+   key generations (v2 key, v3 profiled keys, legacy keys), so the strict
+   base's ``_path_key`` bound-root containment has no single key to
+   canonicalize — ``source_path`` is informational bookkeeping for
+   ``delete_path`` invalidation, not the row identity.
+2. Its consumers span three different lifetimes that a single session
+   binding cannot cover: ``ThumbnailService._repo(library_root)`` is a
+   root-parameter pure function (new instance per call, like the gallery
+   persistence mixin); ``project_service._attach_baked_thumbnails`` is a
+   ``@staticmethod`` taking a caller's ``db_conn``; and
+   ``file_operation_service._clear_deleted_projection`` leases one
+   connection inside its own named SAVEPOINT and stages writes with
+   ``commit=False`` across four repositories at once.
+3. Its write channel carries a cross-repository staging contract that the
+   base ``_write_scope`` cannot express: callers stage multiple
+   ``commit=False`` writes and then settle them with the deliberately
+   unguarded public ``commit()`` (see its docstring — a session-bound
+   SAVEPOINT wrapper would break the LAN/undo settle flow that must end
+   *any* transaction), plus its own bounded SQLITE_BUSY replay with a
+   rollback-under-lock hook (``_write``), which the shared savepoint scope
+   does not replicate.
+
+When revisit: if thumbnail cache keys ever collapse to a single
+per-source-identity generation AND ThumbnailService becomes a
+session-scoped service holding one LibrarySession (dropping the
+root-parameter shape), onboard with ``for_session`` and move the staging
+contract into the base ``_write_scope``. Until then the root validation
+lives one level up, in each service's ``_connection()`` owner check.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass

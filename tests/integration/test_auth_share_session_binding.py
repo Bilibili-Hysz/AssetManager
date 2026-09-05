@@ -11,6 +11,7 @@ import pytest
 from AssetsManager.application import ApplicationBootstrap
 from AssetsManager.application.auth_service import AuthService
 from AssetsManager.application.share_service import ShareService
+from AssetsManager.core.session_contract import register_library_session
 
 
 class _EventCollector:
@@ -179,13 +180,20 @@ def test_service_binding_is_not_published_when_session_starts_closing(
                 return callback()
             raise RuntimeError("Cannot publish services for a closing LibrarySession")
 
-        session = SimpleNamespace(
-            root=real_session.root,
-            root_str=real_session.root_str,
-            event_token="session-token",
-            connection_for=lambda _root: conn,
-            operation=nullcontext,
-            _publish_while_live=publish_while_live,
+        session = register_library_session(
+            SimpleNamespace(
+                root=real_session.root,
+                root_str=real_session.root_str,
+                event_token="session-token",
+                connection_for=lambda _root: conn,
+                operation=nullcontext,
+                _publish_while_live=publish_while_live,
+                # The strict dialect resolves the captured identity, not the
+                # duck-typed root strings above.
+                context=SimpleNamespace(
+                    root_identity=real_session.context.root_identity
+                ),
+            )
         )
         service = service_type(conn, "secret")
         original_repository = service._repo

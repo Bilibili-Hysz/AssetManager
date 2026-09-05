@@ -7,63 +7,23 @@ from __future__ import annotations
 
 import json
 import logging
-import threading
 import time
-from contextlib import contextmanager
-from functools import wraps
-from pathlib import Path
 from sqlite3 import Connection, IntegrityError
-from typing import Any, Callable, TypeVar
 
-from AssetsManager.core.database import DatabaseManager, db_write_lock, locked_read
-from AssetsManager.core.path_resolver import RootIdentity, root_identity
+from AssetsManager.core.database import db_write_lock, locked_read
 from AssetsManager.core.schema_defs import validate_schema_objects
 from AssetsManager.core.schema_defs import SHARE_LINKS_SCHEMA
-from AssetsManager.repositories._common import _guarded_commit
+from AssetsManager.repositories._common import (
+    _SessionBoundRepository,
+    _guarded_commit,
+    _repository_operation,
+)
 
 _log = logging.getLogger(__name__)
 
 # Compatibility alias: schema ownership lives in core.schema_defs / migration v6.
 
 
-
-_R = TypeVar("_R")
-
-
-def _repository_operation(method: Callable[..., _R]) -> Callable[..., _R]:
-    @wraps(method)
-    def wrapped(self: Any, *args: Any, **kwargs: Any) -> _R:
-        with self._operation_scope():
-            return method(self, *args, **kwargs)
-
-    return wrapped
-
-
-def _session_root(session: Any, repository_name: str) -> str | Path | RootIdentity:
-    root = getattr(session, "root", None)
-    if root is None:
-        root = getattr(session, "root_str", None)
-    if root is None:
-        raise TypeError(
-            f"{repository_name} canonical session requires root or root_str"
-        )
-    return root
-
-
-def _require_session_contract(
-    session: Any, repository_name: str
-) -> tuple[Callable[..., Any], Callable[..., Any]]:
-    operation = getattr(session, "operation", None)
-    if not callable(operation):
-        raise TypeError(
-            f"{repository_name} canonical session requires callable operation()"
-        )
-    connection_for = getattr(session, "connection_for", None)
-    if not callable(connection_for):
-        raise TypeError(
-            f"{repository_name} canonical session requires callable connection_for()"
-        )
-    return operation, connection_for
 
 
 def _cleanup_insert_savepoint(
@@ -115,98 +75,8 @@ def _cleanup_insert_savepoint(
         raise RuntimeError("Unable to restore the share insert transaction") from cleanup_errors[0]
 
 
-class ShareRepository:
+class ShareRepository(_SessionBoundRepository):
     """Encapsulates share_links table operations."""
-
-    def __init__(
-        self,
-        conn: Connection,
-        *,
-        library_root: str | Path | RootIdentity | None = None,
-        session: Any | None = None,
-    ):
-        self._conn = conn
-        self._session: Any | None = None
-        self._library_root_key: str | None = None
-        self._binding_lock = threading.RLock()
-        if library_root is not None:
-            identity = root_identity(library_root, strict=False)
-            self._library_root_key = identity.map_key
-            DatabaseManager.validate_connection_owner(
-                identity, conn, allow_unmanaged=True
-            )
-        if session is not None:
-            self._bind_session(session, library_root=library_root)
-
-    @classmethod
-    def for_session(cls, session: Any) -> "ShareRepository":
-        """Build a strictly session/root-bound repository for a canonical session."""
-        operation, connection_for = _require_session_contract(session, "ShareRepository")
-        with operation():
-            root = _session_root(session, "ShareRepository")
-            conn = connection_for(root)
-            conn = DatabaseManager.require_managed_connection_owner(root, conn)
-            repository = cls(conn)
-            repository._bind_session(session, library_root=root)
-            return repository
-
-    @contextmanager
-    def _operation_scope(self):
-        if self._session is None:
-            yield
-            return
-        with self._session.operation():
-            yield
-
-    def _bind_session(
-        self, session: Any, *, library_root: str | Path | RootIdentity | None = None
-    ) -> None:
-        with self._binding_lock:
-            if self._session is not None:
-                if self._session is session:
-                    return
-                raise RuntimeError(
-                    "ShareRepository is already bound to another LibrarySession"
-                )
-
-            operation, connection_for = _require_session_contract(
-                session, "ShareRepository"
-            )
-            session_root = _session_root(session, "ShareRepository")
-            session_identity = root_identity(session_root, strict=False)
-            if library_root is not None:
-                explicit_identity = root_identity(library_root, strict=False)
-                if explicit_identity.map_key != session_identity.map_key:
-                    raise ValueError(
-                        "ShareRepository library_root does not match the LibrarySession"
-                    )
-            if (
-                self._library_root_key is not None
-                and self._library_root_key != session_identity.map_key
-            ):
-                raise ValueError("ShareRepository belongs to a different library root")
-
-            with operation():
-                conn = connection_for(session_root)
-                conn = DatabaseManager.require_managed_connection_owner(
-                    session_identity, conn
-                )
-                if conn is not self._conn:
-                    raise ValueError(
-                        "ShareRepository connection does not belong to the LibrarySession"
-                    )
-
-                def publish_binding() -> None:
-                    # `_session` is the readiness flag read by operation scopes,
-                    # so publish all accompanying identity state before it.
-                    self._library_root_key = session_identity.map_key
-                    self._session = session
-
-                publish_while_live = getattr(session, "_publish_while_live", None)
-                if callable(publish_while_live):
-                    publish_while_live(publish_binding)
-                else:
-                    publish_binding()
 
     @_repository_operation
     def init_table(self) -> None:

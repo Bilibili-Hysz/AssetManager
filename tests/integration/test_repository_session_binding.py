@@ -11,6 +11,7 @@ from typing import Any, cast
 import pytest
 
 from AssetsManager.application import ApplicationBootstrap
+from AssetsManager.core.session_contract import register_library_session
 from AssetsManager.repositories.auth_repository import AuthRepository
 from AssetsManager.repositories.share_repository import ShareRepository
 
@@ -54,12 +55,19 @@ _REPOSITORIES = [
 
 
 def _fake_session(root, conn):
-    return SimpleNamespace(
-        root=root,
-        root_str=str(root),
-        event_token="fake-session-token",
-        connection_for=lambda _root: conn,
-        operation=nullcontext,
+    from AssetsManager.core.path_resolver import root_identity
+    from AssetsManager.core.session_contract import register_library_session
+
+    return register_library_session(
+        SimpleNamespace(
+            root=root,
+            root_str=str(root),
+            event_token="fake-session-token",
+            connection_for=lambda _root: conn,
+            operation=nullcontext,
+            # Strict dialect: the captured identity is authoritative.
+            context=SimpleNamespace(root_identity=root_identity(str(root), strict=False)),
+        )
     )
 
 
@@ -178,12 +186,17 @@ def test_repository_binding_is_not_published_for_closing_session(
         def reject_publication(_callback):
             raise RuntimeError("Cannot publish services for a closing LibrarySession")
 
-        session = SimpleNamespace(
-            root=real_session.root,
-            root_str=real_session.root_str,
-            connection_for=lambda _root: conn,
-            operation=nullcontext,
-            _publish_while_live=reject_publication,
+        session = register_library_session(
+            SimpleNamespace(
+                root=real_session.root,
+                root_str=real_session.root_str,
+                connection_for=lambda _root: conn,
+                operation=nullcontext,
+                _publish_while_live=reject_publication,
+                context=SimpleNamespace(
+                    root_identity=real_session.context.root_identity
+                ),
+            )
         )
         repository = repository_type(conn)
 
@@ -226,17 +239,27 @@ def test_concurrent_second_session_bind_is_serialized(repository_type, tmp_path)
             second_entered.set()
             yield
 
-        first_session = SimpleNamespace(
-            root=real_session.root,
-            root_str=real_session.root_str,
-            connection_for=lambda _root: conn,
-            operation=first_operation,
+        first_session = register_library_session(
+            SimpleNamespace(
+                root=real_session.root,
+                root_str=real_session.root_str,
+                connection_for=lambda _root: conn,
+                operation=first_operation,
+                context=SimpleNamespace(
+                    root_identity=real_session.context.root_identity
+                ),
+            )
         )
-        second_session = SimpleNamespace(
-            root=real_session.root,
-            root_str=real_session.root_str,
-            connection_for=lambda _root: conn,
-            operation=second_operation,
+        second_session = register_library_session(
+            SimpleNamespace(
+                root=real_session.root,
+                root_str=real_session.root_str,
+                connection_for=lambda _root: conn,
+                operation=second_operation,
+                context=SimpleNamespace(
+                    root_identity=real_session.context.root_identity
+                ),
+            )
         )
         repository = repository_type(conn)
 
