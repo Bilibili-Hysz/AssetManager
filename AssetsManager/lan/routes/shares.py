@@ -17,12 +17,13 @@ from AssetsManager.lan.routes._helpers import LAN_APP_KEY, get_lan, get_share_se
 from AssetsManager.lan.routes._telemetry import record_route_event
 from AssetsManager.lan.routes.image import BLURRED_PREVIEW_SIZE, serve_verified_image
 from AssetsManager.lan.principal import principal_for_request
-from AssetsManager.lan.safe_open import SafeOpenError, read_safe_file
+from AssetsManager.lan.safe_open import MAX_INLINE_READ_BYTES, SafeOpenError, read_safe_file
 from AssetsManager.lan.utils import get_local_ip
 
 _log = logging.getLogger(__name__)
 
 _SAFE_IMAGE_EXTS = IMAGE_EXTS - {".svg"}
+MAX_SHARE_DOWNLOAD_BYTES = MAX_INLINE_READ_BYTES
 
 
 def _content_disposition_filename(name: str) -> str:
@@ -316,8 +317,16 @@ async def handle_share_download(request):
             return error_response("Not a file", status=status, code="bad_request")
 
         try:
+            if target.stat().st_size > MAX_SHARE_DOWNLOAD_BYTES:
+                # Keep public share admission opaque: an over-sized or
+                # unavailable target has the same response as a missing one.
+                status = 404
+                return error_response("Share not found", status=status, code="not_found")
             body, _identity = await asyncio.to_thread(
-                read_safe_file, lan.library_root, target,
+                read_safe_file,
+                lan.library_root,
+                target,
+                max_bytes=MAX_SHARE_DOWNLOAD_BYTES,
             )
         except (SafeOpenError, OSError, ValueError):
             status = 404

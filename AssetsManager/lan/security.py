@@ -19,7 +19,7 @@ import ipaddress
 import logging
 import math
 import time
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict, defaultdict, deque
 from collections.abc import Callable
 
 from aiohttp import web
@@ -66,7 +66,10 @@ class RateLimiter:
         self._max = max_requests
         self._window = window_seconds
         self._max_ips = max_ips
-        self._requests: dict[str, list[float]] = defaultdict(list)
+        # Requests are appended in timestamp order.  A deque keeps expiry
+        # pruning O(number of expired entries) instead of repeatedly shifting
+        # a list with pop(0) under burst traffic.
+        self._requests: dict[str, deque[float]] = defaultdict(deque)
         self._access_order: OrderedDict[str, None] = OrderedDict()
 
     def is_allowed(self, ip: str) -> bool:
@@ -80,7 +83,7 @@ class RateLimiter:
 
         # Prune old entries in-place (more efficient than creating new list)
         while reqs and reqs[0] <= cutoff:
-            reqs.pop(0)
+            reqs.popleft()
         if len(reqs) >= self._max:
             return False
         reqs.append(now)
@@ -105,7 +108,7 @@ class RateLimiter:
             return self._max
         # Prune expired entries in-place so the active count is exact
         while reqs and reqs[0] <= cutoff:
-            reqs.pop(0)
+            reqs.popleft()
         return max(0, self._max - len(reqs))
 
     def retry_after(self, ip: str) -> int:
@@ -113,7 +116,7 @@ class RateLimiter:
         reqs = self._requests.get(ip)
         if not reqs:
             return 1
-        oldest = min(reqs)
+        oldest = reqs[0]
         return max(1, math.ceil(oldest + self._window - time.time()))
 
 
@@ -148,6 +151,7 @@ def create_security_middleware(
     auth_rate_limiter: "AuthRateLimiter | None" = None,
     *,
     browse_rate_limiter: "RateLimiter | None" = None,
+    skip_auth_rate_limiter: "RateLimiter | None" = None,
     ip_whitelist: list[str] | None = None,
     tunnel_active: "Callable[[], bool] | None" = None,
     tunnel_identity_resolver: "Callable[[web.Request], str | None] | None" = None,
@@ -277,6 +281,29 @@ def create_security_middleware(
 
         # The limiter whose remaining budget is reported on the response.
         active_limiter = rate_limiter
+
+        # Media/status routes intentionally have no anonymous request budget,
+        # but a request carrying a credential still enters the expensive
+        # authentication chain (revocation lookup plus PBKDF2).  Apply a
+        # separate generous limiter only to credential-bearing skip requests
+        # so random-token probing cannot turn those routes into an unlimited
+        # CPU/DB oracle while ordinary guest polling remains unaffected.
+        if skip_rate and skip_auth_rate_limiter is not None:
+            from AssetsManager.lan.routes._helpers import get_auth_token
+
+            if get_auth_token(request):
+                active_limiter = skip_auth_rate_limiter
+                if not skip_auth_rate_limiter.is_allowed(bucket_key):
+                    retry_after = skip_auth_rate_limiter.retry_after(bucket_key)
+                    _log.warning("Credential rate limit exceeded for skip route: %s", bucket_key)
+                    return error_response(
+                        "Credential rate limit exceeded",
+                        status=429,
+                        code="auth_rate_limited",
+                        details={"retry_after": retry_after},
+                        extra={"retry_after": retry_after},
+                        headers={"Retry-After": str(retry_after)},
+                    )
 
         # Auth endpoint rate limiting (stricter, declared per route)
         if auth_rate_limiter and policy.rate_limit == "auth_strict":

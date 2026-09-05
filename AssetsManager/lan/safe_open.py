@@ -15,12 +15,19 @@ from AssetsManager.core.file_snapshot import (
     OpenedFile,
     SnapshotPathEscapeError,
     open_under_root,
+    iter_snapshot,
     read_snapshot,
 )
 from AssetsManager.lan.path_guard import PathEscapeError
 
 SafeOpenError = FileSnapshotError
 SafeOpenedFile = OpenedFile
+
+# Upper bound for LAN routes that must materialize a source as ``bytes``
+# (image verification/blur and legacy single-file responses).  ZIP and file
+# streaming paths use ``iter_safe_file`` instead and are bounded separately by
+# their request-level resource budgets.
+MAX_INLINE_READ_BYTES = 64 * 1024 * 1024
 
 
 def _translate_path_error(exc: Exception) -> Exception:
@@ -56,10 +63,46 @@ def read_safe_file(
     admitted_path: str | Path,
     *,
     expected_identity: FileIdentity | tuple[int, int, int, int] | None = None,
+    max_bytes: int | None = None,
 ) -> tuple[bytes, FileIdentity]:
     """Read one final-open snapshot while preserving LAN error types."""
     try:
-        return read_snapshot(root, admitted_path, expected_identity=expected_identity)
+        return read_snapshot(
+            root,
+            admitted_path,
+            expected_identity=expected_identity,
+            max_bytes=max_bytes,
+        )
+    except Exception as exc:
+        translated = _translate_path_error(exc)
+        if translated is not exc:
+            raise translated from exc
+        raise
+
+
+def iter_safe_file(
+    root: str | Path,
+    admitted_path: str | Path,
+    *,
+    expected_identity: FileIdentity | tuple[int, int, int, int] | None = None,
+    max_bytes: int | None = None,
+    chunk_size: int = 1024 * 1024,
+):
+    """Yield a final-open file snapshot in bounded chunks.
+
+    The returned iterator owns its file descriptor until EOF or ``close``.
+    This is intended for ZIP/file transfer paths that must avoid constructing
+    a full ``bytes`` object while retaining the same path and identity checks
+    as :func:`read_safe_file`.
+    """
+    try:
+        return iter_snapshot(
+            root,
+            admitted_path,
+            expected_identity=expected_identity,
+            max_bytes=max_bytes,
+            chunk_size=chunk_size,
+        )
     except Exception as exc:
         translated = _translate_path_error(exc)
         if translated is not exc:
@@ -78,6 +121,7 @@ def read_file_snapshot(root: str | Path, admitted_path: str | Path, **kwargs: An
 
 
 __all__ = [
+    "MAX_INLINE_READ_BYTES",
     "FileIdentity",
     "FileSnapshotError",
     "OpenedFile",
@@ -88,6 +132,7 @@ __all__ = [
     "read_snapshot",
     "read_file_snapshot",
     "read_safe_file",
+    "iter_safe_file",
     "safe_open_under_root",
 ]
 

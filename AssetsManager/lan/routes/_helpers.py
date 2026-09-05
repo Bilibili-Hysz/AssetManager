@@ -26,7 +26,12 @@ from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import ActivityChanged, PresenceChanged
 from AssetsManager.lan.path_guard import MissingPathError, PathEscapeError, PathGuard, PathGuardError, assert_under_root
 from AssetsManager.lan.routes._errors import error_response
-from AssetsManager.lan.safe_open import SafeOpenError, read_safe_file
+from AssetsManager.lan.safe_open import (
+    MAX_INLINE_READ_BYTES,
+    SafeOpenError,
+    iter_safe_file,
+    read_safe_file,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -602,7 +607,10 @@ async def serve_blur_gated_raster(
         svc = get_thumbnail_service(request)
         try:
             body, _identity = await asyncio.to_thread(
-                read_safe_file, get_lan(request).library_root, target,
+                read_safe_file,
+                get_lan(request).library_root,
+                target,
+                max_bytes=MAX_INLINE_READ_BYTES,
             )
         except (SafeOpenError, OSError, ValueError):
             return error_response(
@@ -632,6 +640,7 @@ async def serve_blur_gated_raster(
             read_safe_file,
             get_lan(request).library_root,
             target,
+            max_bytes=MAX_INLINE_READ_BYTES,
         )
     except (SafeOpenError, OSError, ValueError):
         return error_response(
@@ -665,11 +674,13 @@ def build_zip_sync(target_paths: list[tuple[Path, str | None]], zip_path: str) -
                     arc_name = target.name
                 if target.is_file():
                     try:
-                        body, _identity = read_safe_file(target.parent, target)
+                        source = iter_safe_file(target.parent, target)
+                        with zf.open(arc_name, "w") as entry:
+                            for chunk in source:
+                                entry.write(chunk)
                     except (SafeOpenError, OSError, ValueError):
                         _log.warning("Failed to add file to ZIP: %s", target)
                         continue
-                    zf.writestr(arc_name, body)
                 elif target.is_dir():
                     root = target.resolve()
                     for dirpath, dirnames, filenames in os.walk(target):
@@ -688,8 +699,10 @@ def build_zip_sync(target_paths: list[tuple[Path, str | None]], zip_path: str) -
                                         "Skipping ZIP entry outside archive root: %s", fp
                                     )
                                     continue
-                                body, _identity = read_safe_file(root, fp)
-                                zf.writestr(arc, body)
+                                source = iter_safe_file(root, fp)
+                                with zf.open(arc, "w") as entry:
+                                    for chunk in source:
+                                        entry.write(chunk)
                             except (SafeOpenError, OSError, ValueError):
                                 _log.warning("Failed to add file to ZIP: %s", fp)
         return zip_path

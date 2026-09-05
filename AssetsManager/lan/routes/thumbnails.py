@@ -42,6 +42,7 @@ from AssetsManager.lan.safe_open import SafeOpenError, read_safe_file
 
 _SAFE_IMAGE_EXTS = IMAGE_EXTS - {".svg"}
 _NOSNIFF_HEADERS = {"X-Content-Type-Options": "nosniff"}
+MAX_THUMBNAIL_SOURCE_BYTES = 64 * 1024 * 1024
 
 
 def _thumbnail_target_key(target: Path) -> str:
@@ -166,7 +167,10 @@ async def handle_thumbnail(request):
             delivery = "original"
             try:
                 body, _identity = await asyncio.to_thread(
-                    read_safe_file, lan.library_root, source_path,
+                    read_safe_file,
+                    lan.library_root,
+                    source_path,
+                    max_bytes=MAX_THUMBNAIL_SOURCE_BYTES,
                     expected_identity=result.source_identity,
                 )
             except (SafeOpenError, OSError, ValueError):
@@ -193,6 +197,7 @@ async def handle_thumbnail(request):
                 read_safe_file,
                 source_root,
                 source_path,
+                max_bytes=MAX_THUMBNAIL_SOURCE_BYTES,
                 expected_identity=result.source_identity,
             )
         except (SafeOpenError, OSError, ValueError):
@@ -426,6 +431,7 @@ async def handle_thumbnail_batch(request):
                     source_body, _source_identity = read_safe_file(
                         source_root,
                         source_path,
+                        max_bytes=MAX_THUMBNAIL_SOURCE_BYTES,
                         expected_identity=resolved.source_identity,
                     )
                     batch_decoder = decoder_for(source_path.suffix)

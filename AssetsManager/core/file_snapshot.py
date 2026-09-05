@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from stat import S_ISREG
-from typing import BinaryIO, Self
+from typing import BinaryIO, Iterator, Self
 
 class SnapshotPathEscapeError(ValueError):
     """A snapshot candidate resolves outside its supplied root."""
@@ -185,10 +185,88 @@ def read_snapshot(
     expected_identity: FileIdentity | tuple[int, int, int, int] | None = None,
     max_bytes: int | None = None,
 ) -> tuple[bytes, FileIdentity]:
-    with open_under_root(root, admitted_path, expected_identity=expected_identity) as opened:
-        if max_bytes is not None and opened.size > max_bytes:
+    chunks = iter_snapshot(
+        root,
+        admitted_path,
+        expected_identity=expected_identity,
+        max_bytes=max_bytes,
+    )
+    try:
+        body = b"".join(chunks)
+        return body, chunks.identity  # type: ignore[attr-defined]
+    finally:
+        close = getattr(chunks, "close", None)
+        if close is not None:
+            close()
+
+
+class _SnapshotIterator:
+    """Iterator that owns a final-open handle for bounded streaming reads."""
+
+    def __init__(
+        self,
+        opened: OpenedFile,
+        *,
+        chunk_size: int,
+    ) -> None:
+        self._opened = opened
+        self._chunk_size = chunk_size
+        self.identity = opened.identity
+        self._closed = False
+
+    def __iter__(self) -> "_SnapshotIterator":
+        return self
+
+    def __next__(self) -> bytes:
+        if self._closed:
+            raise StopIteration
+        try:
+            chunk = self._opened.file.read(self._chunk_size)
+        except Exception:
+            self.close()
+            raise
+        if chunk:
+            return chunk
+        try:
+            current = FileIdentity.from_stat(os.fstat(self._opened.file.fileno()))
+            if current != self._opened.identity:
+                raise FileSnapshotError("file changed while being read")
+        finally:
+            self.close()
+        raise StopIteration
+
+    def close(self) -> None:
+        if not self._closed:
+            self._closed = True
+            self._opened.close()
+
+    def __del__(self) -> None:
+        self.close()
+
+
+def iter_snapshot(
+    root: str | Path,
+    admitted_path: str | Path,
+    *,
+    expected_identity: FileIdentity | tuple[int, int, int, int] | None = None,
+    max_bytes: int | None = None,
+    chunk_size: int = 1024 * 1024,
+) -> Iterator[bytes]:
+    """Yield a root-confined snapshot in bounded chunks.
+
+    The final-open handle remains owned by the iterator until EOF (or explicit
+    ``close``), so callers such as ZIP writers never materialize an entire
+    source file in memory.  ``max_bytes`` is checked before any bytes are
+    yielded and the identity is checked again at EOF.
+    """
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    opened = open_under_root(root, admitted_path, expected_identity=expected_identity)
+    if max_bytes is not None:
+        if max_bytes < 0:
+            opened.close()
+            raise ValueError("max_bytes must be non-negative")
+        if opened.size > max_bytes:
+            opened.close()
             raise FileSnapshotError("file exceeds snapshot limit")
-        body = opened.file.read()
-        if FileIdentity.from_stat(os.fstat(opened.file.fileno())) != opened.identity:
-            raise FileSnapshotError("file changed while being read")
-        return body, opened.identity
+    return _SnapshotIterator(opened, chunk_size=chunk_size)

@@ -24,12 +24,12 @@ def test_packaging_entrypoints_use_react_dist_and_not_legacy_static():
 
 def test_pyinstaller_uses_tracked_canonical_icon_source():
     source = (ROOT / 'AssetManager.spec').read_text(encoding='utf-8')
-    assert "(str(_root / 'Assets' / 'icons'), 'assets/icons')" in source
+    assert "(str(_root / 'assets' / 'icons'), 'assets/icons')" in source
 
 
 def test_pyinstaller_uses_canonical_icon_file_source():
     source = (ROOT / 'AssetManager.spec').read_text(encoding='utf-8')
-    assert "icon=str(_root / 'Assets' / 'icons' / 'icon.ico')" in source
+    assert "icon=str(_root / 'assets' / 'icons' / 'icon.ico')" in source
 
 def test_webui_entrypoint_does_not_reference_legacy_favicon():
     source = (ROOT / "webui" / "index.html").read_text(encoding="utf-8")

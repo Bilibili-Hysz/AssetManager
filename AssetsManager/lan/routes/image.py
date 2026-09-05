@@ -9,7 +9,7 @@ from aiohttp import web
 from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.lan.path_guard import PathGuardError, assert_under_root
 from AssetsManager.lan.routes._errors import error_response
-from AssetsManager.lan.safe_open import SafeOpenError, read_safe_file
+from AssetsManager.lan.safe_open import MAX_INLINE_READ_BYTES, SafeOpenError, read_safe_file
 from AssetsManager.application.media.decoders import decoder_for
 from AssetsManager.application.thumbnail_service import finalize_pil_image, process_image_snapshot
 from AssetsManager.lan.routes._helpers import (
@@ -31,6 +31,11 @@ from AssetsManager.lan.routes._helpers import (
 # SVG is intentionally excluded: it is an active XML document and may contain
 # script/external-resource content.  Gallery image previews must be passive data.
 _SAFE_IMAGE_EXTS = IMAGE_EXTS - {".svg"}
+# Image validation and optional blur processing currently require a bytes
+# snapshot.  Bound that snapshot so a crafted large image cannot exhaust the
+# LAN server process; decoded/thumbnail output remains separately bounded by
+# its max-dimension setting.
+MAX_IMAGE_SOURCE_BYTES = MAX_INLINE_READ_BYTES
 _IMAGE_CONTENT_TYPES = {
     "JPEG": "image/jpeg",
     "PNG": "image/png",
@@ -116,7 +121,10 @@ async def _serve_decoded_raster(
     lan = get_lan(request)
     try:
         source_body, _identity = await asyncio.to_thread(
-            read_safe_file, lan.library_root, target,
+            read_safe_file,
+            lan.library_root,
+            target,
+            max_bytes=MAX_IMAGE_SOURCE_BYTES,
         )
     except (SafeOpenError, OSError, ValueError):
         return _not_found()
@@ -173,7 +181,10 @@ async def serve_verified_image(
         )
     try:
         source_body, _source_identity = await asyncio.to_thread(
-            read_safe_file, lan.library_root, target,
+            read_safe_file,
+            lan.library_root,
+            target,
+            max_bytes=MAX_IMAGE_SOURCE_BYTES,
         )
     except (SafeOpenError, OSError, ValueError):
         return _not_found()

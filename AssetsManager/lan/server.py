@@ -120,6 +120,10 @@ class _LanServerImpl(LanServerLifecycleMixin):
         # skip-open like thumbnail/media polling.
         self._browse_rate_limiter = RateLimiter(max_requests=600, window_seconds=60)
         self._auth_rate_limiter = AuthRateLimiter(max_attempts=10, window_seconds=300)
+        # Credential-bearing media/status requests still run the expensive
+        # authentication chain.  Keep anonymous polling unrestricted while
+        # bounding random-token PBKDF2/DB probes on routes classified as skip.
+        self._skip_auth_rate_limiter = RateLimiter(max_requests=120, window_seconds=60)
         self._ip_blacklist = IPBlacklist()
         if blocked_ips:
             self._ip_blacklist.load_from_settings(blocked_ips)
@@ -350,6 +354,10 @@ class _LanServerImpl(LanServerLifecycleMixin):
             self._ip_blacklist,
             self._auth_rate_limiter,
             browse_rate_limiter=self._browse_rate_limiter,
+            # ``getattr`` keeps lightweight test/compatibility skeletons that
+            # predate this defensive bucket valid; production __init__ always
+            # creates the limiter above.
+            skip_auth_rate_limiter=getattr(self, "_skip_auth_rate_limiter", None),
             ip_whitelist=self._ip_whitelist,
             tunnel_active=self._tunnel_active,
             tunnel_identity_resolver=self._tunnel_identity_resolver,

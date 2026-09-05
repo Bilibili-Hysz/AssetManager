@@ -90,13 +90,15 @@ a = Analysis(
     pathex=[str(_root)],
     binaries=[],
     datas=[
-        # The tracked canonical icon source is capitalized; keep the bundled destination lowercase for app.py compatibility.
-        (str(_root / 'Assets' / 'icons'), 'assets/icons'),
+        # Keep source paths in the same lowercase form as the tracked
+        # directory so case-sensitive build hosts (Linux CI) resolve them.
+        # The bundled destination remains lowercase for app.py compatibility.
+        (str(_root / 'assets' / 'icons'), 'assets/icons'),
         (str(_root / 'AssetsManager' / 'i18n' / 'en.json'), 'AssetsManager/i18n'),
         (str(_root / 'AssetsManager' / 'i18n' / 'zh.json'), 'AssetsManager/i18n'),
         (str(_root / 'AssetsManager' / 'i18n' / 'ja.json'), 'AssetsManager/i18n'),
         # Theme JSON files
-        (str(_root / 'Assets' / 'Themes'), 'Assets/Themes'),
+        (str(_root / 'assets' / 'Themes'), 'Assets/Themes'),
         # Web UI SPA build served by the LAN server
         (str(_root / 'webui' / 'dist'), 'webui/dist'),
         # Plugin addons
@@ -367,7 +369,7 @@ _exe_kwargs = dict(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(_root / 'Assets' / 'icons' / 'icon.ico'),
+    icon=str(_root / 'assets' / 'icons' / 'icon.ico'),
     version=_version_info,
 )
 

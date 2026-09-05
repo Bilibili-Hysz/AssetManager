@@ -10,7 +10,7 @@ from aiohttp import web
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.routes._helpers import build_zip_async, get_lan, require_permission, sanitize_filename, validate_path
 from AssetsManager.lan.routes._telemetry import record_route_event
-from AssetsManager.lan.safe_open import SafeOpenError, read_safe_file
+from AssetsManager.lan.safe_open import MAX_INLINE_READ_BYTES, SafeOpenError, read_safe_file
 from AssetsManager.lan.routes.quota import (
     apply_free_quota_headers,
     apply_free_quota_identity_cookie,
@@ -22,6 +22,10 @@ from AssetsManager.lan.routes.quota import (
 
 MAX_BATCH_DOWNLOAD_PATHS = 100
 MAX_BATCH_DOWNLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
+# Single-file responses historically used ``web.Response(body=...)``.  Keep
+# that response contract for compatibility while bounding the amount of data
+# materialized in memory; directory/batch downloads are streamed into ZIPs.
+MAX_SINGLE_DOWNLOAD_BYTES = MAX_INLINE_READ_BYTES
 
 
 def _preflight_exhausted_response(request) -> web.Response | None:
@@ -170,6 +174,21 @@ async def handle_download(request):
         target = validate_path(lan, rel_path)
 
         if target.is_file():
+            try:
+                if target.stat().st_size > MAX_SINGLE_DOWNLOAD_BYTES:
+                    status = 413
+                    return error_response(
+                        "File size exceeds limit",
+                        status=status,
+                        code="payload_too_large",
+                        extra={
+                            "size_bytes": target.stat().st_size,
+                            "limit_bytes": MAX_SINGLE_DOWNLOAD_BYTES,
+                        },
+                    )
+            except OSError:
+                status = 404
+                return error_response("File not found", status=status, code="not_found")
             # Read-only preflight runs before the full in-memory read: an
             # exhausted identity must not pay for a complete file read it can
             # never receive (batch/directory downloads already gate first).
@@ -180,7 +199,10 @@ async def handle_download(request):
 
             try:
                 body, _identity = await asyncio.to_thread(
-                    read_safe_file, getattr(lan, "library_root", target.parent), target,
+                    read_safe_file,
+                    getattr(lan, "library_root", target.parent),
+                    target,
+                    max_bytes=MAX_SINGLE_DOWNLOAD_BYTES,
                 )
             except (SafeOpenError, OSError, ValueError):
                 status = 404

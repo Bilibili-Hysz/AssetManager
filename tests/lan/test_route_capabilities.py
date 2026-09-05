@@ -207,6 +207,18 @@ async def test_hardened_admin_read_is_blocked_by_middleware_before_handler(
         def get_reconciliation_outbox_prune_limit(self):
             return 1000
 
+        # The alert-threshold trio from the 2026-09-05 follow-up slice follows
+        # the same contract: bootstrap reads them through the facade, so the
+        # stub must expose them; service defaults keep the sweeper quiet.
+        def get_reconciliation_outbox_pending_alert_threshold(self):
+            return 1000
+
+        def get_reconciliation_outbox_dead_letter_alert_threshold(self):
+            return 100
+
+        def get_reconciliation_outbox_oldest_pending_alert_age_seconds(self):
+            return 3600.0
+
     monkeypatch.setattr(AppSettings, "instance", classmethod(lambda _cls: Settings()))
 
     real_require_admin = users_module.require_admin
