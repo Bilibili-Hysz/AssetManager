@@ -1,5 +1,5 @@
 """Generic settings dialog — shown when a panel has no specific settings yet."""
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton
 from PySide6.QtCore import Qt
 from AssetsManager.core import themes
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
@@ -11,6 +11,10 @@ tr = i18n.tr
 
 class _NoSettingsDialog(StandardModalDialog):
     """Single-action notice popup: one primary Close, no Cancel."""
+
+    # Always built by StandardModalDialog.__init__ (show_cancel defaults on);
+    # declared because the base assigns it in two branches (button | None).
+    _cancel_btn: QPushButton
 
     def __init__(self, parent=None):
         super().__init__(

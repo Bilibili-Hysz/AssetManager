@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from sqlite3 import Connection
 from time import monotonic_ns, time
-from typing import Callable, Iterator, Mapping
+from typing import Callable, Iterator, Mapping, cast
 
 from AssetsManager.core.database import db_write_lock
 
@@ -238,7 +238,10 @@ class MediaDerivativesRecorder:
             if source_bytes is not None:
                 target.write_bytes(source_bytes)
             else:
-                shutil.copyfile(source_file, target)
+                # The "no payload source" guard above returned already when
+                # both source_bytes and source_file are None, so reaching
+                # this branch means source_file is set.
+                shutil.copyfile(cast("str | Path", source_file), target)
 
         with self._write_scope(conn, "record") as scope:
             row = scope.execute(

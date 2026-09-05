@@ -177,14 +177,26 @@ class LinksPageMixin:
     def _apply_links_theme(self):
         """Re-apply per-row action button styles from current tokens (B2⑦)."""
         sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
-        params = dict(
-            font_size_key="xs",
-            padding_y=sk.px(int(sk.prop("spacing", "xs"))),
-            padding_x=sk.px(int(sk.prop("spacing", "sm"))),
-        )
+        font_size_key = "xs"
+        padding_y = sk.px(int(sk.prop("spacing", "xs")))
+        padding_x = sk.px(int(sk.prop("spacing", "sm")))
         for btn in self._links_table.findChildren(QPushButton):
             name = btn.objectName()
             if name == "sharing_copy_btn":
-                btn.setStyleSheet(sk.button_css("primary", **params))
+                btn.setStyleSheet(
+                    sk.button_css(
+                        "primary",
+                        font_size_key=font_size_key,
+                        padding_y=padding_y,
+                        padding_x=padding_x,
+                    )
+                )
             elif name == "sharing_delete_btn":
-                btn.setStyleSheet(sk.button_css("danger", **params))
+                btn.setStyleSheet(
+                    sk.button_css(
+                        "danger",
+                        font_size_key=font_size_key,
+                        padding_y=padding_y,
+                        padding_x=padding_x,
+                    )
+                )

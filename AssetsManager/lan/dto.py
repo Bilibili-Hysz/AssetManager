@@ -232,7 +232,7 @@ class CollectionResponse:
             str(record["name"]),
             str(record["kind"]),
             query,
-            member_count if isinstance(member_count, int) else int(member_count),
+            member_count if isinstance(member_count, int) else int(member_count),  # type: ignore[arg-type]
             float(record.get("created_at", 0.0)),  # type: ignore[arg-type]
             float(record.get("updated_at", 0.0)),  # type: ignore[arg-type]
             None if asset_count is None else int(asset_count),  # type: ignore[arg-type]

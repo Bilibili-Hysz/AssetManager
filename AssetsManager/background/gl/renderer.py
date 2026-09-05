@@ -7,6 +7,8 @@ back to CPU instead of crashing (design D-3).
 """
 from __future__ import annotations
 
+from typing import cast
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QOpenGLContext
 from PySide6.QtOpenGL import (
@@ -39,7 +41,10 @@ class GlPipeline:
     def __init__(self) -> None:
         self._programs: dict[str, QOpenGLShaderProgram] = {}
         self._shadertoy_cache: dict[str, QOpenGLShaderProgram] = {}
-        self._quad_vbo: int = 0
+        # Born as a placeholder int; becomes a QOpenGLBuffer inside
+        # ``ensure_ready`` once all four programs compiled — the attribute is
+        # never touched before that (see the ``_ready`` gate).
+        self._quad_vbo: int | QOpenGLBuffer = 0
         self._fbo_a: QOpenGLFramebufferObject | None = None
         self._fbo_b: QOpenGLFramebufferObject | None = None
         self._ready = False
@@ -55,17 +60,25 @@ class GlPipeline:
         if ctx is None:
             self._failure = "no current OpenGL context"
             return False
-        self._programs["passthrough"] = self._compile(
-            VERT=shaders.VERT_SRC, FRAG=shaders.PASSTHROUGH_FRAG
+        # The casts only narrow away the ``None`` that ``_compile`` returns on
+        # failure: any failure also sets ``self._failure``, and the
+        # ``all(...)`` gate below checks that first, so a ``None`` never
+        # survives this method (see the ``if all(...)`` / ``_failure`` pair).
+        self._programs["passthrough"] = cast(
+            "QOpenGLShaderProgram",
+            self._compile(VERT=shaders.VERT_SRC, FRAG=shaders.PASSTHROUGH_FRAG),
         )
-        self._programs["blur"] = self._compile(
-            VERT=shaders.VERT_SRC, FRAG=shaders.BLUR_FRAG
+        self._programs["blur"] = cast(
+            "QOpenGLShaderProgram",
+            self._compile(VERT=shaders.VERT_SRC, FRAG=shaders.BLUR_FRAG),
         )
-        self._programs["mosaic"] = self._compile(
-            VERT=shaders.VERT_SRC, FRAG=shaders.MOSAIC_FRAG
+        self._programs["mosaic"] = cast(
+            "QOpenGLShaderProgram",
+            self._compile(VERT=shaders.VERT_SRC, FRAG=shaders.MOSAIC_FRAG),
         )
-        self._programs["kuwahara"] = self._compile(
-            VERT=shaders.VERT_SRC, FRAG=shaders.KUW_FRAG
+        self._programs["kuwahara"] = cast(
+            "QOpenGLShaderProgram",
+            self._compile(VERT=shaders.VERT_SRC, FRAG=shaders.KUW_FRAG),
         )
         if all(p is not None for p in self._programs.values()):
             import struct
@@ -134,11 +147,17 @@ class GlPipeline:
         ctx = QOpenGLContext.currentContext()
         gl = ctx.functions()
         program.bind()
-        self._quad_vbo.bind()
-        program.enableAttributeArray("a_pos")
-        program.setAttributeBuffer("a_pos", _GL_FLOAT, 0, 2)
+        # Only reachable after ensure_ready() stored a real QOpenGLBuffer here.
+        vbo = cast("QOpenGLBuffer", self._quad_vbo)
+        vbo.bind()
+        # PySide6 ships overloads for bytes and int locations but not plain
+        # str names; the runtime binding converts str to QByteArray anyway.
+        program.enableAttributeArray("a_pos")  # type: ignore[call-overload]
+        program.setAttributeBuffer(
+            "a_pos", _GL_FLOAT, 0, 2  # type: ignore[call-overload]
+        )
         gl.glDrawArrays(_GL_TRIANGLE_STRIP, 0, 4)
-        self._quad_vbo.release()
+        vbo.release()
         program.release()
 
     @staticmethod
@@ -217,7 +236,11 @@ class GlPipeline:
         src_size = size
         flip = False
         for effect, direction in passes:
-            target = self._fbo_b if not flip else self._fbo_a
+            # _resize_fbos above created both FBOs, so neither is None here.
+            target = cast(
+                "QOpenGLFramebufferObject",
+                self._fbo_b if not flip else self._fbo_a,
+            )
             dst_size = (target.width(), target.height())
             target.bind()
             gl.glViewport(0, 0, dst_size[0], dst_size[1])
@@ -232,7 +255,9 @@ class GlPipeline:
             src = target.texture()
             src_size = dst_size
             flip = not flip
-        return self._fbo_b if flip else self._fbo_a
+        return cast(
+            "QOpenGLFramebufferObject", self._fbo_b if flip else self._fbo_a
+        )
 
     def _program_for(self, effect: EffectSpec) -> QOpenGLShaderProgram | None:
         # "shader" effects never reach the still pipeline (pipeline.py routes
@@ -256,7 +281,12 @@ class GlPipeline:
         if effect.kind == "blur":
             texel = (1.0 / src_size[0], 1.0 / src_size[1])
             program.setUniformValue(program.uniformLocation(b"u_texel"), *texel)
-            program.setUniformValue(program.uniformLocation(b"u_dir"), *direction)
+            # Blur passes are always built with a direction (see the pass
+            # expansion in _apply_chain_to_fbo), so the Optional is never
+            # taken on this branch.
+            program.setUniformValue(
+                program.uniformLocation(b"u_dir"), *cast("tuple[float, float]", direction)
+            )
             program.setUniformValue(program.uniformLocation(b"u_radius"), float(effect.intensity))
             self._draw_quad(program)
         elif effect.kind == "mosaic":
@@ -305,7 +335,7 @@ class GlPipeline:
         program.setUniformValue(program.uniformLocation(b"iResolution"), float(size[0]), float(size[1]), 1.0)
         program.setUniformValue(program.uniformLocation(b"iTime"), float(time_sec))
         program.setUniformValue(program.uniformLocation(b"u_strength"), float(strength))
-        for unit, tex_id in (channels or {}).items():
+        for unit, tex_id in cast("dict[int, int]", channels or {}).items():
             gl.glActiveTexture(_GL_TEXTURE0 + unit)
             gl.glBindTexture(_GL_TEXTURE_2D, tex_id)
             program.setUniformValue(
@@ -332,7 +362,8 @@ class GlPipeline:
         if not self.ensure_ready():
             return None
         self._resize_fbos(size)
-        fbo = self._fbo_a
+        # _resize_fbos just (re)created the FBO pair, so _fbo_a is not None.
+        fbo = cast("QOpenGLFramebufferObject", self._fbo_a)
         fbo.bind()
         ctx = QOpenGLContext.currentContext()
         gl = ctx.functions()

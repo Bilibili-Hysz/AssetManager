@@ -389,12 +389,22 @@ def test_file_system_change_rewrites_persisted_projection(tmp_path, schema_db, m
     service = GalleryService(connection_provider=lambda _root: schema_db)
     monkeypatch.setattr(service, "_incremental_debounce", 0.05)
     try:
+        # The persisted database row is the only reliable commit signal here:
+        # the builder publishes the memory cache before it writes the row, so
+        # a cache hit does not imply the row exists yet. Under parallel-test
+        # CPU contention the two moments separate and a row-based assertion
+        # must poll (see test_home_projection_persists_to_database_and_survives)
+        # — each get_home_cached miss re-arms the background build.
         deadline = time.monotonic() + 10.0
-        while time.monotonic() < deadline and service.get_home_cached(tmp_path) is None:
+        while time.monotonic() < deadline:
+            service.get_home_cached(tmp_path)
+            if schema_db.execute(
+                "SELECT 1 FROM gallery_home WHERE id = 1"
+            ).fetchone() is not None:
+                break
             time.sleep(0.05)
-        assert schema_db.execute(
-            "SELECT 1 FROM gallery_home WHERE id = 1"
-        ).fetchone() is not None
+        else:
+            pytest.fail("background build never persisted gallery_home within 10.0s")
 
         applied_before, fallbacks_before = service.incremental_stats
         _image(tmp_path / "set" / "two.png")

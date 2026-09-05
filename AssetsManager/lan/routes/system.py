@@ -23,7 +23,7 @@ from AssetsManager.lan.routes._helpers import (
 )
 
 # /api/info is public, so an unauthenticated client could force the
-# full-library project count walk on every landing/storefront refresh.  The
+# full-library project count walk on every landing-page refresh.  The
 # count is cached per library root (30s TTL) and the walk itself runs off the
 # event loop; together they turn the endpoint into a cheap cache read instead
 # of a 0.5-3s per-request directory traversal.

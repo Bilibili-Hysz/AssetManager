@@ -762,6 +762,27 @@ def _make_video(path, size=(64, 48), duration=0.5):
     return path
 
 
+def _wait_for_marker(marker: Path, *, timeout: float = 20.0) -> None:
+    """Poll until the lock-owner child publishes its marker file.
+
+    The child's cold start (interpreter boot, ``AssetsManager`` import chain,
+    PySide6.QtCore load, QLockFile acquisition) takes seconds even when idle
+    and stretches far past that under xdist CPU contention, so the marker
+    poll must be a generous deadline loop instead of a fixed short one.
+    """
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if marker.exists():
+            return
+        time.sleep(0.02)
+    pytest.fail(
+        f"lock-owner child did not publish {marker} within {timeout:.0f}s "
+        "(cold start starved by parallel test workers)"
+    )
+
+
 def test_video_snapshot_extractor_does_not_use_source_path(tmp_path, monkeypatch):
     calls = []
     destination = tmp_path / "thumbs" / "frame.jpg"
@@ -799,12 +820,11 @@ def test_cache_owner_lock_rejects_another_process(tmp_path):
         text=True,
     )
     try:
-        for _ in range(100):
-            if marker.exists():
-                break
-            import time
-            time.sleep(0.02)
-        assert marker.exists()
+        # The marker poll must outlast the child's cold start: importing
+        # PySide6.QtCore and acquiring the QLockFile takes ~2-4s even on an
+        # idle box and far longer under parallel-worker CPU contention, so a
+        # 2s (100 x 0.02s) window flakes when xdist starves the child.
+        _wait_for_marker(marker, timeout=20.0)
         with pytest.raises(TimeoutError):
             with cache_owner_lock(lock_dir, timeout=0.05, poll_interval=0.01):
                 pass
@@ -832,12 +852,7 @@ def test_cache_owner_lock_recovers_after_owner_exit(tmp_path):
         text=True,
     )
     try:
-        for _ in range(100):
-            if marker.exists():
-                break
-            import time
-            time.sleep(0.02)
-        assert marker.exists()
+        _wait_for_marker(marker, timeout=20.0)
         child.terminate()
         child.wait(timeout=5)
         with cache_owner_lock(lock_dir, timeout=2.0, poll_interval=0.02):

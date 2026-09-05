@@ -150,7 +150,10 @@ class _SettingsNavShell(QWidget):
         return self._stack.count()
 
     def widget(self, index) -> QWidget:  # noqa: N802 (Qt naming)
-        return self._stack.widget(index)
+        # QStackedWidget.widget returns None only for out-of-range indexes;
+        # this Qt-name-compatible shim mirrors QTabWidget.widget's contract,
+        # and the dialog only calls it with in-range page indexes.
+        return cast("QWidget", self._stack.widget(index))
 
     def select_page(self, index: int) -> None:
         self._stack.setCurrentIndex(index)
@@ -1542,6 +1545,11 @@ class SettingsDialog(TabbedDialog):
 
     def _render_relink_report(self, report):
         """Render one RelinkReport as capped result rows + status summary."""
+        from AssetsManager.application.relink_service import (
+            LostEntry,
+            RelinkSuggestion,
+        )
+
         self._set_relink_busy(False)
         self._relink_list.clear()
         self._relink_suggestions = []
@@ -1554,13 +1562,15 @@ class SettingsDialog(TabbedDialog):
             self._relink_all_btn.setVisible(False)
             return
 
-        rows: list[tuple[str, object]] = [
+        rows: list[tuple[str, RelinkSuggestion | LostEntry]] = [
             ("pair", suggestion) for suggestion in report.suggestions
         ]
         rows.extend(("lost", entry) for entry in report.unpaired_lost)
         for kind, payload in rows[:_RELINK_ROW_LIMIT]:
             if kind == "pair":
-                suggestion = payload
+                # Rows tagged "pair" only ever carry RelinkSuggestion payloads
+                # (see the list construction above).
+                suggestion = cast("RelinkSuggestion", payload)
                 badge = (
                     tr("settings.relink_confidence_high")
                     if suggestion.confidence == "high"
@@ -1573,9 +1583,11 @@ class SettingsDialog(TabbedDialog):
                         self._on_relink_one(s))
                 self._relink_suggestions.append(suggestion)
             else:
-                text = f"{payload.file_path}"
+                # Rows not tagged "pair" only ever carry LostEntry payloads.
+                entry = cast("LostEntry", payload)
+                text = f"{entry.file_path}"
                 row = _RelinkRowWidget(
-                    f"{payload.file_path}  ·  {tr('settings.relink_no_suggestion')}")
+                    f"{entry.file_path}  ·  {tr('settings.relink_no_suggestion')}")
             item = QListWidgetItem(text)
             self._relink_list.addItem(item)
             self._relink_list.setItemWidget(item, row)

@@ -571,6 +571,15 @@ def test_switch_library_reopens_closed_same_root_session(tmp_path):
 
 
 def test_main_window_delegates_library_switch_to_lifecycle_coordinator():
+    # ``_on_switch_library`` flips the QApplication override cursor while it
+    # drives the switch synchronously.  On PySide6 6.11 + Python 3.14 the
+    # static ``QApplication.setOverrideCursor`` fast-fails the whole process
+    # (0xC0000409) when no QApplication instance exists, so the unit test
+    # must materialize one first — the same pattern as
+    # tests/unit/test_window_coordinator.py and the desktop fixtures.
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
     coordinator = Mock()
 
     class _Window:
@@ -579,6 +588,9 @@ def test_main_window_delegates_library_switch_to_lifecycle_coordinator():
     MainWindow._on_switch_library(_Window(), "new-root")
 
     coordinator.switch_library.assert_called_once_with("new-root")
+    # The wait cursor installed for the synchronous switch must be removed,
+    # leaving the application's override-cursor stack balanced.
+    assert app.overrideCursor() is None
 
 
 def test_shutdown_resources_uses_window_import_cleanup_boundary():

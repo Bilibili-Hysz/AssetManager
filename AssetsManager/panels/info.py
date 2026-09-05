@@ -117,20 +117,16 @@ class InfoPanel(PanelContent):
         self._preview.setToolTip(tr("info.preview_dbl_click"))
         preview_layout.addWidget(self._preview, 1)
 
-        self._empty_preview_state = QWidget()
-        empty_layout = QVBoxLayout(self._empty_preview_state)
-        empty_layout.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12))
-        empty_layout.setSpacing(scaled_px(8))
-        empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._empty_preview_icon = QLabel()
-        self._empty_preview_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._empty_preview_icon.setAccessibleName(tr("info.no_file_selected"))
-        empty_layout.addWidget(self._empty_preview_icon, 0, Qt.AlignmentFlag.AlignCenter)
-        self._empty_preview_label = QLabel()
-        self._empty_preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._empty_preview_label.setWordWrap(True)
-        self._empty_preview_label.setAccessibleName(tr("info.no_file_selected"))
-        empty_layout.addWidget(self._empty_preview_label, 0, Qt.AlignmentFlag.AlignCenter)
+        from AssetsManager.widgets.empty_state import EmptyStateWidget
+
+        self._empty_preview_state = EmptyStateWidget(
+            self,
+            kind="empty",
+            title=tr("info.no_file_selected"),
+            subtitle=tr("info.select_file_first"),
+        )
+        self._empty_preview_icon = self._empty_preview_state._icon_label
+        self._empty_preview_label = self._empty_preview_state._title_label
         preview_layout.addWidget(self._empty_preview_state, 1)
         self._empty_preview_state.hide()
         self._splitter.addWidget(self._preview_host)
@@ -706,10 +702,11 @@ class InfoPanel(PanelContent):
             sk.muted_css(11)
             + f" QLabel {{ min-width: {sk.px(65)}px; }}")
         layout.addWidget(lbl)
+        hit = scaled_px(themes.metrics("hit_area"))
         self._rating_stars: list[QPushButton] = []
         for i in range(1, 6):
             star_btn = QPushButton()
-            star_btn.setFixedSize(scaled_px(20), scaled_px(20))
+            star_btn.setFixedSize(hit, hit)
             star_btn.setFlat(True)
             star_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             star_btn.setAccessibleName(tr("info.rating_star").format(n=i))
@@ -740,8 +737,8 @@ class InfoPanel(PanelContent):
             return
         self._rating_value = value
         self._rating_row_initialized = True
-        star_size = scaled_px(16)
-        btn_size = scaled_px(20)
+        star_size = scaled_px(themes.metrics("icon_sm"))
+        btn_size = scaled_px(themes.metrics("hit_area"))
         for i, btn in enumerate(self._rating_stars, start=1):
             tint = "favorite" if i <= value else "icon_muted"
             btn.setIcon(icons.icon("star", color=tint, size=star_size))
@@ -983,8 +980,11 @@ class InfoPanel(PanelContent):
 
         if hasattr(self, "_details_scroll"):
             widget = self._details_scroll.widget()
-            if widget is not None and widget.layout() is not None:
-                widget.layout().activate()
+            if widget is not None:
+                # Capture in a local so the None guard below still narrows.
+                widget_layout = widget.layout()
+                if widget_layout is not None:
+                    widget_layout.activate()
             self._details_scroll.verticalScrollBar().setValue(0)
 
     def _set_section_visible(self, key: str, widget: QWidget, visible: bool) -> None:
@@ -1169,14 +1169,13 @@ class InfoPanel(PanelContent):
     def _refresh_empty_preview_state(self):
         if not hasattr(self, "_empty_preview_state"):
             return
-        sk = StyleKit.from_theme(themes, px=scaled_px, pt=scaled_pt)
-        icon_size = scaled_px(48)
-        self._empty_preview_icon.setPixmap(
-            icons.icon("file", color="icon_muted", size=icon_size).pixmap(
-                QSize(icon_size, icon_size)))
-        self._empty_preview_label.setText(tr("info.no_file_selected"))
-        self._empty_preview_label.setStyleSheet(
-            sk.muted_css(int(themes.prop('font_size', 'sm'))) + " QLabel { border: none; }")
+        from AssetsManager.widgets.empty_state import EmptyStateWidget
+        if isinstance(self._empty_preview_state, EmptyStateWidget):
+            self._empty_preview_state.set_state(
+                kind="empty",
+                title=tr("info.no_file_selected"),
+                subtitle=tr("info.select_file_first"),
+            )
         if hasattr(self, "_palette_strip"):
             self._palette_strip.hide()
         if hasattr(self, "_open_btn"):

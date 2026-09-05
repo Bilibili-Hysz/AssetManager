@@ -12,7 +12,7 @@ from collections import deque
 from dataclasses import dataclass, replace
 from pathlib import Path
 from time import perf_counter, time
-from typing import TYPE_CHECKING, Any, Callable, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Sequence, cast
 
 from AssetsManager.application.context import session_operation
 from AssetsManager.application.file_operation_service import acquire_path_locks
@@ -862,7 +862,10 @@ class UndoService:
     def _run_callback(self, entry: UndoEntry, is_undo: bool) -> bool:
         """Run a non-file-system undo/redo hook, mapping failures to failed."""
         try:
-            return bool(entry.callback(is_undo))
+            # Callers gate on ``entry.callback is not None`` before invoking
+            # this helper; the cast carries that proof past the call boundary.
+            callback = cast("Callable[[bool], bool]", entry.callback)
+            return bool(callback(is_undo))
         except Exception:
             _log.exception("Undo/redo callback failed for %s", entry.type)
             self._mark_failed(entry)

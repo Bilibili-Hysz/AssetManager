@@ -1,9 +1,11 @@
 """Dominant color palette strip widget for desktop InfoPanel and Detail views."""
 from __future__ import annotations
 
+from typing import cast
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QCursor, QGuiApplication
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QToolTip
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QLayoutItem, QToolTip
 
 from AssetsManager.core import themes
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
@@ -54,7 +56,8 @@ class DominantPaletteStrip(QWidget):
     def set_colors(self, colors: list[str]) -> None:
         """Update displayed colors (capped at 5 swatches)."""
         while self._pills_layout.count():
-            item = self._pills_layout.takeAt(0)
+            # takeAt never yields None for a non-empty box layout.
+            item = cast("QLayoutItem", self._pills_layout.takeAt(0))
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()

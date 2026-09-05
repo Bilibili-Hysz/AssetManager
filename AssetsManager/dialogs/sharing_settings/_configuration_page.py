@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 from AssetsManager.core import themes
 from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.constants import DEFAULT_LAN_THEME_COLOR
+from AssetsManager.core.settings import AppSettings
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.widgets.stylekit import StyleKit
 from AssetsManager import i18n
@@ -23,6 +24,9 @@ class ConfigurationPageMixin:
     """Configuration page: section navigation and the settings form itself."""
 
     # Widgets built by _setup_settings_tab.
+    # Host attribute (SharingSettingsDialog assigns AppSettings.instance() in
+    # its __init__); declared here so the mixin can type-check against it.
+    _settings: AppSettings
     _configuration_nav: QFrame
     _configuration_stack: QStackedWidget
     _configuration_nav_buttons: list

@@ -13,6 +13,7 @@ unmodified image (never a black screen), with a warning.
 from __future__ import annotations
 
 import logging
+from typing import cast
 
 from PySide6.QtGui import QImage, QOffscreenSurface, QOpenGLContext
 
@@ -93,7 +94,9 @@ class ImageEffectRenderer:
         if self._ensure_gl() and self._pipeline is not None:
             try:
                 if self._ctx is not None:
-                    self._ctx.makeCurrent(self._surface)
+                    # _ctx and _surface are assigned together in _ensure_gl,
+                    # so a live context implies a live surface.
+                    self._ctx.makeCurrent(cast("QOffscreenSurface", self._surface))
                 size = (image.width(), image.height())
                 out = self._pipeline.render_still(image, chain, size)
                 if self._ctx is not None:
@@ -116,7 +119,9 @@ class ImageEffectRenderer:
             return image
         try:
             if self._ctx is not None:
-                self._ctx.makeCurrent(self._surface)
+                # _ctx and _surface are assigned together in _ensure_gl,
+                # so a live context implies a live surface.
+                self._ctx.makeCurrent(cast("QOffscreenSurface", self._surface))
             size = (image.width(), image.height())
             out = self._pipeline.render_shader_preset(
                 image, snippet.fragment, size, 0.0, intensity / 50.0

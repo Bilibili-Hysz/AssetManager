@@ -9,7 +9,7 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout,
     QCheckBox, QGroupBox, QLabel, QSpinBox, QScrollArea,
-    QWidget,
+    QPushButton, QWidget,
 )
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core import icons, themes
@@ -20,6 +20,12 @@ tr = i18n.tr
 
 
 class SidebarSettingsDialog(StandardModalDialog):
+    # Built unconditionally by StandardModalDialog.__init__ before any
+    # subclass code runs; declared because the base's two-branch cancel
+    # assignment makes the inferred union types too wide here.
+    _ok_btn: QPushButton
+    _cancel_btn: QPushButton
+
     def __init__(self, parent=None, root_paths=None, show_favs=True, show_recs=True,
                  show_filter=True, global_depth=2, branch_depths=None):
         self._root_paths = root_paths or []

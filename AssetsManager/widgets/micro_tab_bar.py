@@ -11,7 +11,7 @@ A fluid, accessible, high-DPI aware segmented tab bar featuring:
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from PySide6.QtCore import (
     Property,
@@ -115,7 +115,9 @@ class MicroTabBar(QWidget):
 
         # Initialize tabs if provided
         if tabs:
-            self.set_tabs(list(tabs))
+            # Only list[str] reaches here with a truthy value: the QWidget
+            # overload was rewritten to None above.
+            self.set_tabs(cast("list[str]", tabs))
         else:
             self._apply_style()
 

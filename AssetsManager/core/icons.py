@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from collections import OrderedDict
+from typing import cast
 
 from PySide6.QtCore import QByteArray, QRectF, Qt
 from PySide6.QtGui import QGuiApplication, QIcon, QPainter, QPixmap
@@ -167,7 +168,9 @@ def _detect_dpr(explicit_dpr: float | None = None) -> float:
             if active_win is not None:
                 dpr_fn = getattr(active_win, "devicePixelRatioF", None)
                 if callable(dpr_fn):
-                    dpr = dpr_fn()
+                    # QWindow.devicePixelRatioF; fetched via getattr so the
+                    # static type is the untyped object.
+                    dpr = cast("float", dpr_fn())
                     if dpr > 0:
                         return float(dpr)
                 scr = getattr(active_win, "screen", lambda: None)()

@@ -20,8 +20,9 @@ def test_scoped_copy_projection_completes_before_file_system_changed_consumed(tm
     with patch.object(eb, "_instance", bus):
         bootstrap = ApplicationBootstrap()
         session = bootstrap.library_service.open_session(tmp_path)
-        service = bootstrap.for_library(session).file_operation_service
-        index = bootstrap.for_library(session).asset_index_service
+        runtime = bootstrap.runtime_for(session)
+        service = runtime.services.file_operation_service
+        index = runtime.services.asset_index_service
         try:
             # Perform copy operation
             service.copy_to_directory([source], destination)
@@ -64,8 +65,9 @@ def test_scoped_delete_projection_completes_before_file_system_changed_consumed(
     with patch.object(eb, "_instance", bus):
         bootstrap = ApplicationBootstrap()
         session = bootstrap.library_service.open_session(tmp_path)
-        service = bootstrap.for_library(session).file_operation_service
-        index = bootstrap.for_library(session).asset_index_service
+        runtime = bootstrap.runtime_for(session)
+        service = runtime.services.file_operation_service
+        index = runtime.services.asset_index_service
         try:
             # Index the file first
             conn = session.connection_for(tmp_path)

@@ -23,6 +23,7 @@ from AssetsManager.repositories.tag_repository import TagRepository
 
 if TYPE_CHECKING:
     from AssetsManager.application.search_index_service import SearchIndexService
+    from AssetsManager.repositories.asset_index_repository import AssetIndexEntry
 
 
 class _Scanner(Protocol):
@@ -833,29 +834,41 @@ class SearchService:
                 limit=limit,
             )
         root = root_identity(library_root, strict=False).display_path
-        structured_kwargs: dict[str, object] = {
-            "name_substring": name_substring,
-            "extensions": extensions,
-            "size_min": size_min,
-            "size_max": size_max,
-            "mtime_after": mtime_after,
-            "mtime_before": mtime_before,
-            "rating_min": rating_min,
-            "rating_max": rating_max,
-            "favorite": favorite,
-            "favorite_owner_key": favorite_owner_key,
-            "order_by": order_by,
-            "limit": limit,
-            "offset": offset,
-        }
         try:
             if self._asset_index_service is not None:
                 entries = self._asset_index_service.search_structured(
-                    db_conn, root, **structured_kwargs
+                    db_conn,
+                    root,
+                    name_substring=name_substring,
+                    extensions=extensions,
+                    size_min=size_min,
+                    size_max=size_max,
+                    mtime_after=mtime_after,
+                    mtime_before=mtime_before,
+                    rating_min=rating_min,
+                    rating_max=rating_max,
+                    favorite=favorite,
+                    favorite_owner_key=favorite_owner_key,
+                    order_by=order_by,
+                    limit=limit,
+                    offset=offset,
                 )
             else:
                 entries = AssetIndexRepository(db_conn).search_structured(
-                    str(root), **structured_kwargs
+                    str(root),
+                    name_substring=name_substring,
+                    extensions=extensions,
+                    size_min=size_min,
+                    size_max=size_max,
+                    mtime_after=mtime_after,
+                    mtime_before=mtime_before,
+                    rating_min=rating_min,
+                    rating_max=rating_max,
+                    favorite=favorite,
+                    favorite_owner_key=favorite_owner_key,
+                    order_by=order_by,
+                    limit=limit,
+                    offset=offset,
                 )
         except (sqlite3.ProgrammingError, sqlite3.OperationalError, ValueError):
             raise
@@ -896,7 +909,7 @@ class SearchService:
     def _project_index_entries(
         self,
         root: Path,
-        entries: Iterable[object],
+        entries: Iterable[AssetIndexEntry],
         category: str,
     ) -> tuple[list[SearchResult], list[SearchError], int]:
         """Project ``AssetIndexEntry`` rows into results with diagnostics.

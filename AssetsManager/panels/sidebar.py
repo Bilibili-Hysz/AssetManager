@@ -143,6 +143,7 @@ class SidebarPanel(StandardPanel):
         # ── Search bar + toolbar ─────────────────────────────────
 
         self._search = QLineEdit()
+        self._search.setFixedHeight(scaled_px(themes.metrics("control_height_md")))
         self._search.setPlaceholderText(tr("sidebar.filter_placeholder"))
         self._search.textChanged.connect(self._on_search_text)
         self._search.setClearButtonEnabled(True)
@@ -840,7 +841,8 @@ class SidebarPanel(StandardPanel):
         ]
 
     def _collection_new(self):
-        if self._collection_service() is None:
+        service = self._collection_service()
+        if service is None:
             return
         name, ok = QInputDialog.getText(
             self, tr("sidebar.dialog.new_collection"),
@@ -849,7 +851,9 @@ class SidebarPanel(StandardPanel):
         if not (ok and name.strip()):
             return
         try:
-            self._collection_service().create(self._library_root, name.strip())
+            # The guard above proved a bound service; a local keeps the
+            # narrowing into the try block.
+            service.create(self._library_root, name.strip())
         except Exception as exc:
             _log.warning("Sidebar collection create failed: %s", exc)
         # CollectionChanged repopulates the tree.

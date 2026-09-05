@@ -577,11 +577,13 @@ class CommandPalette(QDialog):
         try:
             svc = None
             session = getattr(parent, "_library_session", None)
-            if hasattr(parent, "_scoped_services_for_session") and session:
-                scoped = parent._scoped_services_for_session(session)
+            scoped_factory = getattr(parent, "_scoped_services_for_session", None)
+            if callable(scoped_factory) and session:
+                scoped = scoped_factory(session)
                 svc = getattr(scoped, "tag_service", None)
-            if svc is None and hasattr(parent, "_bootstrap") and session:
-                runtime = parent._bootstrap.runtime_for(session)
+            bootstrap = getattr(parent, "_bootstrap", None)
+            if svc is None and bootstrap is not None and session:
+                runtime = bootstrap.runtime_for(session)
                 svc = getattr(runtime.services, "tag_service", None)
             if svc is not None and hasattr(svc, "get_all_tags"):
                 return list(svc.get_all_tags(lib_root))
@@ -638,7 +640,7 @@ class CommandPalette(QDialog):
         from PySide6.QtWidgets import QMessageBox
 
         QMessageBox.information(
-            parent,
+            cast("QWidget", parent),
             tr("filelist.dialog.batch_rename", default="批量重命名"),
             tr("command_palette.no_files_selected", default="请在文件列表中先选中需要重命名的文件。"),
         )

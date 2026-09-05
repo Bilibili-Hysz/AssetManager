@@ -34,7 +34,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Callable
+from typing import Callable, cast
 
 from PIL import Image
 
@@ -82,7 +82,13 @@ def extract_palette(image: Image.Image, *, colors: int = 6) -> dict | None:
             )
         quantized = rgb.quantize(colors=max(1, colors))
         palette = quantized.getpalette() or []
-        counts = quantized.getcolors(maxcolors=max(1, colors) * 16) or []
+        # A "P"-mode image's getcolors() yields (count, palette-index) pairs;
+        # Pillow's type hint also allows the RGB tuple variant, which cannot
+        # occur for palette images — narrow it for the index arithmetic below.
+        counts = cast(
+            "list[tuple[int, int]]",
+            quantized.getcolors(maxcolors=max(1, colors) * 16) or [],
+        )
         # getcolors() yields (count, palette-index); sort by count descending
         # so the dominant swatch leads.
         counts.sort(key=lambda entry: entry[0], reverse=True)

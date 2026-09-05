@@ -190,6 +190,23 @@ async def test_hardened_admin_read_is_blocked_by_middleware_before_handler(
                 "lan_guest_download": False,
             }.get(key, default)
 
+        # The bootstrap wires reconciliation outbox retention through the
+        # settings facade; this stub replaces AppSettings.instance wholesale,
+        # so the facade methods must exist. The values are irrelevant to the
+        # middleware assertion under test — returning the service defaults
+        # keeps the outbox pruner out of the way.
+        def get_reconciliation_outbox_prune_interval_seconds(self):
+            return 3600.0
+
+        def get_reconciliation_outbox_ack_retention_seconds(self):
+            return 7 * 24 * 60 * 60
+
+        def get_reconciliation_outbox_dead_letter_retention_seconds(self):
+            return 30 * 24 * 60 * 60
+
+        def get_reconciliation_outbox_prune_limit(self):
+            return 1000
+
     monkeypatch.setattr(AppSettings, "instance", classmethod(lambda _cls: Settings()))
 
     real_require_admin = users_module.require_admin
