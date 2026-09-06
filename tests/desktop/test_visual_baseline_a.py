@@ -35,6 +35,24 @@ desktop 套件来验证截图摘要——那是共享进程模式，滚动条 tr
 属已知限制（Qt 样式表/背景传播的进程级状态，无测试侧根治手段，也不值得
 为它做像素归一化）。
 
+**xdist 全套下的偶发家族（隔离必绿，登记不修）**：
+``test_main_window_empty_library`` / ``test_settings_dialog_six_tabs`` /
+``test_empty_panel`` 等约 1/4 概率在全套 xdist 下红——同 worker 前序测试
+的进程级字体/QSS 残留改写逐行哈希（几何方差已用 ``_geometry_restored``
+钉扎消除，剩余为进程级残留）。定性流程：单模块 ``-n 0`` 复跑绿即 noise。
+对话框几何的跨会话争用另有单点防护：``_capture`` 对 TabbedDialog 族置
+``_geometry_restored=True`` 阻断从共享 settings.json 恢复几何。
+
+**阶段 F 前置件扩展（2026-09-06）**：截图目录从 12 张扩到主报告 §9.3
+点名的全组件清单——设置六页、分享设置四页、全部编辑模态（TagEditor /
+BatchRename / TagStyle / SidebarSettings / ShareQR / ColorPicker / 崩溃恢复
+对话框）、浮层带内容（CommandPalette 打开态 / QuickLook / QuickTagger /
+ImageViewer 真实样本图）、标签树（TagBrowserDialog）。全部 Navy（阶段 F
+真机验收再扩 Dawn/阈值主题）；manifest 条目补齐 §9.3 全部元数据字段
+（语言 / 系统DPI / 窗口尺寸 / 字体环境 / 未提交差异规模）。模态与浮层
+的摘要稳定性逐个评估，不稳者走"仅证据轨"（docstring 写明豁免理由，
+startup_window / plugin_manager_dialog 同款处置）。
+
 不变式：不修改生产代码；不改 tests/ 之外的任何运行时状态（tests/
 conftest.py 的会话级备份/还原负责 settings.json 复原）。
 """
@@ -163,6 +181,9 @@ def _apply_app_startup_style() -> None:
     （set_font/pointSize）或残留自己的 stylesheet，而文字渲染参与逐行
     哈希。这里每用例重放生产启动的两步：全局主题 QSS + 基准字体
     （PreferNoHinting、pointSize 经 scaled_pt——钉 1.0 后即系统默认 pt）。
+    基准 pt 取自**全新 QFont()**（平台默认），不取 ``existing.font()``——
+    后者可能已被前序测试改写，重放会把污染固化成"新基准"（摘要轮转
+    漂移的根因，2026-09-06 审查定性）。
     ``instance()`` 声明返回 QCoreApplication，但桌面会话下必然是
     QApplication（conftest 已建）；isinstance 收窄给类型检查器看。
     """
@@ -172,7 +193,7 @@ def _apply_app_startup_style() -> None:
     if not isinstance(existing, QApplication):
         return  # 理论不可达：桌面用例必有 QApplication
     existing.setStyleSheet(themes.stylesheet())
-    font = existing.font()
+    font = QFont()  # 平台默认族+pt——免疫 app 级字体污染
     font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
     base_pt = font.pointSize()
     existing.setProperty("base_font_size", base_pt)
@@ -223,6 +244,59 @@ def _source_head() -> str:
 def _pyside_version() -> str:
     import PySide6
     return PySide6.__version__
+
+
+def _git_dirty_count() -> int:
+    """工作树脏文件数（主报告 §9.3「提交及未提交差异」记录项）。
+
+    manifest 是再生时刻的快照：source_head 记提交，脏文件数记未提交差异
+    的规模（并行工作线的在途改动也会计入——这正是"截图产生于什么树"的
+    诚实记录）。无 git 环境记 -1（unknown）。
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "status", "--porcelain"],
+            capture_output=True, text=True, timeout=10, check=True,
+        ).stdout
+    except Exception:
+        return -1
+    return sum(1 for line in out.splitlines() if line.strip())
+
+
+def _logical_dpi_label(widget) -> str:
+    """主报告 §9.3「系统DPI」记录项：offscreen 平台的逻辑 DPI。
+
+    offscreen 无物理 DPI 概念，统一记 ``offscreen <n>dpi``（Qt offscreen
+    插件默认逻辑 96）；真机验收时该字段由实机 DPI 复核（模板 §4）。
+    """
+    from PySide6.QtGui import QGuiApplication
+
+    screen = widget.screen() if hasattr(widget, "screen") else None
+    if screen is None:
+        screen = QGuiApplication.primaryScreen()
+    dpi = screen.logicalDotsPerInch() if screen is not None else 0.0
+    return f"offscreen {dpi:g}dpi"
+
+
+def _font_environment_label() -> str:
+    """主报告 §9.3「字体环境」记录项：应用字体族 + hinting 偏好名。
+
+    fixture `_apply_app_startup_style` 每用例重放生产启动字体（PreferNoHinting
+    + scaled_pt 基准字号）；这里记录实际生效的族名，跨机器差异本身就是
+    §9.3 要求记录的"字体环境"。
+    """
+    from PySide6.QtGui import QFont
+
+    app = QApplication.instance()
+    font = app.font() if app is not None else QFont()
+    hint_names = {
+        QFont.HintingPreference.PreferDefaultHinting: "prefer_default",
+        QFont.HintingPreference.PreferNoHinting: "prefer_no_hinting",
+        QFont.HintingPreference.PreferFullHinting: "prefer_full_hinting",
+        QFont.HintingPreference.PreferVerticalHinting: "prefer_vertical_hinting",
+    }
+    hint = hint_names.get(font.hintingPreference(), str(font.hintingPreference()))
+    return f"{font.family()} / {hint}"
 
 
 def _digest_image(image) -> str:
@@ -321,6 +395,11 @@ def _grab_settled_digest(widget, app) -> "tuple[str, QImage]":
     """
     import time
 
+    # 文本输入焦点的光标以 ~530ms 周期闪烁：caret 可见/隐藏两态都满足
+    # "连续两帧一致"的静止判据，相位随抓取时刻轮转 → 行哈希漂移
+    # （command_palette_open 实测）。禁用闪烁让 caret 恒显，抓取确定。
+    app.setCursorFlashTime(0)
+
     # 无条件泵送窗口：一次跨过所有已知动画时长 + 100ms 余量
     lead = time.monotonic() + 0.4
     while time.monotonic() < lead:
@@ -351,6 +430,12 @@ def _capture(widget, name: str, *, theme: str, profile: str,
     的真实会话上抓取（由调用侧 fixture 保证）。
     """
     app = QApplication.instance() or QApplication([])
+    # TabbedDialog 族在 showEvent 里从共享 settings.json 恢复
+    # ``dialog_geometry_<类名>``（base64 含最大化标志）——跨会话跑测试时
+    # 该文件是对话框几何的争用点，恢复出的尺寸/最大化态会改写摘要。
+    # 阻断恢复，让用例显式 resize 的几何成立（§9.3 确定性）。
+    if hasattr(widget, "_geometry_restored"):
+        widget._geometry_restored = True
     widget.show()
     app.processEvents()
     digest, image = _grab_settled_digest(widget, app)
@@ -359,15 +444,25 @@ def _capture(widget, name: str, *, theme: str, profile: str,
         EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
         png_path = EVIDENCE_DIR / f"{name}.png"
         image.save(str(png_path))
+        # manifest 条目 = 主报告 §9.3 的全部元数据字段：组件/状态、主题、
+        # 语言、应用缩放、系统DPI、窗口尺寸、字体环境、Qt 版本、提交及
+        # 未提交差异、样本数据版本、截图文件名。
         _manifest_upsert(name, {
             "component": name,
+            "screenshot_file": f"{name}.png",
             "theme": theme,
-            "ui_scale": 1.0,
-            "sample_profile": profile,
-            "state": state,
+            "language": "en",  # _pin_language 钉仓库回退语（§9.3「语言」）
+            "ui_scale": 1.0,  # §9.3「应用缩放」（fixture 钉 1.0）
+            "system_dpi": _logical_dpi_label(widget),  # §9.3「系统DPI」
+            "window_size": f"{image.width()}x{image.height()}",  # §9.3「窗口尺寸」
+            "font_environment": _font_environment_label(),  # §9.3「字体环境」
+            "qt_version": _pyside_version(),
             "pyside_version": _pyside_version(),
+            "sample_profile": profile,  # §9.3「样本数据版本」（字节级确定性）
+            "state": state,
             "screenshot_date": _dt.datetime.now(tz=_dt.timezone.utc).date().isoformat(),
-            "source_head": _source_head(),
+            "source_head": _source_head(),  # §9.3「提交」
+            "git_dirty_files": _git_dirty_count(),  # §9.3「未提交差异」规模
             "size": f"{image.width()}x{image.height()}",
             "digest": digest,
         })
@@ -847,4 +942,559 @@ def test_empty_panel(tmp_path_factory, theme):
         if panel is not None:
             panel.shutdown()
             panel.deleteLater()
+        app.processEvents()
+
+
+# ── 阶段 F 前置件：主报告 §9.3 全组件目录扩展 ─────────────────────
+#
+# 覆盖映射与真机验收矩阵见
+# docs/plans/desktop-visual-stage-f-acceptance-2026-09-06.md §3（组件目录
+# 表）——offscreen 无法有意义渲染的 §9.3 点名项（真实错误态、运行中进度
+# 帧）在该模板 §3 末尾登记跳过理由，真机操作清单见其 §4。
+#
+# 阶段 F 只截 Navy（暗代表）；Dawn/阈值主题截图按主报告 §9.2 的"代表组合"
+# 纪律留给阶段 F 真机验收轮扩表。
+
+
+# 设置六页：_setup_tabs 的构建顺序即 tab 索引（settings_dialog.py::_setup_tabs）。
+_SETTINGS_TAB_IDS = (
+    ("appearance", 0),
+    ("general", 1),
+    ("thumbnails", 2),
+    ("maintenance", 3),
+    ("backup", 4),
+    ("plugins", 5),
+)
+
+# 分享设置四页：_build_ui 的 pages 顺序即 _page_stack 索引
+# （sharing_settings_dialog.py::_build_ui）。
+_SHARING_PAGE_IDS = (
+    ("endpoint", 0),
+    ("links", 1),
+    ("access", 2),
+    ("configuration", 3),
+)
+
+
+@pytest.mark.parametrize("theme", [DARK_THEME], ids=["navy"])
+def test_settings_dialog_six_tabs(tmp_path_factory, theme):
+    """设置六页逐页截图（§9.3「设置六页」+「内置插件面板」= plugins 页）。
+
+    构造先例 test_settings_dialog.py::_dialog（裸 SettingsDialog，无库设置
+    适配器——维护/备份段走 idle 占位文案）。导航壳 _SettingsNavShell 在
+    宽度 <_COMPACT_BELOW(760) 时切换顶部紧凑导航；这里 resize 到 860 呈现
+    桌面端常规的左侧栏导航形态（P1-6 统一导航语法），窄窗回退形态由
+    test_sharing_settings_dialog 的导航模式用例承担（非截图目录职责）。
+    六页索引按 _setup_tabs 构建顺序钉死；同一对话框实例逐页
+    ``_tabs.setCurrentIndex``（test_settings_dialog.py:28 同款 API）。
+
+    摘要轨稳定依据：六页均为静态控件 + idle 状态文案，无磁盘统计、无
+    时变内容直呈；语言钉 en、主题 QSS 每用例重放。
+    """
+    _ = tmp_path_factory
+    app = QApplication.instance() or QApplication([])
+    dlg = None
+    try:
+        themes.set_theme(theme)
+        from AssetsManager.dialogs.settings_dialog import SettingsDialog
+
+        dlg = SettingsDialog()
+        dlg.resize(scaled_px(860), scaled_px(620))
+        dlg.show()
+        app.processEvents()
+        for tab_id, index in _SETTINGS_TAB_IDS:
+            dlg._tabs.setCurrentIndex(index)
+            app.processEvents()
+            name = f"settings_dialog_{tab_id}_{theme.lower()}"
+            digest = _capture(dlg, name, theme=theme, profile="none",
+                              state=f"tab:{tab_id}")
+            _check_digest(name, digest)
+    finally:
+        if dlg is not None:
+            dlg.close()
+            dlg.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.parametrize("theme", [DARK_THEME], ids=["navy"])
+def test_sharing_settings_four_pages(tmp_path_factory, theme, monkeypatch):
+    """分享设置四页逐页截图（§9.3「分享设置四页」）。
+
+    构造先例 test_sharing_settings_dialog.py::_patch_settings：monkeypatch
+    模块内 AppSettings.instance 为只读桩——四页控件落到词典默认值，隔离
+    本机 settings.json 的 lan_* 残留（特别是 MCP token 前缀：按机器随机
+    生成并持久化，直呈在 configuration 页状态行，属任务书点名的"动态
+    内容"——桩化后转确定）。无 server（LanControlPort=None）→ 状态轮询
+    QTimer 不启动、endpoint 页恒为离线文案。
+
+    摘要轨稳定：四页均为静态控件 + 离线状态；逐页走公开的
+    ``_select_page``（内部即 _page_stack.setCurrentIndex + rail 按钮选中态
+    同步，与真机点击导航等价）。
+    """
+    _ = tmp_path_factory
+    settings_stub = type(
+        "_Settings", (), {"get": lambda _self, _key, default=None: default}
+    )()
+    monkeypatch.setattr(
+        "AssetsManager.dialogs.sharing_settings_dialog.AppSettings.instance",
+        classmethod(lambda _cls: settings_stub),
+    )
+    app = QApplication.instance() or QApplication([])
+    dlg = None
+    try:
+        themes.set_theme(theme)
+        from AssetsManager.dialogs.sharing_settings_dialog import (
+            SharingSettingsDialog,
+        )
+
+        dlg = SharingSettingsDialog()
+        dlg.show()
+        app.processEvents()
+        for page_id, index in _SHARING_PAGE_IDS:
+            dlg._select_page(index)
+            app.processEvents()
+            name = f"sharing_settings_{page_id}_{theme.lower()}"
+            digest = _capture(dlg, name, theme=theme, profile="none",
+                              state=f"page:{page_id}")
+            _check_digest(name, digest)
+    finally:
+        if dlg is not None:
+            dlg.close()
+            dlg.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.parametrize("theme", [DARK_THEME], ids=["navy"])
+def test_tag_editor_dialog(tmp_path_factory, theme):
+    """编辑模态：TagEditorDialog（§9.3「全部编辑模态框」）。
+
+    构造先例 test_standard_modal_dialog.py::_make_tag_editor（Mock store，
+    无库依赖），这里换成**定值桩 store**让两组段都有真实内容：当前标签
+    芯片行（hero/wallpaper）+ 全库建议列表（favorite/illustration/…，
+    条目格式 "tag (count)"）。store 只实现对话框构造期读取的
+    get_tags/get_all_tags/get_files_by_tag 三个方法（tag_color_from 对无
+    get_tag_metadata 的 store 返回 None → 芯片走主题 accent，确定性）。
+    """
+    _ = tmp_path_factory
+
+    class _TagStore:
+        """定值标签桩（读取面 = TagEditorDialog 构造期所需三方法）。
+
+        属性名避用 ``current``：架构边界棘轮
+        （test_architecture_boundaries::test_library_service_current_stays_legacy_only）
+        把 tests 树内一切 ``.current`` 读取视作 LibraryService.current 旧
+        API 使用。
+        """
+
+        CURRENT_TAGS = ("hero", "wallpaper")
+        all_tags = ("favorite", "hero", "illustration", "landscape",
+                    "reference", "wallpaper")
+
+        def get_tags(self, _path):
+            return list(self.CURRENT_TAGS)
+
+        def get_all_tags(self):
+            return list(self.all_tags)
+
+        def get_files_by_tag(self, tag):
+            return [f"sample_{tag}_01.png"] if tag in self.all_tags else []
+
+    app = QApplication.instance() or QApplication([])
+    dlg = None
+    try:
+        themes.set_theme(theme)
+        from AssetsManager.dialogs.tag_editor_dialog import TagEditorDialog
+
+        dlg = TagEditorDialog(_TagStore(), "gradient.png")
+        name = "tag_editor_dialog_navy"
+        digest = _capture(dlg, name, theme=theme, profile="none",
+                          state="idle")
+        _check_digest(name, digest)
+    finally:
+        if dlg is not None:
+            dlg.close()
+            dlg.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.parametrize("theme", [DARK_THEME], ids=["navy"])
+def test_batch_rename_dialog(tmp_path_factory, theme):
+    """编辑模态：BatchRenameDialog（§9.3「全部编辑模态框」）。
+
+    构造先例 test_standard_modal_dialog.py::_make_batch_rename + 默认模式
+    ``{name}_{n}``：计划表 3 行（旧名/新名/valid 状态），文件内容无关。
+    表格只呈文件名（entry.source.name/target.name，_batch_rename_dialog.py
+    :_update_plan），mktemp 目录的随机段不进截图；目录内只有本用例建的
+    3 个文件（mktemp 独占），占用扫描（iterdir）结果确定。
+    """
+    tmp_path = tmp_path_factory.mktemp("batch_rename")
+    names = ("shot_001.png", "shot_002.png", "shot_003.png")
+    for file_name in names:
+        (tmp_path / file_name).write_bytes(b"")
+    app = QApplication.instance() or QApplication([])
+    dlg = None
+    try:
+        themes.set_theme(theme)
+        from AssetsManager.panels.file_list._batch_rename_dialog import (
+            BatchRenameDialog,
+        )
+
+        dlg = BatchRenameDialog([str(tmp_path / n) for n in names])
+        name = "batch_rename_dialog_navy"
+        digest = _capture(dlg, name, theme=theme, profile="none",
+                          state="plan valid")
+        _check_digest(name, digest)
+    finally:
+        if dlg is not None:
+            dlg.close()
+            dlg.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.parametrize("theme", [DARK_THEME], ids=["navy"])
+def test_tag_style_dialog(tmp_path_factory, theme):
+    """编辑模态：TagStyleDialog（§9.3「全部编辑模态框」）。
+
+    构造先例 test_standard_modal_dialog.py::_make_tag_style（"hero" 标签）。
+    表单三行：颜色色板（无色 → "No color" 文案按钮）、图标下拉（全图标
+    注册表 + 无图标项，条目数随 icons 注册表——棘轮同源再生，可接受）、
+    类目输入（空 + placeholder）。
+    """
+    _ = tmp_path_factory
+    app = QApplication.instance() or QApplication([])
+    dlg = None
+    try:
+        themes.set_theme(theme)
+        from AssetsManager.dialogs.tag_style_dialog import TagStyleDialog
+
+        dlg = TagStyleDialog("hero")
+        name = "tag_style_dialog_navy"
+        digest = _capture(dlg, name, theme=theme, profile="none", state="idle")
+        _check_digest(name, digest)
+    finally:
+        if dlg is not None:
+            dlg.close()
+            dlg.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.parametrize("theme", [DARK_THEME], ids=["navy"])
+def test_sidebar_settings_dialog(tmp_path_factory, theme):
+    """编辑模态：SidebarSettingsDialog（§9.3「全部编辑模态框」）。
+
+    构造先例 test_standard_modal_dialog.py::_make_sidebar_settings（裸构造，
+    默认 root_paths/深度配置）。
+    """
+    _ = tmp_path_factory
+    app = QApplication.instance() or QApplication([])
+    dlg = None
+    try:
+        themes.set_theme(theme)
+        from AssetsManager.dialogs.sidebar_settings_dialog import (
+            SidebarSettingsDialog,
+        )
+
+        dlg = SidebarSettingsDialog()
+        name = "sidebar_settings_dialog_navy"
+        digest = _capture(dlg, name, theme=theme, profile="none", state="idle")
+        _check_digest(name, digest)
+    finally:
+        if dlg is not None:
+            dlg.close()
+            dlg.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.parametrize("theme", [DARK_THEME], ids=["navy"])
+def test_share_qr_dialog(tmp_path_factory, theme):
+    """编辑模态：ShareQrDialog（§9.3「全部编辑模态框」）。
+
+    构造先例 test_share_qr_dialog.py（url 关键字构造）。摘要稳定性：QR
+    图由 segno 对**固定 URL** 的纯函数编码（error=H、scale/border 固定，
+    share_qr_dialog.qr_pixmap），无时间戳/随机数 → 摘要轨稳定。
+    """
+    _ = tmp_path_factory
+    app = QApplication.instance() or QApplication([])
+    dlg = None
+    try:
+        themes.set_theme(theme)
+        from AssetsManager.dialogs.share_qr_dialog import ShareQrDialog
+
+        dlg = ShareQrDialog(url="http://share.test/s/1")
+        name = "share_qr_dialog_navy"
+        digest = _capture(dlg, name, theme=theme, profile="none", state="idle")
+        _check_digest(name, digest)
+    finally:
+        if dlg is not None:
+            dlg.close()
+            dlg.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.parametrize("theme", [DARK_THEME], ids=["navy"])
+def test_color_picker_dialog(tmp_path_factory, theme):
+    """编辑模态：ColorPickerDialog（§9.3「全部编辑模态框」收口）。
+
+    Track B 迁移清单（test_standard_modal_dialog.py 工厂表）的最后一个未
+    截图模态；固定初值 QColor("#123456")，HSV 轮/滑杆/色板全静态。
+    """
+    _ = tmp_path_factory
+    app = QApplication.instance() or QApplication([])
+    dlg = None
+    try:
+        themes.set_theme(theme)
+        from PySide6.QtGui import QColor
+
+        from AssetsManager.dialogs.color_picker_dialog import ColorPickerDialog
+
+        dlg = ColorPickerDialog(QColor("#123456"))
+        name = "color_picker_dialog_navy"
+        digest = _capture(dlg, name, theme=theme, profile="none", state="idle")
+        _check_digest(name, digest)
+    finally:
+        if dlg is not None:
+            dlg.close()
+            dlg.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.parametrize("theme", [DARK_THEME], ids=["navy"])
+def test_crash_report_dialog(tmp_path_factory, theme):
+    """编辑模态：崩溃恢复通知（§9.3「全部编辑模态框」）。
+
+    构造先例 test_crash_report_dialog.py：``build_crash_report_dialog``
+    （app.py）构造 QMessageBox（Warning 图标 + Ok/报告按钮），不 exec、
+    不触发任何网络动作。文案全走 tr()（钉 en），摘要轨稳定。
+    """
+    _ = tmp_path_factory
+    app = QApplication.instance() or QApplication([])
+    box = None
+    try:
+        themes.set_theme(theme)
+        from AssetsManager.app import build_crash_report_dialog
+
+        box = build_crash_report_dialog(None)
+        name = "crash_report_dialog_navy"
+        digest = _capture(box, name, theme=theme, profile="none",
+                          state="idle")
+        _check_digest(name, digest)
+    finally:
+        if box is not None:
+            box.close()
+            box.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.parametrize("theme", [DARK_THEME], ids=["navy"])
+def test_tag_browser_tree(tmp_path_factory, theme):
+    """标签树：TagBrowserDialog（§9.3「目录/标签树」的标签树侧）。
+
+    真实业务数据：open_session + build_sample_library("representative",
+    tag_service=…)（与 file_list 用例同一惯例）后把 scoped services 注入
+    TagBrowserDialog——树节点/计数全部来自真实 TagService 读回，非桩。
+    目录树侧对应物 = main_window_idle_navy 的侧栏（含 sub/ 子目录展开）。
+
+    摘要轨稳定依据：_populate 同步读标签服务（无异步任务直呈），搜索框
+    空态。TagTreePanel 的关停走 TabbedDialog.closeEvent →
+    _on_dialog_closed 钩子（tabbed_dialog.py:216）。
+    """
+    root, _tmp = _stable_library_root(tmp_path_factory, "tag_browser")
+    app = QApplication.instance() or QApplication([])
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(root)
+    services = bootstrap.runtime_for(session).services
+    # 返回值仅用于让静态读者看到样本构造（标签写入走 tag_service）；
+    # 对话框本身经 services 读标签，无需 root。
+    _library = build_sample_library(
+        root, "representative", tag_service=services.tag_service)
+    dlg = None
+    try:
+        themes.set_theme(theme)
+        from AssetsManager.dialogs.tag_browser_dialog import TagBrowserDialog
+
+        dlg = TagBrowserDialog(services)
+        dlg.resize(scaled_px(560), scaled_px(640))
+        name = "tag_browser_tree_navy"
+        digest = _capture(dlg, name, theme=theme,
+                          profile="representative", state="idle")
+        _check_digest(name, digest)
+    finally:
+        if dlg is not None:
+            dlg.close()
+            dlg.deleteLater()
+        bootstrap.library_service.close_session(session)
+        app.processEvents()
+
+
+@pytest.mark.parametrize("theme", [DARK_THEME], ids=["navy"])
+def test_command_palette_open(tmp_path_factory, theme):
+    """浮层带内容：CommandPalette 打开态（§9.3「CommandPalette」）。
+
+    构造先例 test_command_palette.py 的 parent_widget fixture（1000x700
+    QWidget 宿主）。打开态 = show() 后输入聚焦 + 内置命令表填充：宿主是
+    普通 QWidget（无 _library_session/_current_library_path）→
+    _load_available_commands 只含内置命令（tag/favorite 动态段为空），
+    命令文案全 tr()（钉 en）→ 摘要轨稳定。
+    """
+    _ = tmp_path_factory
+    from PySide6.QtWidgets import QWidget
+
+    from AssetsManager.widgets.command_palette import CommandPalette
+
+    app = QApplication.instance() or QApplication([])
+    parent = None
+    palette = None
+    try:
+        themes.set_theme(theme)
+        parent = QWidget()
+        parent.resize(scaled_px(1000), scaled_px(700))
+        parent.show()
+        app.processEvents()
+        palette = CommandPalette(parent)
+        name = "command_palette_open_navy"
+        digest = _capture(palette, name, theme=theme, profile="none",
+                          state="open")
+        _check_digest(name, digest)
+    finally:
+        if palette is not None:
+            palette.close()
+            palette.deleteLater()
+        if parent is not None:
+            parent.close()
+            parent.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.parametrize("theme", [DARK_THEME], ids=["navy"])
+def test_quick_look_image(tmp_path_factory, theme):
+    """浮层带内容：QuickLook 喂样本图（§9.3「QuickLook」）。
+
+    样本 = build_sample_library("representative") 的 gradient.png（字节级
+    确定性）：标题/序号/规格胶囊（"24×24 · PNG · <字节数>"）与画布像素
+    全部确定。无 parent → 覆盖主屏可用区（offscreen 屏幕几何本机恒定），
+    与生产从主窗打开（覆盖父窗）的画布内容一致，仅外框几何不同。
+    """
+    root, _tmp = _stable_library_root(tmp_path_factory, "quick_look")
+    library = build_sample_library(root, "representative")
+    app = QApplication.instance() or QApplication([])
+    overlay = None
+    try:
+        themes.set_theme(theme)
+        from AssetsManager.widgets.quick_look_overlay import QuickLookOverlay
+
+        overlay = QuickLookOverlay([str(library.root / "gradient.png")],
+                                   current_index=0)
+        name = "quick_look_image_navy"
+        digest = _capture(overlay, name, theme=theme,
+                          profile="representative", state="image loaded")
+        _check_digest(name, digest)
+    finally:
+        if overlay is not None:
+            overlay.close()
+            overlay.deleteLater()
+        app.processEvents()
+
+
+class _QuickTaggerStubService:
+    """QuickTaggerOverlay 读取面的定值桩（test_quick_tagger_overlay.py 的
+    _FakeTagService 同款）：get_all_tags(root) + get_tags_for_file(root, path)。
+    生产侧 application.TagService 的方法面与之不同（list_tags/get_tags），
+    浮层构造期对缺失方法按 except 兜底为空——为让截图带真实标签内容，
+    这里按浮层的契约面给桩（面板 → 浮层的适配接缝在 V05 登记范围之外，
+    不属本目录职责）。属性名避用 ``current``：架构边界棘轮
+    （test_architecture_boundaries::test_library_service_current_stays_legacy_only）
+    把 tests 树内一切 ``.current`` 读取视作 LibraryService.current 旧 API
+    使用。"""
+
+    CURRENT_TAGS = ("hero", "wallpaper")
+    all_tags = ("favorite", "hero", "illustration", "landscape",
+                "reference", "wallpaper")
+
+    def get_all_tags(self, _root):
+        return list(self.all_tags)
+
+    def get_tags_for_file(self, _root, _path):
+        return list(self.CURRENT_TAGS)
+
+
+@pytest.mark.parametrize("theme", [DARK_THEME], ids=["navy"])
+def test_quick_tagger_overlay(tmp_path_factory, theme):
+    """浮层带内容：QuickTagger 带目标文件（§9.3「QuickTagger」）。
+
+    目标 = 样本库 gradient.png（目标行呈文件名；标签集合来自上面的定值
+    桩服务）。浮层 WA_DeleteOnClose：teardown 只 close（析构即发），
+    deleteLater 防御性包 RuntimeError（test_quick_tagger_overlay 同款）。
+    """
+    root, _tmp = _stable_library_root(tmp_path_factory, "quick_tagger")
+    library = build_sample_library(root, "representative")
+    app = QApplication.instance() or QApplication([])
+    overlay = None
+    try:
+        themes.set_theme(theme)
+        from AssetsManager.widgets.quick_tagger_overlay import (
+            QuickTaggerOverlay,
+        )
+
+        overlay = QuickTaggerOverlay(
+            [str(library.root / "gradient.png")], str(library.root),
+            tag_service=_QuickTaggerStubService())
+        name = "quick_tagger_overlay_navy"
+        digest = _capture(overlay, name, theme=theme,
+                          profile="representative", state="open")
+        _check_digest(name, digest)
+    finally:
+        if overlay is not None:
+            try:
+                overlay.close()
+            except RuntimeError:
+                pass  # WA_DeleteOnClose 已析构
+            overlay = None
+        app.processEvents()
+
+
+@pytest.mark.parametrize("theme", [DARK_THEME], ids=["navy"])
+def test_image_viewer_gradient(tmp_path_factory, theme):
+    """浮层带内容：ImageViewer 加载样本渐变图（§9.3「ImageViewer」）。
+
+    样本 = build_sample_library("representative") 的 gradient.png，经
+    load_image 的私有 BoundedPool 异步解码（_FullImageTask → bridge 信号
+    落 UI 线程）——截前显式轮询 ``_state == "ready"``（test_image_viewer
+    的 _wait_for 同款判据），再交给 _capture 的静止收敛泵。页眉文件名 +
+    "1 / 1"、页脚缩放百分比/尺寸全部由固定窗口几何决定（无宿主 → 覆盖
+    主屏 adjusted(60)），本机内确定。viewer 无 shutdown()，关闭即析构
+    （WA_DeleteOnClose），teardown 只 close + RuntimeError 防御。
+    """
+    import time
+
+    root, _tmp = _stable_library_root(tmp_path_factory, "image_viewer")
+    library = build_sample_library(root, "representative")
+    app = QApplication.instance() or QApplication([])
+    from AssetsManager.panels.image_viewer import ImageViewerOverlay
+
+    viewer = None
+    try:
+        themes.set_theme(theme)
+        viewer = ImageViewerOverlay(None)
+        viewer.show_overlay()
+        viewer.load_image(str(library.root / "gradient.png"))
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            app.processEvents()
+            if viewer._state == "ready":
+                break
+            time.sleep(0.02)
+        assert viewer._state == "ready", (
+            "async image decode did not settle before capture")
+        name = "image_viewer_gradient_navy"
+        digest = _capture(viewer, name, theme=theme,
+                          profile="representative", state="image ready")
+        _check_digest(name, digest)
+    finally:
+        if viewer is not None:
+            try:
+                viewer.close()
+            except RuntimeError:
+                pass  # WA_DeleteOnClose 已析构
         app.processEvents()
