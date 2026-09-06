@@ -50,9 +50,12 @@ tr = i18n.tr
 # with the stale radii even after ``refresh_scale()`` cleared the texture
 # cache. ``RenderMixin._rebuild_render_metrics`` (called by
 # DataMixin.refresh_theme/refresh_scale before the cache clear) rebuilds it.
-_CORNER_R_D = 10  # keep literal, NOT themes.prop("border_radius","md"): all
-# 24 themes define md=10 today, but deriving would drift visuals the moment a
-# theme changes — stage D calibrates per-theme radii explicitly.
+#
+# ``_CORNER_R_D`` is the fallback for a theme that omits border_radius.md;
+# the live value derives from the theme at rebuild time (decided 2026-09-06:
+# all 24 shipped themes define md=10, so the derivation is zero-drift today
+# while letting a future theme shape card corners — refresh_theme rebuilds).
+_CORNER_R_D = 10
 _PREVIEW_R_D = 8
 _BADGE_H_D = 14
 _BADGE_PAD_H_D = 5
@@ -69,8 +72,11 @@ class _GridRenderMetrics:
 
 
 def _build_render_metrics() -> _GridRenderMetrics:
+    # themes.prop returns 0 (with a warning) for a missing key — that warning
+    # is the typo tripwire, so fall back to the historical literal explicitly.
+    theme_md = int(themes.prop("border_radius", "md")) or _CORNER_R_D
     return _GridRenderMetrics(
-        corner_r=scaled_px(_CORNER_R_D),
+        corner_r=scaled_px(theme_md),
         preview_r=scaled_px(_PREVIEW_R_D),
         # Folder-tab glyph corner, canonical source: themes.metrics("radius_badge").
         badge_r=scaled_px(int(themes.metrics("radius_badge"))),
