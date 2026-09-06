@@ -292,11 +292,22 @@ class Animator:
             if not self._anim_timer.isActive():
                 self._anim_timer.start()
 
+    # V18: above this many simultaneously deselected rows the per-row
+    # fade-out is skipped — a 10k-row Ctrl+A + single click would otherwise
+    # cost O(N) tween bookkeeping plus O(N) rect unions on every 16 ms tick
+    # (~150 ms of dropped frames). A mass deselect loses nothing perceptible
+    # by dropping the overlay immediately; the limit is a class attribute so
+    # tests can shrink it.
+    SELECTION_FADE_OUT_LIMIT = 500
+
     def apply_selection_progress(self, old_selection: set[int]) -> None:
         """Seed deselected rows for the selection overlay fade-out."""
         if self._reduce_motion:
             return
-        for r in old_selection - self._host._selection:
+        deselected = old_selection - self._host._selection
+        if len(deselected) > self.SELECTION_FADE_OUT_LIMIT:
+            return
+        for r in deselected:
             self._selection_progress[r] = 1.0
             # A re-deselected row restarts its fade from 1.0 (matches the old
             # overwrite), so the tween is re-anchored rather than reused.

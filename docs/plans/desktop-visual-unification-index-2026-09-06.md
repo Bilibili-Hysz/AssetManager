@@ -38,7 +38,7 @@
 | V15 QuickTagger 幽灵方法 | 调生产不存在的 get_tags_for_file，AttributeError 被裸 except 吞——生产永久"暂无标签"、删标签不可达，且被单测桩+截图桩双重掩盖 | ✅ W 轮热修（改批量 get_tags_for_files 消 N+1；桩改真实契约，芯片呈现保留） |
 | V16 QuickLook 内存滞留 | 关闭后全分辨率解码 pixmap 滞留（48MP≈190MB），面板引用 write-only 从不清理 | ✅ W 轮热修（closeEvent 释放像素，壳保留） |
 | V17 动画态不在截图棘轮 | 全局钉 reduce_motion=True + 直赋字段，动画态渲染面退出基线（只锁数值不锁像素） | ⏳ 阶段 F（补 reduce_motion=False 落定终态摘要用例） |
-| V18 大规模反选淡出 O(N)/tick | 10k 行 Ctrl+A 后 ~9 tick×10k 迭代+逐行 rect union，~150ms 掉帧窗 | ⏳ M1 性能批（>500 行跳 tween 直落定） |
+| V18 大规模反选淡出 O(N)/tick | SELECTION_FADE_OUT_LIMIT=500 阈值跳过 per-row tween（大量析选立即去叠加层，感知无损）；牙齿测试双向锁定 | ✅ 收尾轮 |
 | V19 _entrance_visible write-only | 生产零消费者，维护陷阱 | ✅ W 轮（bookkeeping-only 注记） |
 | V20 zoom 后入场突发释放 | finish_zoom 不重锚时间窗，队列一 tick 突发（纯外观、罕见时序） | ⏳ M0 收尾顺手项 |
 | V21 manifest 对账断言次序 | read 先于 is_file，缺失时报错信息劣化 | ✅ W 轮 |

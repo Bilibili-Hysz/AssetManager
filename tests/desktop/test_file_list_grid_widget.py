@@ -2242,3 +2242,25 @@ def test_finish_zoom_reanchors_surviving_entrance_queue(monkeypatch):
     finally:
         widget._animator.cancel_entrance()
         widget.deleteLater()
+
+
+def test_mass_deselect_skips_per_row_fade_out(monkeypatch):
+    """V18: mass deselect must not seed O(N) tweens (150ms frame-drop window)."""
+    widget = FileListGridWidget()
+    widget._animator._reduce_motion = False
+    old_selection = set(range(1000))
+    widget._selection = set()  # select-all then single click → 999 deselected
+
+    widget._animator.apply_selection_progress(old_selection)
+
+    assert not widget._animator._selection_progress
+    assert not widget._animator._selection_tweens
+    assert not widget._animator._anim_timer.isActive()
+
+    # Under the limit the fade-out still works (shrink the limit for the probe).
+    widget._animator.SELECTION_FADE_OUT_LIMIT = 2
+    widget._selection = {1}
+    widget._animator.apply_selection_progress({0, 2})  # 2 deselected ≤ limit
+    assert set(widget._animator._selection_progress) == {0, 2}
+    widget._animator.reset_for_model_reset()
+    widget.deleteLater()
