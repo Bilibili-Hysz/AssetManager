@@ -852,7 +852,12 @@ class ImageViewerOverlay(QFrame):
         rect = self.rect()
         container = self._container_rect()
 
-        # Semi-transparent backdrop
+        # Semi-transparent backdrop — kept as a dedicated media scrim (V05):
+        # pure black @ alpha 180, intentionally not the theme-tinted workspace
+        # scrim so photos stay color-neutral.  This is the named
+        # OverlayShell.SCRIM_MEDIA / OverlayShell.SCRIM_ALPHA_MEDIA variant
+        # (widgets/overlay_shell.py); the shell's paintEvent is not reused
+        # here because the viewer hand-paints its full chrome.
         p.fillRect(rect, QColor(0, 0, 0, 180))
 
         # Container background

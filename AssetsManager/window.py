@@ -288,9 +288,15 @@ class MainWindow(LanSharingMixin, QMainWindow):
         super().showEvent(event)
         if not self._startup_anim_done:
             self._startup_anim_done = True
+            # V07: the startup fade must follow the same reduce_motion
+            # setting as every other animation (TabbedDialog precedent) —
+            # interrupted-fade semantics: the window appears fully opaque.
+            if StyleKit.reduce_motion():
+                self.setWindowOpacity(1.0)
+                return
             self.setWindowOpacity(0.0)
             anim = QPropertyAnimation(self, b"windowOpacity")
-            anim.setDuration(300)
+            anim.setDuration(themes.motion("slow"))
             anim.setStartValue(0.0)
             anim.setEndValue(1.0)
             anim.setEasingCurve(QEasingCurve.Type.OutCubic)

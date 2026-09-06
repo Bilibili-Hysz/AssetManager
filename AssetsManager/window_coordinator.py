@@ -135,7 +135,7 @@ class WindowCoordinator:
         # describes the surface this coordinator reads.
         w_obj = cast(QObject, w)
         anim_out = QPropertyAnimation(w_obj, b"windowOpacity")
-        anim_out.setDuration(100)
+        anim_out.setDuration(themes.motion("micro"))
         anim_out.setStartValue(1.0)
         anim_out.setEndValue(0.7)
         anim_out.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -145,7 +145,7 @@ class WindowCoordinator:
                 return
             self._apply_theme()
             anim_in = QPropertyAnimation(w_obj, b"windowOpacity")
-            anim_in.setDuration(200)
+            anim_in.setDuration(themes.motion("normal"))
             anim_in.setStartValue(0.7)
             anim_in.setEndValue(1.0)
             anim_in.setEasingCurve(QEasingCurve.Type.OutCubic)

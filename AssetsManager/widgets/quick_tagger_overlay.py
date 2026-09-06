@@ -9,23 +9,29 @@ from pathlib import Path
 from typing import Any, cast
 
 from PySide6.QtCore import Qt, QPoint, QSize, Signal
-from PySide6.QtGui import QColor, QPainter, QKeyEvent
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
-    QDialog, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
+    QFrame, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QCompleter, QWidget, QApplication, QLayoutItem,
 )
 
 from AssetsManager import i18n
 from AssetsManager.core import themes, icons
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
-from AssetsManager.widgets.elevation import apply_elevation
+from AssetsManager.widgets.elevation import apply_elevation, refresh_elevation
+from AssetsManager.widgets.overlay_shell import OverlayShell
 from AssetsManager.widgets.tag_chip import create_tag_chip
 
 tr = i18n.tr
 
 
-class QuickTaggerOverlay(QDialog):
-    """Instant floating tagger dialog for one or more files."""
+class QuickTaggerOverlay(OverlayShell):
+    """Instant floating tagger dialog for one or more files.
+
+    V05: shell-backed — the ``SCRIM_WORKSPACE`` backdrop (alpha unified from
+    this overlay's historical 170), refresh-bus subscription, screen
+    constraining, and focus return live in OverlayShell.
+    """
 
     tags_changed = Signal()
 
@@ -36,7 +42,8 @@ class QuickTaggerOverlay(QDialog):
         tag_service: Any = None,
         parent: QWidget | None = None,
     ):
-        super().__init__(parent, Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        super().__init__(parent)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.setModal(True)
@@ -78,13 +85,95 @@ class QuickTaggerOverlay(QDialog):
 
     def _setup_ui(self) -> None:
         root_layout = QVBoxLayout(self)
-        root_layout.setContentsMargins(scaled_px(16), scaled_px(16), scaled_px(16), scaled_px(16))
+        self._root_layout = root_layout
         root_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Centered card
         self._card = QFrame(self)
         self._card.setObjectName("quickTaggerCard")
-        self._card.setFixedWidth(scaled_px(440))
+        self._apply_styles()
+        apply_elevation(self._card, level=3)
+
+        card_layout = QVBoxLayout(self._card)
+        self._card_layout = card_layout
+        card_layout.setSpacing(scaled_px(10))
+
+        # ── Header ──────────────────────────────────────────
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(scaled_px(8))
+
+        icon_lbl = QLabel()
+        icon_sz = scaled_px(themes.metrics("icon_sm"))
+        icon_lbl.setPixmap(icons.icon("tag", color="icon_accent", size=icon_sz).pixmap(QSize(icon_sz, icon_sz)))
+        header_layout.addWidget(icon_lbl)
+
+        title_lbl = QLabel(tr("tagger.title", default="快速打标"))
+        title_lbl.setObjectName("taggerTitle")
+        self._title_label = title_lbl
+        header_layout.addWidget(title_lbl)
+
+        count_badge = QLabel(f"{len(self._paths)} " + tr("tagger.files_count", default="个资产"))
+        count_badge.setObjectName("taggerCount")
+        self._count_label = count_badge
+        header_layout.addWidget(count_badge)
+        header_layout.addStretch()
+
+        self._close_btn = close_btn = QPushButton()
+        # V06: same hit-area/icon tokens as QuickLookOverlay's close button
+        # (metrics("hit_area")=24 / icon_sm=16) — was hand-written 22×22/12.
+        hit_area = scaled_px(themes.metrics("hit_area"))
+        icon_sm = scaled_px(themes.metrics("icon_sm"))
+        close_btn.setFixedSize(hit_area, hit_area)
+        close_btn.setIcon(icons.icon("close", color="icon_muted", size=icon_sm))
+        close_btn.setIconSize(QSize(icon_sm, icon_sm))
+        close_btn.setToolTip(tr("common.close", default="关闭 (Esc)"))
+        themes.set_button_variant(close_btn, "ghost")
+        close_btn.clicked.connect(self.reject)
+        header_layout.addWidget(close_btn)
+        card_layout.addLayout(header_layout)
+
+        # ── Asset Target Description ─────────────────────────
+        target_lbl = QLabel(self._target_text())
+        target_lbl.setObjectName("taggerTarget")
+        self._target_label = target_lbl
+        card_layout.addWidget(target_lbl)
+
+        # ── Existing Tags Flow ──────────────────────────────
+        self._tags_container = QWidget()
+        self._tags_layout = QHBoxLayout(self._tags_container)
+        self._tags_layout.setContentsMargins(0, 0, 0, 0)
+        self._tags_layout.setSpacing(scaled_px(4))
+        self._render_chips()
+        card_layout.addWidget(self._tags_container)
+
+        # ── Tag Input with Autocomplete ──────────────────────
+        self._input = QLineEdit()
+        self._input.setFixedHeight(scaled_px(themes.metrics("control_height_md")))
+        self._input.setPlaceholderText(tr("tagger.placeholder", default="输入标签名按 Enter 添加..."))
+
+        if self._all_library_tags:
+            completer = QCompleter(self._all_library_tags, self)
+            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+            completer.setFilterMode(Qt.MatchFlag.MatchContains)
+            self._input.setCompleter(completer)
+
+        self._input.returnPressed.connect(self._add_current_tag)
+        card_layout.addWidget(self._input)
+
+        # ── Footer guide ─────────────────────────────────────
+        footer_lbl = QLabel(tr("tagger.guide", default="Enter：添加标签  ·  Esc：完成退出"))
+        footer_lbl.setObjectName("taggerFooter")
+        self._footer_label = footer_lbl
+        footer_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(footer_lbl)
+
+        root_layout.addWidget(self._card)
+        self._apply_scaled_metrics()
+
+    def _apply_styles(self) -> None:
+        """Card QSS — extracted verbatim from _setup_ui for the V05 refresh
+        hook (same tokens, same values)."""
         r_md = scaled_px(int(themes.prop("border_radius", "md")))
         input_r = scaled_px(int(themes.prop("border_radius", "sm")))
         border_clr = themes.color("border_subtle")
@@ -119,80 +208,39 @@ class QuickTaggerOverlay(QDialog):
             f"  background: transparent; border: none;"
             f"}}"
         )
-        apply_elevation(self._card, level=3)
 
-        card_layout = QVBoxLayout(self._card)
-        card_layout.setContentsMargins(scaled_px(16), scaled_px(14), scaled_px(16), scaled_px(14))
-        card_layout.setSpacing(scaled_px(10))
-
-        # ── Header ──────────────────────────────────────────
-        header_layout = QHBoxLayout()
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(scaled_px(8))
-
-        icon_lbl = QLabel()
-        icon_sz = scaled_px(themes.metrics("icon_sm"))
-        icon_lbl.setPixmap(icons.icon("tag", color="icon_accent", size=icon_sz).pixmap(QSize(icon_sz, icon_sz)))
-        header_layout.addWidget(icon_lbl)
-
-        title_lbl = QLabel(tr("tagger.title", default="快速打标"))
-        title_lbl.setObjectName("taggerTitle")
-        header_layout.addWidget(title_lbl)
-
-        count_badge = QLabel(f"{len(self._paths)} " + tr("tagger.files_count", default="个资产"))
-        count_badge.setObjectName("taggerCount")
-        header_layout.addWidget(count_badge)
-        header_layout.addStretch()
-
-        self._close_btn = close_btn = QPushButton()
-        # V06: same hit-area/icon tokens as QuickLookOverlay's close button
-        # (metrics("hit_area")=24 / icon_sm=16) — was hand-written 22×22/12.
-        hit_area = scaled_px(themes.metrics("hit_area"))
-        icon_sm = scaled_px(themes.metrics("icon_sm"))
-        close_btn.setFixedSize(hit_area, hit_area)
-        close_btn.setIcon(icons.icon("close", color="icon_muted", size=icon_sm))
-        close_btn.setIconSize(QSize(icon_sm, icon_sm))
-        close_btn.setToolTip(tr("common.close", default="关闭 (Esc)"))
-        themes.set_button_variant(close_btn, "ghost")
-        close_btn.clicked.connect(self.reject)
-        header_layout.addWidget(close_btn)
-        card_layout.addLayout(header_layout)
-
-        # ── Asset Target Description ─────────────────────────
-        target_name = Path(self._paths[0]).name if len(self._paths) == 1 else tr("tagger.multi_selection", default="已多选资产")
-        target_lbl = QLabel(target_name)
-        target_lbl.setObjectName("taggerTarget")
-        card_layout.addWidget(target_lbl)
-
-        # ── Existing Tags Flow ──────────────────────────────
-        self._tags_container = QWidget()
-        self._tags_layout = QHBoxLayout(self._tags_container)
-        self._tags_layout.setContentsMargins(0, 0, 0, 0)
-        self._tags_layout.setSpacing(scaled_px(4))
-        self._render_chips()
-        card_layout.addWidget(self._tags_container)
-
-        # ── Tag Input with Autocomplete ──────────────────────
-        self._input = QLineEdit()
+    def _apply_scaled_metrics(self) -> None:
+        """Re-derive the fixed card width / control sizes from the current
+        ui_scale; also the ui_scale_changed half of the V05 refresh hook."""
+        self._root_layout.setContentsMargins(scaled_px(16), scaled_px(16), scaled_px(16), scaled_px(16))
+        self._card.setFixedWidth(scaled_px(440))
+        self._card_layout.setContentsMargins(scaled_px(16), scaled_px(14), scaled_px(16), scaled_px(14))
         self._input.setFixedHeight(scaled_px(themes.metrics("control_height_md")))
-        self._input.setPlaceholderText(tr("tagger.placeholder", default="输入标签名按 Enter 添加..."))
+        refresh_elevation(self._card, level=3)
 
-        if self._all_library_tags:
-            completer = QCompleter(self._all_library_tags, self)
-            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-            completer.setFilterMode(Qt.MatchFlag.MatchContains)
-            self._input.setCompleter(completer)
+    def _target_text(self) -> str:
+        if len(self._paths) == 1:
+            return Path(self._paths[0]).name
+        return tr("tagger.multi_selection", default="已多选资产")
 
-        self._input.returnPressed.connect(self._add_current_tag)
-        card_layout.addWidget(self._input)
-
-        # ── Footer guide ─────────────────────────────────────
-        footer_lbl = QLabel(tr("tagger.guide", default="Enter：添加标签  ·  Esc：完成退出"))
-        footer_lbl.setObjectName("taggerFooter")
-        footer_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        card_layout.addWidget(footer_lbl)
-
-        root_layout.addWidget(self._card)
+    def refresh_overlay_chrome(self) -> None:
+        """OverlayShell hook (V05): restyle QSS, retranslate chrome text, and
+        re-scale metrics without rebuilding the overlay."""
+        self._apply_styles()
+        self._apply_scaled_metrics()
+        self._title_label.setText(tr("tagger.title", default="快速打标"))
+        self._count_label.setText(
+            f"{len(self._paths)} " + tr("tagger.files_count", default="个资产")
+        )
+        self._target_label.setText(self._target_text())
+        self._input.setPlaceholderText(
+            tr("tagger.placeholder", default="输入标签名按 Enter 添加...")
+        )
+        self._footer_label.setText(
+            tr("tagger.guide", default="Enter：添加标签  ·  Esc：完成退出")
+        )
+        self._render_chips()
+        self._reposition()
 
     def _render_chips(self) -> None:
         while self._tags_layout.count():
@@ -244,6 +292,9 @@ class QuickTaggerOverlay(QDialog):
         except Exception:
             pass
 
+    def _position_overlay(self) -> None:
+        self._reposition()
+
     def _reposition(self) -> None:
         # QWidget's parent is always widget-shaped here (the dialog is only
         # ever parented to windows/file lists); Qt's binding types it as the
@@ -256,15 +307,16 @@ class QuickTaggerOverlay(QDialog):
         else:
             screen = QApplication.primaryScreen()
             if screen:
-                geom = screen.geometry()
+                # V05: constraint rule is availableGeometry (taskbar-free),
+                # matching OverlayShell._constrain_to_screen; was screen
+                # geometry() including the taskbar area.
+                geom = screen.availableGeometry()
                 self.resize(geom.size())
                 self.move(geom.topLeft())
 
-    def paintEvent(self, event) -> None:
-        painter = QPainter(self)
-        dim_color = QColor(themes.color("base"))
-        dim_color.setAlpha(170)
-        painter.fillRect(self.rect(), dim_color)
+    # paintEvent (dimming backdrop) is inherited from OverlayShell: the
+    # SCRIM_WORKSPACE variant paints theme base @ alpha 172 — unified from
+    # this overlay's historical alpha 170 (expected V05 micro-change).
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key.Key_Escape:

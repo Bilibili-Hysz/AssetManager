@@ -21,7 +21,6 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -39,7 +38,8 @@ from AssetsManager import i18n
 from AssetsManager.core import icons, themes
 from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.ui_scale import scaled_pt, scaled_px
-from AssetsManager.widgets.elevation import apply_elevation
+from AssetsManager.widgets.elevation import apply_elevation, refresh_elevation
+from AssetsManager.widgets.overlay_shell import OverlayShell
 
 _log = logging.getLogger(__name__)
 tr = i18n.tr
@@ -205,8 +205,16 @@ class CommandPaletteDelegate(QStyledItemDelegate):
         painter.restore()
 
 
-class CommandPalette(QDialog):
-    """Global Command Palette floating modal window."""
+class CommandPalette(OverlayShell):
+    """Global Command Palette floating modal window.
+
+    V05: shell-backed — refresh bus subscription, screen constraining, and
+    focus entry/return live in OverlayShell.  ``scrim_variant`` is None: the
+    palette floats a shadowed card on a fully transparent window and has
+    never painted a dimming backdrop (zero intent drift).
+    """
+
+    scrim_variant: str | None = None
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -225,7 +233,6 @@ class CommandPalette(QDialog):
 
     def _build_ui(self) -> None:
         shadow_margin = scaled_px(16)
-        card_w = scaled_px(560)
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(
@@ -235,7 +242,6 @@ class CommandPalette(QDialog):
 
         self._card = QFrame(self)
         self._card.setObjectName("paletteCard")
-        self._card.setFixedWidth(card_w)
 
         card_layout = QVBoxLayout(self._card)
         card_layout.setContentsMargins(0, 0, 0, 0)
@@ -266,9 +272,8 @@ class CommandPalette(QDialog):
                 default="输入命令或搜索... (支持 > 命令, # 标签, @ 收藏)",
             )
         )
-        input_font = self._input.font()
-        input_font.setPointSize(scaled_pt(int(themes.font_size("lg"))))
-        self._input.setFont(input_font)
+        # Scaled font/height metrics are applied once in _apply_scaled_metrics
+        # (V05) so the ui_scale refresh hook has a single source.
         self._input.setFrame(False)
         self._input.textChanged.connect(self._on_search_changed)
         self._input.installEventFilter(self)
@@ -303,23 +308,18 @@ class CommandPalette(QDialog):
         )
         footer_layout.setSpacing(scaled_px(12))
 
-        footer_font = self.font()
-        footer_font.setPointSize(scaled_pt(int(themes.font_size("xxs", 9))))
-
         self._hint_nav = QLabel(
             f"{tr('command_palette.hint_nav', default='↑↓ 导航')}    "
             f"{tr('command_palette.hint_exec', default='↵ 执行')}    "
             f"{tr('command_palette.hint_close', default='Esc 退出')}",
             self._footer,
         )
-        self._hint_nav.setFont(footer_font)
         self._hint_nav.setObjectName("paletteHint")
         footer_layout.addWidget(self._hint_nav)
 
         footer_layout.addStretch(1)
 
         self._hint_mode = QLabel("> 命令   # 标签   @ 收藏", self._footer)
-        self._hint_mode.setFont(footer_font)
         self._hint_mode.setObjectName("paletteHint")
         footer_layout.addWidget(self._hint_mode)
 
@@ -327,6 +327,45 @@ class CommandPalette(QDialog):
         root_layout.addWidget(self._card)
 
         apply_elevation(self._card, level=3)
+        self._apply_scaled_metrics()
+
+    def _apply_scaled_metrics(self) -> None:
+        """Re-derive every scaled metric (width, heights, fonts) from the
+        current ui_scale; also the ui_scale_changed half of the refresh hook."""
+        self._card.setFixedWidth(scaled_px(560))
+        input_font = self._input.font()
+        input_font.setPointSize(scaled_pt(int(themes.font_size("lg"))))
+        self._input.setFont(input_font)
+        footer_font = self.font()
+        footer_font.setPointSize(scaled_pt(int(themes.font_size("xxs", 9))))
+        self._hint_nav.setFont(footer_font)
+        self._hint_mode.setFont(footer_font)
+        self._list.setMinimumHeight(scaled_px(240))
+        self._list.setMaximumHeight(scaled_px(380))
+        refresh_elevation(self._card, level=3)
+
+    def refresh_overlay_chrome(self) -> None:
+        """OverlayShell hook (V05): restyle QSS, retranslate chrome text, and
+        re-scale metrics without rebuilding the palette.  Command *titles*
+        keep their construction-time language until the palette is recreated
+        (stage E); the placeholder, hints, group headers, and empty state do
+        retranslate here."""
+        self._apply_theme_style()
+        self._apply_scaled_metrics()
+        self._input.setPlaceholderText(
+            tr(
+                "command_palette.placeholder",
+                default="输入命令或搜索... (支持 > 命令, # 标签, @ 收藏)",
+            )
+        )
+        self._hint_nav.setText(
+            f"{tr('command_palette.hint_nav', default='↑↓ 导航')}    "
+            f"{tr('command_palette.hint_exec', default='↵ 执行')}    "
+            f"{tr('command_palette.hint_close', default='Esc 退出')}"
+        )
+        # Re-run the grouping so header/empty-state rows retranslate too.
+        self._filter_items(self._input.text())
+        self._position_floating()
 
     def _apply_theme_style(self) -> None:
         card_bg = themes.color("panel") or themes.color("base")
@@ -906,9 +945,14 @@ class CommandPalette(QDialog):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        self._position_floating()
-        self._input.setFocus()
         self._input.selectAll()
+
+    def _focus_target(self) -> QWidget | None:
+        # The search input is the palette's entry point (unchanged behavior).
+        return self._input
+
+    def _position_overlay(self) -> None:
+        self._position_floating()
 
     def _position_floating(self) -> None:
         parent = self.parent()

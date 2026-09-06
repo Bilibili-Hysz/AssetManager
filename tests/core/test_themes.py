@@ -261,6 +261,8 @@ def test_stylesheet_themes_native_controls():
         "QCheckBox::indicator:checked",
         "QRadioButton::indicator:checked",
         "QCheckBox::indicator:hover",
+        "QCheckBox::indicator:focus",
+        "QRadioButton::indicator:focus",
         "QProgressBar",
         "QProgressBar::chunk",
         "QSlider::groove:horizontal",
@@ -273,7 +275,8 @@ def test_stylesheet_themes_native_controls():
 
     t = themes.get()
     # Unchecked indicators use the input surface + border; checked use the
-    # accent; hover uses the focus border — all via tokens, not literals.
+    # accent; hover uses the accent and focus uses the focus border (the
+    # StyleKit dialog factory recipe) — all via tokens, not literals.
     assert t["input_bg"] in qss
     assert t["tooltip_bg"] in qss
     assert t["tooltip_text"] in qss

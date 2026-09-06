@@ -20,6 +20,7 @@ import pytest
 
 from AssetsManager.core import themes
 from AssetsManager.core.settings import AppSettings
+from AssetsManager.core.ui_scale import scaled_px
 
 REQUIRED_SELECTORS = [
     "QMainWindow",
@@ -98,3 +99,33 @@ def test_qss_renders_clean_for_every_theme(name, restored_theme):
     assert "color: ;" not in qss
     assert "background: ;" not in qss
     assert "border: ;" not in qss
+
+
+def test_indicator_states_match_dialog_factory_recipe():
+    """V12 — the global check/radio indicator recipe must match the StyleKit
+    dialog factory (the canonical one): 2px borders, accent hover, and a
+    dedicated :focus rule so hover and focus stay distinguishable."""
+    t = themes.get()
+    qss = themes.stylesheet()
+
+    def rule(selector: str) -> str:
+        found = re.search(re.escape(selector) + r" \{([^}]*)\}", qss)
+        assert found is not None, f"missing selector {selector!r} in global QSS"
+        return found.group(1)
+
+    hover = rule("QCheckBox::indicator:hover, QRadioButton::indicator:hover")
+    # Hover highlights with the accent, not the focus border (factory recipe).
+    assert f"border: {scaled_px(2)}px solid {t['accent']}" in hover
+    if t["border_focus"] != t["accent"]:
+        # Some themes derive border_focus from accent (values coincide); on
+        # the rest the hover rule must NOT carry the focus border.
+        assert t["border_focus"] not in hover
+
+    focus = rule("QCheckBox::indicator:focus, QRadioButton::indicator:focus")
+    assert f"border: {scaled_px(2)}px solid {t['border_focus']}" in focus
+
+    checked = rule("QCheckBox::indicator:checked, QRadioButton::indicator:checked")
+    assert f"border: {scaled_px(2)}px solid {t['accent']}" in checked
+
+    base = rule("QCheckBox::indicator, QRadioButton::indicator")
+    assert f"border: {scaled_px(2)}px solid {t['border']}" in base

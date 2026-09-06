@@ -856,19 +856,22 @@ def stylesheet() -> str:
     /* Native control theming: without these rules the checkbox/radio
        indicators, progress bars, sliders, and tooltips fall back to the
        system light palette under dark themes (white indicators, white
-       progress track, native tooltip). */
+       progress track, native tooltip). Indicator state recipe mirrors the
+       StyleKit dialog factory (canonical): 2px borders, accent hover, and
+       a dedicated :focus rule so hover and focus stay distinguishable. */
     QCheckBox::indicator, QRadioButton::indicator {{
         width: {scaled_px(14)}px; height: {scaled_px(14)}px;
         background: {t['input_bg']};
-        border: 1px solid {t['border']};
+        border: {scaled_px(2)}px solid {t['border']};
         border-radius: {r_sm}px;
     }}
     QRadioButton::indicator {{ border-radius: {r_md}px; }}
-    QCheckBox::indicator:hover, QRadioButton::indicator:hover {{ border: 1px solid {t['border_focus']}; }}
+    QCheckBox::indicator:hover, QRadioButton::indicator:hover {{ border: {scaled_px(2)}px solid {t['accent']}; }}
     QCheckBox::indicator:checked, QRadioButton::indicator:checked {{
         background: {t['accent']};
-        border: 1px solid {t['accent']};
+        border: {scaled_px(2)}px solid {t['accent']};
     }}
+    QCheckBox::indicator:focus, QRadioButton::indicator:focus {{ border: {scaled_px(2)}px solid {t['border_focus']}; }}
     QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {{
         background: {t['disabled_bg']};
         border: 1px solid {t['disabled_text']};

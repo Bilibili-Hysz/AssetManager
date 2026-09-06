@@ -2,10 +2,11 @@
 
 Provides a seamless, desktop-native QuickLook preview overlay aligned with WebUI
 QuickLookOverlay experience. Activated via Space bar in file lists or explicitly.
-The dimmed backdrop is a translucent fill of the theme ``base`` color at alpha
-175 (no blur sampling — see ``paintEvent``); the centered preview card itself
-is opaque. Complies with Design System 2.0 (token-based styling, scale-aware
-metrics).
+The dimmed backdrop is the shell's ``SCRIM_WORKSPACE`` variant — a translucent
+fill of the theme ``base`` color at alpha 172 (unified from the historical 175;
+see ``OverlayShell``; no blur sampling — see ``paintEvent``); the centered
+preview card itself is opaque. Complies with Design System 2.0 (token-based
+styling, scale-aware metrics).
 """
 from __future__ import annotations
 
@@ -14,14 +15,12 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QPoint, QRect, QSize, Qt
 from PySide6.QtGui import (
-    QColor,
     QGuiApplication,
     QImageReader,
     QPainter,
     QPixmap,
 )
 from PySide6.QtWidgets import (
-    QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -34,12 +33,13 @@ from PySide6.QtWidgets import (
 
 from AssetsManager import i18n
 from AssetsManager.core import icons, themes
-from AssetsManager.core.color_utils import _hex_to_rgb, alpha
+from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.constants import IMAGE_EXTS, VIDEO_EXTS
 from AssetsManager.core.format_utils import format_size
 from AssetsManager.core.ui_scale import scaled_pt, scaled_px
 from AssetsManager.domain.asset import category_for_extension
-from AssetsManager.widgets.elevation import apply_elevation
+from AssetsManager.widgets.elevation import apply_elevation, refresh_elevation
+from AssetsManager.widgets.overlay_shell import OverlayShell
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QKeyEvent, QPaintEvent, QResizeEvent
@@ -164,8 +164,12 @@ class CanvasContainer(QWidget):
             self.next_btn.raise_()
 
 
-class QuickLookOverlay(QDialog):
-    """Frameless, centered modal dialog for instant file inspection."""
+class QuickLookOverlay(OverlayShell):
+    """Frameless, centered modal dialog for instant file inspection.
+
+    V05: shell-backed — the ``SCRIM_WORKSPACE`` backdrop, refresh-bus
+    subscription, screen constraining, and focus return live in OverlayShell.
+    """
 
     def __init__(
         self,
@@ -356,18 +360,22 @@ class QuickLookOverlay(QDialog):
         footer_layout.addWidget(_make_kbd("Space"))
         footer_layout.addWidget(_make_text("/"))
         footer_layout.addWidget(_make_kbd("Esc"))
-        footer_layout.addWidget(_make_text(tr("quicklook.footer_close", default="关闭")))
+        # Refs kept for the V05 language refresh hook (label, i18n key, default).
+        self._footer_texts: list[tuple[QLabel, str, str]] = []
+
+        def _make_tr_text(key: str, default: str) -> QLabel:
+            label = _make_text(tr(key, default=default))
+            self._footer_texts.append((label, key, default))
+            return label
+
+        footer_layout.addWidget(_make_tr_text("quicklook.footer_close", "关闭"))
         footer_layout.addWidget(_make_text(" · "))
         footer_layout.addWidget(_make_kbd("←"))
         footer_layout.addWidget(_make_kbd("→"))
-        footer_layout.addWidget(
-            _make_text(tr("quicklook.footer_slice", default="切片"))
-        )
+        footer_layout.addWidget(_make_tr_text("quicklook.footer_slice", "切片"))
         footer_layout.addWidget(_make_text(" · "))
         footer_layout.addWidget(_make_kbd("Enter"))
-        footer_layout.addWidget(
-            _make_text(tr("quicklook.footer_open", default="系统默认打开"))
-        )
+        footer_layout.addWidget(_make_tr_text("quicklook.footer_open", "系统默认打开"))
 
         card_layout.addWidget(self._footer_widget, 0)
 
@@ -559,11 +567,32 @@ class QuickLookOverlay(QDialog):
         self._prev_btn.setVisible(has_multiple)
         self._next_btn.setVisible(has_multiple)
 
-    def paintEvent(self, event: QPaintEvent) -> None:
-        painter = QPainter(self)
-        base_color = themes.color("base")
-        r, g, b = _hex_to_rgb(base_color) if base_color else (0, 0, 0)
-        painter.fillRect(self.rect(), QColor(r, g, b, 175))
+    # paintEvent (dimming backdrop) is inherited from OverlayShell: the
+    # SCRIM_WORKSPACE variant paints theme base @ alpha 172 — unified from
+    # this overlay's historical alpha 175 (expected V05 micro-change).
+
+    def _apply_scaled_metrics(self) -> None:
+        """Re-derive the fixed control sizes from the current ui_scale; also
+        the ui_scale_changed half of the V05 refresh hook."""
+        hit_area = scaled_px(themes.metrics("hit_area"))
+        icon_sm = scaled_px(themes.metrics("icon_sm"))
+        self._close_btn.setFixedSize(hit_area, hit_area)
+        self._close_btn.setIconSize(QSize(icon_sm, icon_sm))
+        nav_btn_size = scaled_px(36)
+        nav_icon_size = scaled_px(20)
+        for btn in (self._prev_btn, self._next_btn):
+            btn.setFixedSize(nav_btn_size, nav_btn_size)
+            btn.setIconSize(QSize(nav_icon_size, nav_icon_size))
+        refresh_elevation(self._card, level=3)
+
+    def refresh_overlay_chrome(self) -> None:
+        """OverlayShell hook (V05): restyle QSS, retranslate footer text, and
+        re-scale fixed sizes without rebuilding the overlay."""
+        self._apply_styles()
+        self._apply_scaled_metrics()
+        for label, key, default in self._footer_texts:
+            label.setText(tr(key, default=default))
+        self._update_display()
 
     def mousePressEvent(self, event) -> None:
         if not self._card.geometry().contains(event.pos()):
@@ -592,8 +621,10 @@ class QuickLookOverlay(QDialog):
             return
         super().keyPressEvent(event)
 
-    def showEvent(self, event) -> None:
-        super().showEvent(event)
+    def _position_overlay(self) -> None:
+        # Previous showEvent body: fill the parent window, or fall back to
+        # the primary screen's availableGeometry; the shell constrains the
+        # result to the screen afterwards.
         parent_widget = self.parentWidget()
         parent_win = parent_widget.window() if parent_widget else None
         if parent_win and parent_win.isVisible():
