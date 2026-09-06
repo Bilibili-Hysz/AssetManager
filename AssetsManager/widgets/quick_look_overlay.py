@@ -113,12 +113,28 @@ class GenericFileWidget(QWidget):
         self._meta_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._meta_label)
 
-        self._hint_label = QLabel(
-            tr("quicklook.enter_hint", default="按 Enter 使用系统默认程序打开此文件")
-        )
+        self._hint_key = "quicklook.enter_hint"
+        self._hint_default = "按 Enter 使用系统默认程序打开此文件"
+        self._hint_label = QLabel(tr(self._hint_key, default=self._hint_default))
         self._hint_label.setObjectName("quickLookFooterText")
         self._hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._hint_label)
+
+        self._layout = layout
+
+    def retranslate(self) -> None:
+        """Runtime language refresh for the static hint (stage E).  The hint
+        key is stored at construction so refresh_overlay_chrome can reach it
+        without rebuilding the canvas."""
+        self._hint_label.setText(tr(self._hint_key, default=self._hint_default))
+
+    def apply_scaled_metrics(self) -> None:
+        """Re-derive the layout margins/spacing from the current ui_scale
+        (stage E: the overlay-level rescale previously stopped at the card)."""
+        self._layout.setContentsMargins(
+            scaled_px(24), scaled_px(24), scaled_px(24), scaled_px(24)
+        )
+        self._layout.setSpacing(scaled_px(10))
 
     def set_file_info(
         self,
@@ -249,7 +265,8 @@ class QuickLookOverlay(OverlayShell):
         # ── 1. Top Header Bar ─────────────────────────────────────
         self._header_widget = QWidget(self._card)
         self._header_widget.setObjectName("quickLookHeader")
-        header_layout = QHBoxLayout(self._header_widget)
+        self._header_layout = QHBoxLayout(self._header_widget)
+        header_layout = self._header_layout
         header_layout.setContentsMargins(
             scaled_px(16), scaled_px(10), scaled_px(16), scaled_px(10)
         )
@@ -266,6 +283,7 @@ class QuickLookOverlay(OverlayShell):
         self._title_label.setObjectName("quickLookTitle")
         self._title_label.setMaximumWidth(scaled_px(420))
         header_layout.addWidget(self._title_label)
+        self._title_label_max_width = scaled_px(420)
 
         self._spec_pill = QLabel()
         self._spec_pill.setObjectName("quickLookSpecPill")
@@ -339,7 +357,8 @@ class QuickLookOverlay(OverlayShell):
         # ── 3. Bottom Keyboard Shortcuts Guide Bar ────────────────
         self._footer_widget = QWidget(self._card)
         self._footer_widget.setObjectName("quickLookFooter")
-        footer_layout = QHBoxLayout(self._footer_widget)
+        self._footer_layout = QHBoxLayout(self._footer_widget)
+        footer_layout = self._footer_layout
         footer_layout.setContentsMargins(
             scaled_px(16), scaled_px(8), scaled_px(16), scaled_px(8)
         )
@@ -572,12 +591,28 @@ class QuickLookOverlay(OverlayShell):
     # this overlay's historical alpha 175 (expected V05 micro-change).
 
     def _apply_scaled_metrics(self) -> None:
-        """Re-derive the fixed control sizes from the current ui_scale; also
-        the ui_scale_changed half of the V05 refresh hook."""
+        """Re-derive the fixed control sizes AND layout margins/spacing from
+        the current ui_scale; also the ui_scale_changed half of the V05
+        refresh hook (stage E adds the margin/spacing re-derivation)."""
         hit_area = scaled_px(themes.metrics("hit_area"))
         icon_sm = scaled_px(themes.metrics("icon_sm"))
         self._close_btn.setFixedSize(hit_area, hit_area)
         self._close_btn.setIconSize(QSize(icon_sm, icon_sm))
+        # Header/footer bar margins + spacing (stage E: previously frozen at
+        # the construction-time scale).
+        self._header_layout.setContentsMargins(
+            scaled_px(16), scaled_px(10), scaled_px(16), scaled_px(10)
+        )
+        self._header_layout.setSpacing(scaled_px(10))
+        self._title_label_max_width = scaled_px(420)
+        self._title_label.setMaximumWidth(self._title_label_max_width)
+        self._footer_layout.setContentsMargins(
+            scaled_px(16), scaled_px(8), scaled_px(16), scaled_px(8)
+        )
+        self._footer_layout.setSpacing(scaled_px(8))
+        # Generic canvas margins follow the same rescale; the hint label is
+        # retranslated separately (retranslate).
+        self._generic_canvas.apply_scaled_metrics()
         nav_btn_size = scaled_px(36)
         nav_icon_size = scaled_px(20)
         for btn in (self._prev_btn, self._next_btn):
@@ -586,12 +621,14 @@ class QuickLookOverlay(OverlayShell):
         refresh_elevation(self._card, level=3)
 
     def refresh_overlay_chrome(self) -> None:
-        """OverlayShell hook (V05): restyle QSS, retranslate footer text, and
-        re-scale fixed sizes without rebuilding the overlay."""
+        """OverlayShell hook (V05/stage E): restyle QSS, retranslate footer
+        text and the generic-file hint, and re-scale fixed sizes without
+        rebuilding the overlay."""
         self._apply_styles()
         self._apply_scaled_metrics()
         for label, key, default in self._footer_texts:
             label.setText(tr(key, default=default))
+        self._generic_canvas.retranslate()
         self._update_display()
 
     def mousePressEvent(self, event) -> None:

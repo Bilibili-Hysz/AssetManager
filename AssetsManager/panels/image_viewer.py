@@ -47,6 +47,7 @@ from AssetsManager.application.sequence_service import SequenceNeighbors, find_n
 from AssetsManager.core.file_snapshot import read_snapshot
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
 from AssetsManager.core.workers import BoundedPool, CancellationToken, CancellableRunnable
+from AssetsManager.widgets.overlay_shell import OverlayShell
 from AssetsManager.panels.file_list._loader import _suppress_libpng_warnings
 from AssetsManager.panels.file_list._common import pil_image_to_qimage
 from AssetsManager import i18n
@@ -852,13 +853,13 @@ class ImageViewerOverlay(QFrame):
         rect = self.rect()
         container = self._container_rect()
 
-        # Semi-transparent backdrop — kept as a dedicated media scrim (V05):
-        # pure black @ alpha 180, intentionally not the theme-tinted workspace
-        # scrim so photos stay color-neutral.  This is the named
-        # OverlayShell.SCRIM_MEDIA / OverlayShell.SCRIM_ALPHA_MEDIA variant
-        # (widgets/overlay_shell.py); the shell's paintEvent is not reused
-        # here because the viewer hand-paints its full chrome.
-        p.fillRect(rect, QColor(0, 0, 0, 180))
+        # Semi-transparent backdrop — dedicated media scrim (V05/stage E):
+        # pure black, intentionally not the theme-tinted workspace scrim so
+        # photos stay color-neutral.  The alpha now references the named
+        # OverlayShell.SCRIM_ALPHA_MEDIA constant (widgets/overlay_shell.py)
+        # instead of a duplicated literal; the shell's paintEvent is not
+        # reused here because the viewer hand-paints its full chrome.
+        p.fillRect(rect, QColor(0, 0, 0, OverlayShell.SCRIM_ALPHA_MEDIA))
 
         # Container background
         p.setBrush(QColor(t["panel"]))

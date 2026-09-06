@@ -286,3 +286,32 @@ def test_panel_open_quick_look_method(tmp_path, qapp, monkeypatch):
         panel.deleteLater()
         qapp.processEvents()
 
+
+
+def test_quick_look_generic_hint_retranslates_on_language_change(tmp_path, qapp):
+    """Stage E (V05/V10): the GenericFileWidget static hint was frozen at
+    construction language; a bus-driven language switch must retranslate it
+    (key stored at construction, setText at refresh — no rebuild)."""
+    from AssetsManager import i18n
+    from AssetsManager.core.signal_bus import get as bus
+
+    txt_path = tmp_path / "hints.txt"
+    txt_path.write_text("hello", encoding="utf-8")
+    overlay = QuickLookOverlay([str(txt_path)])
+    saved_lang = i18n._current_lang
+    target = "ja" if saved_lang != "ja" else "zh"
+    try:
+        assert overlay._stack.currentWidget() is overlay._generic_canvas
+        before = overlay._generic_canvas._hint_label.text()
+
+        i18n._current_lang = target
+        bus().language_changed.emit(target)
+
+        after = overlay._generic_canvas._hint_label.text()
+        assert after == i18n.tr("quicklook.enter_hint")
+        assert after != before
+    finally:
+        i18n._current_lang = saved_lang
+        overlay.close()
+        overlay.deleteLater()
+        qapp.processEvents()

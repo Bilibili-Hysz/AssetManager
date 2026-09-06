@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QMenu, QInputDialog, QApplication, QAbstractItemView,
     QLabel, QWidget, QSizePolicy,
 )
-from PySide6.QtGui import QKeyEvent, QBrush, QColor, QFont
+from PySide6.QtGui import QKeyEvent, QBrush, QColor
 
 from AssetsManager.panels.base import StandardPanel
 from AssetsManager import i18n
@@ -345,8 +345,9 @@ class SidebarPanel(StandardPanel):
     @staticmethod
     def _bold_item(item: QTreeWidgetItem, color: str = ""):
         font = item.font(0)
+        # setBold(True) already sets the weight to Bold (V14: the explicit
+        # setWeight(QFont.Weight.Bold) was a redundant double-set).
         font.setBold(True)
-        font.setWeight(QFont.Weight.Bold)
         item.setFont(0, font)
         if color:
             item.setForeground(0, QBrush(QColor(color)))

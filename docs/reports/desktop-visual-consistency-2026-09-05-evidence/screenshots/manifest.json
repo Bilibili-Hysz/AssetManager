@@ -1,12 +1,24 @@
 {
+  "empty_panel_navy": {
+    "component": "empty_panel_navy",
+    "digest": "360x420|corners=#1a1d28,#1a1d28,#1a1d28,#1a1d28,#1a1d28|rows=bcb5c8fc1278fac4f3611d684ef2e41e32d45608c7fc8afc4790bb2f8d2aba0d",
+    "pyside_version": "6.11.0",
+    "sample_profile": "none",
+    "screenshot_date": "2026-09-06",
+    "size": "360x420",
+    "source_head": "8571fbf96024b3d8c0c05e722ff67b1c058eb82d",
+    "state": "empty",
+    "theme": "Navy",
+    "ui_scale": 1.0
+  },
   "file_list_details_navy": {
     "component": "file_list_details_navy",
     "digest": "900x560|corners=#1a1d28,#1a1d28,#1a1d28,#1a1d28,#1a1d27|rows=716ff9dee736aee60c856cde9d0bfef5d99a559d59467f57ccfdf0789408b806",
     "pyside_version": "6.11.0",
     "sample_profile": "representative",
-    "screenshot_date": "2026-09-05",
+    "screenshot_date": "2026-09-06",
     "size": "900x560",
-    "source_head": "112483c889d0389536d3806f3e8cfd0d88c6f341",
+    "source_head": "8571fbf96024b3d8c0c05e722ff67b1c058eb82d",
     "state": "hover+selected",
     "theme": "Navy",
     "ui_scale": 1.0
@@ -16,9 +28,9 @@
     "digest": "900x560|corners=#1a1d28,#1a1d28,#1a1d28,#1a1d28,#faf8f4|rows=5cfd22b9d907ef122e0e2ee277b7f568c24e3e193f69f04ebc31263d51dfad71",
     "pyside_version": "6.11.0",
     "sample_profile": "representative",
-    "screenshot_date": "2026-09-05",
+    "screenshot_date": "2026-09-06",
     "size": "900x560",
-    "source_head": "112483c889d0389536d3806f3e8cfd0d88c6f341",
+    "source_head": "8571fbf96024b3d8c0c05e722ff67b1c058eb82d",
     "state": "hover+selected",
     "theme": "Dawn",
     "ui_scale": 1.0
@@ -28,9 +40,9 @@
     "digest": "900x560|corners=#1a1d28,#1a1d28,#1a1d28,#1a1d28,#1a1d28|rows=8f055863dc8f835b3b5b3537f3b7c2fab1453780405c1209714a56b3d42ef2ad",
     "pyside_version": "6.11.0",
     "sample_profile": "representative",
-    "screenshot_date": "2026-09-05",
+    "screenshot_date": "2026-09-06",
     "size": "900x560",
-    "source_head": "112483c889d0389536d3806f3e8cfd0d88c6f341",
+    "source_head": "8571fbf96024b3d8c0c05e722ff67b1c058eb82d",
     "state": "hover+selected",
     "theme": "Navy",
     "ui_scale": 1.0
@@ -42,7 +54,7 @@
     "sample_profile": "representative",
     "screenshot_date": "2026-09-06",
     "size": "360x640",
-    "source_head": "869e92b780c56ce9155b7114e9944964c3d04641",
+    "source_head": "8571fbf96024b3d8c0c05e722ff67b1c058eb82d",
     "state": "focused",
     "theme": "Navy",
     "ui_scale": 1.0
@@ -54,7 +66,7 @@
     "sample_profile": "empty",
     "screenshot_date": "2026-09-06",
     "size": "1200x800",
-    "source_head": "869e92b780c56ce9155b7114e9944964c3d04641",
+    "source_head": "8571fbf96024b3d8c0c05e722ff67b1c058eb82d",
     "state": "idle+empty",
     "theme": "Navy",
     "ui_scale": 1.0
@@ -66,7 +78,7 @@
     "sample_profile": "representative",
     "screenshot_date": "2026-09-06",
     "size": "1200x800",
-    "source_head": "869e92b780c56ce9155b7114e9944964c3d04641",
+    "source_head": "8571fbf96024b3d8c0c05e722ff67b1c058eb82d",
     "state": "idle+info focused",
     "theme": "Dawn",
     "ui_scale": 1.0
@@ -78,19 +90,31 @@
     "sample_profile": "representative",
     "screenshot_date": "2026-09-06",
     "size": "1200x800",
-    "source_head": "869e92b780c56ce9155b7114e9944964c3d04641",
+    "source_head": "8571fbf96024b3d8c0c05e722ff67b1c058eb82d",
     "state": "idle+info focused",
+    "theme": "Navy",
+    "ui_scale": 1.0
+  },
+  "plugin_manager_dialog_navy": {
+    "component": "plugin_manager_dialog_navy",
+    "digest": "798x620|corners=#242838,#1a1d28,#242838,#1a1d28,#1a1d28|rows=dad05251c0faacf42f1b5cc4e14d4c9a6a8bff73298af41ea33bbbeed001326a",
+    "pyside_version": "6.11.0",
+    "sample_profile": "none",
+    "screenshot_date": "2026-09-06",
+    "size": "798x620",
+    "source_head": "8571fbf96024b3d8c0c05e722ff67b1c058eb82d",
+    "state": "selected",
     "theme": "Navy",
     "ui_scale": 1.0
   },
   "startup_window_navy": {
     "component": "startup_window_navy",
-    "digest": "740x500|corners=#242838,#242838,#0f1118,#0f1118,#141720|rows=e9f06f892575eb53cf38ce6a644942cd4d4517c8062a09ecba16ae8c797cd284",
+    "digest": "740x500|corners=#242838,#242838,#0f1118,#0f1118,#141720|rows=0636716bf31166b9803cfc6b3ff0594acbb87ab810f11c113664f93ad3541d9c",
     "pyside_version": "6.11.0",
     "sample_profile": "none",
-    "screenshot_date": "2026-09-05",
+    "screenshot_date": "2026-09-06",
     "size": "740x500",
-    "source_head": "112483c889d0389536d3806f3e8cfd0d88c6f341",
+    "source_head": "8571fbf96024b3d8c0c05e722ff67b1c058eb82d",
     "state": "idle",
     "theme": "Navy",
     "ui_scale": 1.0
@@ -100,10 +124,22 @@
     "digest": "800x500|corners=#1a1d28,#1a1d28,#1a1d28,#1a1d28,#0f1118|rows=34e3598783e248e193619fb5855b59b89bc15ed5bcb19b85edc6416276defbd1",
     "pyside_version": "6.11.0",
     "sample_profile": "none",
-    "screenshot_date": "2026-09-05",
+    "screenshot_date": "2026-09-06",
     "size": "800x500",
-    "source_head": "112483c889d0389536d3806f3e8cfd0d88c6f341",
+    "source_head": "8571fbf96024b3d8c0c05e722ff67b1c058eb82d",
     "state": "idle",
+    "theme": "Navy",
+    "ui_scale": 1.0
+  },
+  "toast_success_navy": {
+    "component": "toast_success_navy",
+    "digest": "307x79|corners=#000000,#000000,#000000,#000000,#000000|rows=ccc352fee68f39da027560d7378356a082ea220163a37e46282261d43d993096",
+    "pyside_version": "6.11.0",
+    "sample_profile": "none",
+    "screenshot_date": "2026-09-06",
+    "size": "307x79",
+    "source_head": "8571fbf96024b3d8c0c05e722ff67b1c058eb82d",
+    "state": "visible",
     "theme": "Navy",
     "ui_scale": 1.0
   }

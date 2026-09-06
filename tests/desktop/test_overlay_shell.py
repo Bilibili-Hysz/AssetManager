@@ -216,6 +216,59 @@ def test_quick_tagger_rescales_card_width_on_scale_change(qapp, bus, quick_tagge
         monkeypatch.setattr(ui_scale, "get_ui_scale", lambda: 1.0)
 
 
+# ── Stage E: layout margins/spacing join the scale refresh ────────
+
+
+def test_command_palette_rescales_layout_margins_on_scale_change(
+    qapp, bus, palette, monkeypatch
+):
+    """Stage E: the palette's root shadow margin, search-row margins/spacing,
+    and footer margins/spacing re-derive from ui_scale (previously frozen at
+    the construction-time scale)."""
+    assert palette._root_layout.contentsMargins().left() == scaled_px(16)
+    monkeypatch.setattr(ui_scale, "get_ui_scale", lambda: 1.5)
+    try:
+        bus.ui_scale_changed.emit(1.5)
+        qapp.processEvents()
+        # 16 * 1.5 = 24
+        assert palette._root_layout.contentsMargins().left() == scaled_px(16)
+        assert palette._search_layout.contentsMargins().top() == scaled_px(10)  # 15
+        assert palette._search_layout.spacing() == scaled_px(10)  # 15
+        assert palette._footer_layout.contentsMargins().left() == scaled_px(14)  # 21
+        assert palette._footer_layout.spacing() == scaled_px(12)  # 18
+    finally:
+        monkeypatch.setattr(ui_scale, "get_ui_scale", lambda: 1.0)
+
+
+def test_quick_look_rescales_bar_margins_on_scale_change(qapp, bus, quick_look, monkeypatch):
+    """Stage E: QuickLook header/footer bar margins + spacing re-derive."""
+    assert quick_look._header_layout.contentsMargins().left() == scaled_px(16)
+    monkeypatch.setattr(ui_scale, "get_ui_scale", lambda: 1.5)
+    try:
+        bus.ui_scale_changed.emit(1.5)
+        qapp.processEvents()
+        assert quick_look._header_layout.contentsMargins().left() == scaled_px(16)  # 24
+        assert quick_look._header_layout.spacing() == scaled_px(10)  # 15
+        assert quick_look._footer_layout.contentsMargins().bottom() == scaled_px(8)  # 12
+        assert quick_look._footer_layout.spacing() == scaled_px(8)  # 12
+    finally:
+        monkeypatch.setattr(ui_scale, "get_ui_scale", lambda: 1.0)
+
+
+def test_quick_tagger_rescales_spacing_on_scale_change(qapp, bus, quick_tagger, monkeypatch):
+    """Stage E: QuickTagger card spacing + header/tag-row spacing re-derive."""
+    assert quick_tagger._card_layout.spacing() == scaled_px(10)
+    monkeypatch.setattr(ui_scale, "get_ui_scale", lambda: 1.5)
+    try:
+        bus.ui_scale_changed.emit(1.5)
+        qapp.processEvents()
+        assert quick_tagger._card_layout.spacing() == scaled_px(10)  # 15
+        assert quick_tagger._header_layout.spacing() == scaled_px(8)  # 12
+        assert quick_tagger._tags_layout.spacing() == scaled_px(4)  # 6
+    finally:
+        monkeypatch.setattr(ui_scale, "get_ui_scale", lambda: 1.0)
+
+
 # ── Screen constraint ─────────────────────────────────────────────
 
 

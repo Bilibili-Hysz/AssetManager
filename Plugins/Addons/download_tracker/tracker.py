@@ -21,6 +21,7 @@ except ImportError:  # pragma: no cover - environments without PySide6
     _Signal = None  # type: ignore[assignment]
     _QT_READY = False
 
+from AssetsManager import i18n
 from AssetsManager.domain.events import FileSystemChanged
 from AssetsManager.plugin_api import (
     CommandOperator,
@@ -139,7 +140,12 @@ def _prune(keep_days: int) -> None:
 
 class TrackerPrefs(Preferences):
     settings = {
-        "keep_days": {"type": "int", "default": 30, "label": "Keep history (days)"},
+        # V10: user-visible labels go through the trilingual catalog.
+        "keep_days": {
+            "type": "int",
+            "default": 30,
+            "label": i18n.tr("plugin_tracker.pref_keep_days", default="Keep history (days)"),
+        },
     }
 
 
@@ -196,11 +202,15 @@ class ImportHook(EventHook):
 
 class ClearHistory(CommandOperator):
     id = "download_tracker.clear"
-    title = "Clear download history"
+    title = i18n.tr("plugin_tracker.cmd_clear", default="Clear download history")
     menu_paths = ("tools",)
     undoable = True
     params = {
-        "confirm": {"type": "bool", "default": False, "label": "Confirm clear"},
+        "confirm": {
+            "type": "bool",
+            "default": False,
+            "label": i18n.tr("plugin_tracker.pref_confirm", default="Confirm clear"),
+        },
     }
 
     def execute(self, ctx: PluginContext, params: dict[str, Any] | None = None) -> Any:
@@ -223,7 +233,7 @@ class ClearHistory(CommandOperator):
 
 class HistoryPanel(PanelContributor):
     id = "download_tracker.history"
-    title = "Downloads"
+    title = i18n.tr("plugin_tracker.title", default="Downloads")
     area = "right"
 
     def build(self, ctx: PluginContext) -> Any:
@@ -246,7 +256,11 @@ class HistoryPanel(PanelContributor):
                 reverse=True,
             )[:20]
         if not items:
-            layout.addWidget(QLabel("No recorded downloads yet."))
+            # V10: empty state goes through the trilingual catalog (rendered
+            # at populate time, so it follows the current language).
+            layout.addWidget(QLabel(
+                i18n.tr("plugin_tracker.empty", default="No recorded downloads yet.")
+            ))
         for path, rec in items:
             count = (rec or {}).get("count", 0)
             layout.addWidget(QLabel(f"{count}×  {path}"))

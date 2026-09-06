@@ -316,3 +316,78 @@ def test_main_window_command_palette_action_and_shortcut():
     assert cmd_entry["description"] == "menu.command_palette"
     assert cmd_entry["category"] == "application"
 
+
+def test_command_palette_rebuilds_builtins_and_keeps_external_on_language_change(parent_widget):
+    """Stage E (V05/V10): a language switch regenerates the built-in command
+    table (titles AND category descriptions retranslate via the bus-driven
+    rebuild) while external register_command contributions survive it."""
+    from AssetsManager import i18n
+    from AssetsManager.core.signal_bus import get as bus
+
+    palette = CommandPalette(parent_widget)
+    external_cb = Mock()
+    palette.register_command(PaletteCommand(
+        id="ext_retranslate_probe",
+        title="External Probe",
+        category="command",
+        description="External",
+        callback=external_cb,
+        keywords=("external", "probe"),
+    ))
+    saved_lang = i18n._current_lang
+    # Target language always differs from the current one so the assertion
+    # "title changed" is meaningful regardless of suite ordering.
+    target = "ja" if saved_lang != "ja" else "zh"
+    try:
+        builtin_before = next(c for c in palette._commands if c.id == "cmd_toggle_theme")
+
+        # Runtime language switch without persisting settings: flip the
+        # module language, then emit the same bus signal the OverlayShell
+        # refresh contract listens to (set_language would also broadcast,
+        # but it writes settings.json — kept disk-clean here).
+        i18n._current_lang = target
+        bus().language_changed.emit(target)
+
+        builtin_after = next(c for c in palette._commands if c.id == "cmd_toggle_theme")
+        assert builtin_after is not builtin_before  # regenerated, not mutated
+        assert builtin_after.title == i18n.tr("command_palette.cmd_theme")
+        assert builtin_after.title != builtin_before.title
+        assert builtin_after.description == i18n.tr("command_palette.desc_ui_theme")
+
+        # External registration survived the rebuild (same object, dict-kept).
+        assert palette._external_commands["ext_retranslate_probe"].callback is external_cb
+        assert any(c.id == "ext_retranslate_probe" for c in palette._commands)
+
+        # The rendered list still shows the external command in ">" mode.
+        palette._input.setText(">probe")
+        rendered = [
+            palette._list.item(r).data(CommandPaletteDelegate.TitleRole)
+            for r in range(palette._list.count())
+            if not palette._list.item(r).data(CommandPaletteDelegate.IsHeaderRole)
+        ]
+        assert "External Probe" in rendered
+    finally:
+        i18n._current_lang = saved_lang
+        palette.close()
+        palette.deleteLater()
+
+
+def test_command_palette_mode_hint_is_translated(parent_widget):
+    """V10: the footer mode hint ("> 命令   # 标签   @ 收藏") was a hardcoded
+    zh literal bypassing tr(); it must follow the catalog language."""
+    from AssetsManager import i18n
+
+    saved_lang = i18n._current_lang
+    palette = CommandPalette(parent_widget)
+    try:
+        expected = (
+            f"{i18n.tr('command_palette.hint_mode_cmd')}   "
+            f"{i18n.tr('command_palette.hint_mode_tags')}   "
+            f"{i18n.tr('command_palette.hint_mode_favs')}"
+        )
+        assert palette._hint_mode.text() == expected
+    finally:
+        i18n._current_lang = saved_lang
+        palette.close()
+        palette.deleteLater()
+

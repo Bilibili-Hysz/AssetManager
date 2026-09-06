@@ -717,3 +717,134 @@ def test_main_window_empty_library(tmp_path_factory, main_window_factory):
                       profile="empty", state="idle+empty")
     _check_digest(name, digest)
 
+
+
+# ── Stage E 覆盖盲区扩展（插件对话框 / Toast / 空态面板）───────────
+
+
+@pytest.mark.parametrize("theme", [DARK_THEME], ids=["navy"])
+def test_plugin_manager_dialog(tmp_path_factory, theme, monkeypatch):
+    """插件管理器对话框（Stage E 覆盖盲区）：双插件卡片 + 详情段选中态。
+
+    构造先例沿用 test_plugin_manager_dialog.py 的 _PluginManager 替身：
+    monkeypatch PluginManagerService.get，无需真实插件目录。
+
+    摘要轨（digest ratchet）刻意不启用（startup_window 同款处置）：实测
+    对话框渲染对同 worker 进程内前序测试的残留敏感（xdist 分组不同产生
+    两种稳定帧，逐行哈希即漂移；对话框本体无样式问题——单测
+    test_plugin_manager_dialog.py 全绿）。PNG/manifest 证据仍落盘
+    （SCREENSHOT_UPDATE=1 再生）；摘要防回归由其余钉扎用例承担。
+    """
+    _ = tmp_path_factory
+    from AssetsManager.core.plugins.descriptor import (
+        PLUGIN_STATE_ACTIVE,
+        PluginDescriptor,
+        PluginRecord,
+    )
+    from AssetsManager.core.plugins.manager import PluginManagerService
+    from AssetsManager.dialogs.plugin_manager_dialog import PluginManagerDialog
+
+    class _Manager:
+        def __init__(self):
+            self._records = {
+                "one": PluginRecord(
+                    plugin_id="one", root_dir="C:/plugins/one", manifest_path="one.json",
+                    descriptor=PluginDescriptor("one", "One", "1.0", description="First plugin"),
+                    state=PLUGIN_STATE_ACTIVE, enabled=True,
+                ),
+                "two": PluginRecord(
+                    plugin_id="two", root_dir="C:/plugins/two", manifest_path="two.json",
+                    descriptor=PluginDescriptor("two", "Two", "2.0", description="Second plugin"),
+                    state=PLUGIN_STATE_ACTIVE, enabled=True,
+                ),
+            }
+
+        def plugin_record(self, plugin_id):
+            return self._records.get(plugin_id)
+
+        def enable_plugin(self, plugin_id):
+            self._records[plugin_id].enabled = True
+
+        def disable_plugin(self, plugin_id):
+            self._records[plugin_id].enabled = False
+
+    monkeypatch.setattr(PluginManagerService, "get", lambda: _Manager())
+    app = QApplication.instance() or QApplication([])
+    dlg = None
+    try:
+        themes.set_theme(theme)
+        dlg = PluginManagerDialog()
+        dlg._select_plugin("one")  # 详情段选中态代表
+        name = f"plugin_manager_dialog_{theme.lower()}"
+        digest = _capture(dlg, name, theme=theme, profile="none", state="selected")
+        del digest  # 只走证据轨；比对轨豁免理由见 docstring
+    finally:
+        if dlg is not None:
+            dlg.close()
+            dlg.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.parametrize("theme", [DARK_THEME], ids=["navy"])
+def test_toast_notification(tmp_path_factory, theme):
+    """Toast 轻提示（Stage E 覆盖盲区）：success 级 + 图标 + 副标题。
+
+    构造先例沿用 test_toast_and_empty_visuals.py：普通 QWidget 父窗 +
+    Toast(parent, ...)。fixture 已钉 reduce_motion=True（无淡入动画帧）；
+    duration 拉长到 60s，避免截图收敛泵送（约 0.5s）期间自动消失。
+    文案用固定字符串：生产侧传入的是 tr() 结果，截图钉 en（_pin_language），
+    固定串避免 i18n 目录改词直接打碎摘要棘轮。
+    """
+    _ = tmp_path_factory
+    from PySide6.QtWidgets import QWidget
+
+    from AssetsManager.widgets.toast import Toast
+
+    app = QApplication.instance() or QApplication([])
+    parent = None
+    toast = None
+    try:
+        themes.set_theme(theme)
+        parent = QWidget()
+        parent.resize(800, 600)
+        parent.show()
+        app.processEvents()
+        toast = Toast(
+            parent, "Library backup completed", level="success",
+            duration=60_000, icon="check", subtitle="backup-2026-09-06.zip",
+        )
+        toast.show()
+        app.processEvents()
+        name = "toast_success_navy"
+        digest = _capture(toast, name, theme=theme, profile="none", state="visible")
+        _check_digest(name, digest)
+    finally:
+        if toast is not None:
+            toast.dismiss_immediately()
+        Toast._instance = None
+        if parent is not None:
+            parent.close()
+            parent.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.parametrize("theme", [DARK_THEME], ids=["navy"])
+def test_empty_panel(tmp_path_factory, theme):
+    """空态面板（empty role，Stage E 覆盖盲区）：EmptyPanel 包 EmptyStateWidget。"""
+    _ = tmp_path_factory
+    from AssetsManager.panels.empty import EmptyPanel
+
+    app = QApplication.instance() or QApplication([])
+    panel = None
+    try:
+        themes.set_theme(theme)
+        panel = EmptyPanel(state="empty")
+        panel.resize(scaled_px(360), scaled_px(420))
+        name = "empty_panel_navy"
+        digest = _capture(panel, name, theme=theme, profile="none", state="empty")
+        _check_digest(name, digest)
+    finally:
+        if panel is not None:
+            panel.shutdown()
+            panel.deleteLater()
+        app.processEvents()

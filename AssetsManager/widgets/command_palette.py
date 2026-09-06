@@ -223,6 +223,10 @@ class CommandPalette(OverlayShell):
         self.setModal(True)
 
         self._commands: list[PaletteCommand] = []
+        # Stage E (V05): external register_command contributions live in their
+        # own id-keyed dict so the built-in table can be rebuilt on language
+        # change without dropping plugin/host registrations.
+        self._external_commands: dict[str, PaletteCommand] = {}
         self._current_mode = "all"
         self._delegate = CommandPaletteDelegate(self)
 
@@ -234,7 +238,8 @@ class CommandPalette(OverlayShell):
     def _build_ui(self) -> None:
         shadow_margin = scaled_px(16)
 
-        root_layout = QVBoxLayout(self)
+        self._root_layout = QVBoxLayout(self)
+        root_layout = self._root_layout
         root_layout.setContentsMargins(
             shadow_margin, shadow_margin, shadow_margin, shadow_margin
         )
@@ -249,13 +254,15 @@ class CommandPalette(OverlayShell):
 
         # ── Search Input Row ───────────────────────────────────
         search_row = QWidget(self._card)
-        search_layout = QHBoxLayout(search_row)
+        self._search_layout = QHBoxLayout(search_row)
+        search_layout = self._search_layout
         search_layout.setContentsMargins(
             scaled_px(16), scaled_px(10), scaled_px(16), scaled_px(10)
         )
         search_layout.setSpacing(scaled_px(10))
 
-        search_icon = QLabel(search_row)
+        self._search_icon = QLabel(search_row)
+        search_icon = self._search_icon
         search_icon.setPixmap(
             icons.icon("search", color="icon_primary", size=scaled_px(16)).pixmap(
                 QSize(scaled_px(16), scaled_px(16))
@@ -302,7 +309,8 @@ class CommandPalette(OverlayShell):
         # ── Footer / Hint Bar ─────────────────────────────────
         self._footer = QFrame(self._card)
         self._footer.setObjectName("paletteFooter")
-        footer_layout = QHBoxLayout(self._footer)
+        self._footer_layout = QHBoxLayout(self._footer)
+        footer_layout = self._footer_layout
         footer_layout.setContentsMargins(
             scaled_px(14), scaled_px(6), scaled_px(14), scaled_px(6)
         )
@@ -319,7 +327,9 @@ class CommandPalette(OverlayShell):
 
         footer_layout.addStretch(1)
 
-        self._hint_mode = QLabel("> 命令   # 标签   @ 收藏", self._footer)
+        # V10: the mode hint was a hardcoded zh literal bypassing tr(); it is
+        # now a catalog key retranslated by refresh_overlay_chrome.
+        self._hint_mode = QLabel(self._hint_mode_text(), self._footer)
         self._hint_mode.setObjectName("paletteHint")
         footer_layout.addWidget(self._hint_mode)
 
@@ -329,10 +339,33 @@ class CommandPalette(OverlayShell):
         apply_elevation(self._card, level=3)
         self._apply_scaled_metrics()
 
+    def _hint_mode_text(self) -> str:
+        return (
+            f"{tr('command_palette.hint_mode_cmd', default='> 命令')}   "
+            f"{tr('command_palette.hint_mode_tags', default='# 标签')}   "
+            f"{tr('command_palette.hint_mode_favs', default='@ 收藏')}"
+        )
+
     def _apply_scaled_metrics(self) -> None:
-        """Re-derive every scaled metric (width, heights, fonts) from the
-        current ui_scale; also the ui_scale_changed half of the refresh hook."""
+        """Re-derive every scaled metric (width, heights, fonts, layout
+        margins) from the current ui_scale; also the ui_scale_changed half of
+        the refresh hook (stage E covers the remaining margins/spacing)."""
         self._card.setFixedWidth(scaled_px(560))
+        # Layout margins/spacing re-derivation (stage E): the root shadow
+        # margin, the search row, and the footer bar previously kept their
+        # construction-time scale forever.
+        self._root_layout.setContentsMargins(
+            scaled_px(16), scaled_px(16), scaled_px(16), scaled_px(16)
+        )
+        self._search_layout.setContentsMargins(
+            scaled_px(16), scaled_px(10), scaled_px(16), scaled_px(10)
+        )
+        self._search_layout.setSpacing(scaled_px(10))
+        self._search_icon.setFixedSize(scaled_px(20), scaled_px(20))
+        self._footer_layout.setContentsMargins(
+            scaled_px(14), scaled_px(6), scaled_px(14), scaled_px(6)
+        )
+        self._footer_layout.setSpacing(scaled_px(12))
         input_font = self._input.font()
         input_font.setPointSize(scaled_pt(int(themes.font_size("lg"))))
         self._input.setFont(input_font)
@@ -345,11 +378,12 @@ class CommandPalette(OverlayShell):
         refresh_elevation(self._card, level=3)
 
     def refresh_overlay_chrome(self) -> None:
-        """OverlayShell hook (V05): restyle QSS, retranslate chrome text, and
-        re-scale metrics without rebuilding the palette.  Command *titles*
-        keep their construction-time language until the palette is recreated
-        (stage E); the placeholder, hints, group headers, and empty state do
-        retranslate here."""
+        """OverlayShell hook (V05/Stage E): restyle QSS, retranslate chrome
+        text AND the command table, and re-scale metrics without dropping
+        externally registered commands.  Built-in commands are regenerated in
+        the current language via ``_builtin_commands()``; plugin/host
+        registrations survive the rebuild (id-keyed dict, see
+        ``register_command``)."""
         self._apply_theme_style()
         self._apply_scaled_metrics()
         self._input.setPlaceholderText(
@@ -363,7 +397,11 @@ class CommandPalette(OverlayShell):
             f"{tr('command_palette.hint_exec', default='↵ 执行')}    "
             f"{tr('command_palette.hint_close', default='Esc 退出')}"
         )
-        # Re-run the grouping so header/empty-state rows retranslate too.
+        self._hint_mode.setText(self._hint_mode_text())
+        # Rebuild the command table so built-in titles/descriptions pick up
+        # the new language, then re-run the grouping so header/empty-state
+        # rows retranslate too.
+        self._load_available_commands()
         self._filter_items(self._input.text())
         self._position_floating()
 
@@ -406,18 +444,26 @@ class CommandPalette(OverlayShell):
         )
 
     def register_command(self, command: PaletteCommand) -> None:
-        """Register an executable command into the palette."""
+        """Register an executable command into the palette.
+
+        Stage E: contributions are additionally recorded in an id-keyed dict
+        so ``_load_available_commands`` can rebuild the built-in table (e.g.
+        after a language switch) while preserving every external
+        registration.  Re-registering an id replaces the stored entry.
+        """
+        self._external_commands[command.id] = command
         self._commands.append(command)
 
-    def _load_available_commands(self) -> None:
-        """Gather system actions, library tags, and favorites from the environment."""
-        # 1. Built-in System Commands
-        self._commands.extend([
+    def _builtin_commands(self) -> list[PaletteCommand]:
+        """Built-in system commands, generated with the *current* language on
+        every call (stage E runtime retranslation).  Category descriptions are
+        catalog keys too (V10): they render as the row's right-hand hint."""
+        return [
             PaletteCommand(
                 id="cmd_toggle_theme",
                 title=tr("command_palette.cmd_theme", default="切换主题/暗黑模式"),
                 category="command",
-                description="UI Theme",
+                description=tr("command_palette.desc_ui_theme", default="UI Theme"),
                 icon_name="eye",
                 shortcut="",
                 callback=self._action_toggle_theme,
@@ -427,7 +473,7 @@ class CommandPalette(OverlayShell):
                 id="cmd_settings",
                 title=tr("command_palette.cmd_settings", default="外观设置"),
                 category="command",
-                description="Preferences",
+                description=tr("command_palette.desc_preferences", default="Preferences"),
                 icon_name="settings",
                 shortcut="Ctrl+,",
                 callback=lambda: self._invoke_parent("_open_settings"),
@@ -437,7 +483,7 @@ class CommandPalette(OverlayShell):
                 id="cmd_batch_rename",
                 title=tr("command_palette.cmd_batch_rename", default="批量重命名"),
                 category="command",
-                description="Files",
+                description=tr("command_palette.desc_files", default="Files"),
                 icon_name="file",
                 shortcut="",
                 callback=self._action_batch_rename,
@@ -447,7 +493,7 @@ class CommandPalette(OverlayShell):
                 id="cmd_open_library_dir",
                 title=tr("command_palette.cmd_open_library_dir", default="打开库目录"),
                 category="command",
-                description="Explorer",
+                description=tr("command_palette.desc_explorer", default="Explorer"),
                 icon_name="folder_open",
                 shortcut="",
                 callback=self._action_open_library_dir,
@@ -457,7 +503,7 @@ class CommandPalette(OverlayShell):
                 id="cmd_refresh",
                 title=tr("command_palette.cmd_refresh", default="刷新"),
                 category="command",
-                description="View",
+                description=tr("command_palette.desc_view", default="View"),
                 icon_name="refresh",
                 shortcut="F5",
                 callback=lambda: self._invoke_parent("_refresh_all"),
@@ -467,7 +513,7 @@ class CommandPalette(OverlayShell):
                 id="cmd_shortcuts",
                 title=tr("command_palette.cmd_shortcuts", default="键盘快捷键"),
                 category="command",
-                description="Help",
+                description=tr("command_palette.desc_help", default="Help"),
                 icon_name="wrench",
                 shortcut="F1",
                 callback=lambda: self._invoke_parent("_show_shortcuts"),
@@ -477,7 +523,7 @@ class CommandPalette(OverlayShell):
                 id="cmd_open_library",
                 title=tr("command_palette.cmd_open_library", default="打开资源库"),
                 category="command",
-                description="Library",
+                description=tr("command_palette.desc_library", default="Library"),
                 icon_name="folder",
                 shortcut="",
                 callback=lambda: self._invoke_parent("_open_library"),
@@ -487,7 +533,7 @@ class CommandPalette(OverlayShell):
                 id="cmd_backup",
                 title=tr("command_palette.cmd_backup", default="备份资源库"),
                 category="command",
-                description="Maintenance",
+                description=tr("command_palette.desc_maintenance", default="Maintenance"),
                 icon_name="save",
                 shortcut="",
                 callback=lambda: self._invoke_parent("_backup_library"),
@@ -497,7 +543,7 @@ class CommandPalette(OverlayShell):
                 id="cmd_restore",
                 title=tr("command_palette.cmd_restore", default="还原资源库"),
                 category="command",
-                description="Maintenance",
+                description=tr("command_palette.desc_maintenance", default="Maintenance"),
                 icon_name="download",
                 shortcut="",
                 callback=lambda: self._invoke_parent("_restore_library"),
@@ -507,7 +553,7 @@ class CommandPalette(OverlayShell):
                 id="cmd_import",
                 title=tr("command_palette.cmd_import", default="导入素材"),
                 category="command",
-                description="Assets",
+                description=tr("command_palette.desc_assets", default="Assets"),
                 icon_name="upload",
                 shortcut="",
                 callback=lambda: self._invoke_parent("_import_assets"),
@@ -517,7 +563,7 @@ class CommandPalette(OverlayShell):
                 id="cmd_plugins",
                 title=tr("command_palette.cmd_plugins", default="插件管理器"),
                 category="command",
-                description="Extensions",
+                description=tr("command_palette.desc_extensions", default="Extensions"),
                 icon_name="puzzle",
                 shortcut="",
                 callback=lambda: self._invoke_parent("_open_plugin_manager"),
@@ -527,7 +573,7 @@ class CommandPalette(OverlayShell):
                 id="cmd_undo_history",
                 title=tr("command_palette.cmd_undo_history", default="撤销历史"),
                 category="command",
-                description="History",
+                description=tr("command_palette.desc_history", default="History"),
                 icon_name="clock",
                 shortcut="",
                 callback=lambda: self._invoke_parent("_open_undo_history"),
@@ -537,7 +583,7 @@ class CommandPalette(OverlayShell):
                 id="cmd_activity_log",
                 title=tr("command_palette.cmd_activity_log", default="活动日志"),
                 category="command",
-                description="Logs",
+                description=tr("command_palette.desc_logs", default="Logs"),
                 icon_name="list",
                 shortcut="",
                 callback=lambda: self._invoke_parent("_open_activity_log"),
@@ -547,7 +593,7 @@ class CommandPalette(OverlayShell):
                 id="cmd_about",
                 title=tr("command_palette.cmd_about", default="关于"),
                 category="command",
-                description="System",
+                description=tr("command_palette.desc_system", default="System"),
                 icon_name="info",
                 shortcut="",
                 callback=lambda: self._invoke_parent("_show_about"),
@@ -557,20 +603,29 @@ class CommandPalette(OverlayShell):
                 id="cmd_exit",
                 title=tr("command_palette.cmd_exit", default="退出应用"),
                 category="command",
-                description="Application",
+                description=tr("command_palette.desc_application", default="Application"),
                 icon_name="close",
                 shortcut="Ctrl+Q",
                 callback=lambda: self._invoke_parent("request_exit"),
                 keywords=("exit", "quit", "退出", "关闭"),
             ),
-        ])
+        ]
+
+    def _load_available_commands(self) -> None:
+        """(Re)build the command table (stage E): built-ins are regenerated
+        in the current language, library tags/favorites are re-gathered, and
+        externally registered commands are merged back from their id-keyed
+        dict.  Ordering mirrors the original construction: built-ins, tags,
+        favorites, then external contributions."""
+        # 1. Built-in System Commands (fresh tr() on every rebuild)
+        commands: list[PaletteCommand] = list(self._builtin_commands())
 
         # 2. Library Tags (#)
         lib_root = self._get_library_root()
         if lib_root:
             tags = self._get_library_tags(lib_root)
             for tag in tags:
-                self._commands.append(
+                commands.append(
                     PaletteCommand(
                         id=f"tag_{tag}",
                         title=f"#{tag}",
@@ -588,7 +643,7 @@ class CommandPalette(OverlayShell):
             fav_path = fav.get("path", "")
             fav_name = fav.get("name") or Path(fav_path).name or fav_path
             fav_icon = fav.get("icon") or "star"
-            self._commands.append(
+            commands.append(
                 PaletteCommand(
                     id=f"fav_{fav_path}",
                     title=f"@{fav_name}",
@@ -599,6 +654,11 @@ class CommandPalette(OverlayShell):
                     keywords=("folder", "favorite", "收藏", "目录", fav_name, fav_path),
                 )
             )
+
+        # 4. External register_command contributions (plugins/host) survive
+        # the rebuild; dict preserves insertion order.
+        commands.extend(self._external_commands.values())
+        self._commands = commands
 
     def _get_library_root(self) -> str:
         parent = self.parent()

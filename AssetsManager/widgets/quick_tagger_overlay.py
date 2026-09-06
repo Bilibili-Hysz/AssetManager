@@ -99,7 +99,8 @@ class QuickTaggerOverlay(OverlayShell):
         card_layout.setSpacing(scaled_px(10))
 
         # ── Header ──────────────────────────────────────────
-        header_layout = QHBoxLayout()
+        self._header_layout = QHBoxLayout()
+        header_layout = self._header_layout
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.setSpacing(scaled_px(8))
 
@@ -210,11 +211,15 @@ class QuickTaggerOverlay(OverlayShell):
         )
 
     def _apply_scaled_metrics(self) -> None:
-        """Re-derive the fixed card width / control sizes from the current
-        ui_scale; also the ui_scale_changed half of the V05 refresh hook."""
+        """Re-derive the fixed card width / control sizes / layout margins
+        and spacing from the current ui_scale; also the ui_scale_changed half
+        of the V05 refresh hook (stage E adds the spacing re-derivation)."""
         self._root_layout.setContentsMargins(scaled_px(16), scaled_px(16), scaled_px(16), scaled_px(16))
         self._card.setFixedWidth(scaled_px(440))
         self._card_layout.setContentsMargins(scaled_px(16), scaled_px(14), scaled_px(16), scaled_px(14))
+        self._card_layout.setSpacing(scaled_px(10))
+        self._header_layout.setSpacing(scaled_px(8))
+        self._tags_layout.setSpacing(scaled_px(4))
         self._input.setFixedHeight(scaled_px(themes.metrics("control_height_md")))
         refresh_elevation(self._card, level=3)
 

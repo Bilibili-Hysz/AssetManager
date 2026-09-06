@@ -75,7 +75,7 @@
     {
       "family": "qfont_set",
       "file": "AssetsManager\\panels\\image_viewer.py",
-      "line": 882,
+      "line": 883,
       "method": "setPointSize",
       "role_hint": "f",
       "source_text": "f.setPointSize(scaled_pt(int(themes.font_size(\"caption\"))))",
@@ -85,7 +85,7 @@
     {
       "family": "qfont_set",
       "file": "AssetsManager\\panels\\image_viewer.py",
-      "line": 920,
+      "line": 921,
       "method": "setPointSize",
       "role_hint": "f3",
       "source_text": "f3.setPointSize(scaled_pt(int(themes.font_size(\"xxs\"))))",
@@ -95,7 +95,7 @@
     {
       "family": "qfont_set",
       "file": "AssetsManager\\panels\\image_viewer.py",
-      "line": 953,
+      "line": 954,
       "method": "setPointSize",
       "role_hint": "f",
       "source_text": "f.setPointSize(scaled_pt(int(themes.font_size(\"sm\"))))",
@@ -105,7 +105,7 @@
     {
       "family": "qfont_set",
       "file": "AssetsManager\\panels\\image_viewer.py",
-      "line": 1008,
+      "line": 1009,
       "method": "setPointSize",
       "role_hint": "title_font",
       "source_text": "title_font.setPointSize(scaled_pt(int(themes.font_size(\"xs\"))))",
@@ -115,7 +115,7 @@
     {
       "family": "qfont_set",
       "file": "AssetsManager\\panels\\image_viewer.py",
-      "line": 1017,
+      "line": 1018,
       "method": "setPointSize",
       "role_hint": "body_font",
       "source_text": "body_font.setPointSize(scaled_pt(int(themes.font_size(\"xxs\"))))",
@@ -165,7 +165,7 @@
     {
       "family": "qfont_set",
       "file": "AssetsManager\\widgets\\command_palette.py",
-      "line": 337,
+      "line": 370,
       "method": "setPointSize",
       "role_hint": "input_font",
       "source_text": "input_font.setPointSize(scaled_pt(int(themes.font_size(\"lg\"))))",
@@ -175,7 +175,7 @@
     {
       "family": "qfont_set",
       "file": "AssetsManager\\widgets\\command_palette.py",
-      "line": 340,
+      "line": 373,
       "method": "setPointSize",
       "role_hint": "footer_font",
       "source_text": "footer_font.setPointSize(scaled_pt(int(themes.font_size(\"xxs\", 9))))",
@@ -639,7 +639,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\panels\\sidebar.py",
-      "line": 1285,
+      "line": 1286,
       "role_hint": "f",
       "unit": "px",
       "value": "{font_size}"
@@ -647,7 +647,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\panels\\sidebar.py",
-      "line": 1319,
+      "line": 1320,
       "role_hint": "f",
       "unit": "px",
       "value": "{font_size}"
@@ -727,7 +727,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\quick_look_overlay.py",
-      "line": 439,
+      "line": 458,
       "role_hint": "font",
       "unit": "px",
       "value": "{fs_md}"
@@ -735,7 +735,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\quick_look_overlay.py",
-      "line": 448,
+      "line": 467,
       "role_hint": "font",
       "unit": "px",
       "value": "{fs_xs}"
@@ -743,7 +743,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\quick_look_overlay.py",
-      "line": 454,
+      "line": 473,
       "role_hint": "font",
       "unit": "px",
       "value": "{fs_sm}"
@@ -751,7 +751,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\quick_look_overlay.py",
-      "line": 471,
+      "line": 490,
       "role_hint": "font",
       "unit": "px",
       "value": "{fs_xs}"
@@ -759,7 +759,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\quick_look_overlay.py",
-      "line": 476,
+      "line": 495,
       "role_hint": "font",
       "unit": "px",
       "value": "{fs_sm}"
@@ -767,7 +767,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\quick_tagger_overlay.py",
-      "line": 188,
+      "line": 189,
       "role_hint": "f",
       "unit": "px",
       "value": "{scaled_pt(themes.font_size('md'))}"
@@ -775,7 +775,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\quick_tagger_overlay.py",
-      "line": 192,
+      "line": 193,
       "role_hint": "f",
       "unit": "px",
       "value": "{scaled_pt(themes.font_size('xs'))}"
@@ -783,7 +783,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\quick_tagger_overlay.py",
-      "line": 197,
+      "line": 198,
       "role_hint": "f",
       "unit": "px",
       "value": "{scaled_pt(themes.font_size('sm'))}"
@@ -791,7 +791,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\quick_tagger_overlay.py",
-      "line": 203,
+      "line": 204,
       "role_hint": "f",
       "unit": "px",
       "value": "{scaled_pt(themes.font_size('sm'))}"
@@ -799,7 +799,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\quick_tagger_overlay.py",
-      "line": 207,
+      "line": 208,
       "role_hint": "f",
       "unit": "px",
       "value": "{scaled_pt(themes.font_size('xxs'))}"
@@ -967,7 +967,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\workspace_bar.py",
-      "line": 102,
+      "line": 103,
       "role_hint": "f",
       "unit": "px",
       "value": "{font_caption}"
@@ -975,7 +975,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\workspace_bar.py",
-      "line": 111,
+      "line": 112,
       "role_hint": "f",
       "unit": "px",
       "value": "{font_caption}"
