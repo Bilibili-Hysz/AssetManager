@@ -195,7 +195,7 @@
     {
       "family": "qfont_set",
       "file": "AssetsManager\\window.py",
-      "line": 1445,
+      "line": 1457,
       "method": "setPointSize",
       "role_hint": "font",
       "source_text": "font.setPointSize(scaled_pt(base_pt))",
@@ -967,7 +967,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\workspace_bar.py",
-      "line": 103,
+      "line": 105,
       "role_hint": "f",
       "unit": "px",
       "value": "{font_caption}"
@@ -975,7 +975,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\workspace_bar.py",
-      "line": 112,
+      "line": 114,
       "role_hint": "f",
       "unit": "px",
       "value": "{font_caption}"

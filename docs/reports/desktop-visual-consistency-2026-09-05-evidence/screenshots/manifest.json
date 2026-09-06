@@ -113,6 +113,25 @@
     "ui_scale": 1.0,
     "window_size": "900x560"
   },
+  "file_list_grid_animated_settle_navy": {
+    "component": "file_list_grid_animated_settle_navy",
+    "digest": "900x560|corners=#1a1d28,#1a1d28,#1a1d28,#1a1d28,#1a1d28|rows=c16a4214f4182931fd0f6546e6309ec516fcc59a157f3aaea5038f4562fef226",
+    "font_environment": "Sans Serif / prefer_no_hinting",
+    "git_dirty_files": 93,
+    "language": "en",
+    "pyside_version": "6.11.0",
+    "qt_version": "6.11.0",
+    "sample_profile": "representative",
+    "screenshot_date": "2026-09-06",
+    "screenshot_file": "file_list_grid_animated_settle_navy.png",
+    "size": "900x560",
+    "source_head": "0ce0406bed67f33b76c412521d1133c3796413c7",
+    "state": "hover+selected (animated settle)",
+    "system_dpi": "offscreen 96dpi",
+    "theme": "Navy",
+    "ui_scale": 1.0,
+    "window_size": "900x560"
+  },
   "file_list_grid_dawn": {
     "component": "file_list_grid_dawn",
     "digest": "900x560|corners=#1a1d28,#1a1d28,#1a1d28,#1a1d28,#faf8f4|rows=5cfd22b9d907ef122e0e2ee277b7f568c24e3e193f69f04ebc31263d51dfad71",

@@ -2192,3 +2192,53 @@ def test_recommitted_presentation_resets_entrance_time_window(monkeypatch):
     assert widget._animator.thumbnail_opacity(24) == 0.0  # 新代淡入自 0 起步
     widget.deleteLater()
     app.processEvents()
+
+
+def test_finish_zoom_reanchors_surviving_entrance_queue(monkeypatch):
+    """V20: a queue re-seeded mid-zoom must stagger from now after finish_zoom.
+
+    The zoom start cancels the entrance, but a model refresh DURING the zoom
+    re-seeds it; the frozen tick keeps the pre-zoom ``_entrance_started_at``,
+    so without a re-anchor the first post-zoom tick computes a huge
+    ``batches_due`` and dumps the whole queue in one burst.
+    """
+    import AssetsManager.panels.file_list._animator as animator_module
+
+    clock = {"t": 100.0}
+    monkeypatch.setattr(animator_module, "monotonic", lambda: clock["t"])
+    app = QApplication.instance() or QApplication([])
+    widget = FileListGridWidget()
+    widget._animator._reduce_motion = False
+    widget.resize(400, 300)
+    widget._model_rows = 4  # entrance rows are clamped to the model size
+    widget.show()
+    app.processEvents()
+    try:
+        widget._animator.begin_presentation(1, [1, 2, 3, 4], animate=True)
+        queued = widget._animator.queued_entrance_count
+        assert queued > 0
+
+        # Zoom freezes the queue (mid-zoom re-seed path): nothing advances.
+        widget._zoom_relayout_active = True
+        clock["t"] += 1.0  # a full second frozen
+        widget._animator._anim_tick()
+        frozen_released = queued - widget._animator.queued_entrance_count
+        assert frozen_released == 0
+
+        # Commit the zoom (production calls finish_zoom while the zoom is
+        # still active; finish_zoom itself clears the flag).
+        widget.finish_zoom()
+        assert widget._zoom_relayout_active is False
+        assert widget._animator._entrance_started_at is None  # re-anchored
+
+        clock["t"] += 0.016
+        widget._animator._anim_tick()
+        first_window = queued - widget._animator.queued_entrance_count
+        assert 1 <= first_window < queued  # paced: one batch, not the burst
+
+        clock["t"] += 2.0  # far past all windows
+        widget._animator._anim_tick()
+        assert widget._animator.queued_entrance_count == 0  # fully delivered
+    finally:
+        widget._animator.cancel_entrance()
+        widget.deleteLater()

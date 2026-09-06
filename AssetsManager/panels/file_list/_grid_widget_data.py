@@ -374,6 +374,14 @@ class DataMixin:
             self._full_rebuild_epoch += 1
             self._full_rebuild_pending = True
         self._record_invalidation("zoom", self._model_rows, self._cache.texture_count)
+        # V20: a model refresh DURING the zoom can re-seed the entrance queue,
+        # which then freezes on the ``_zoom_relayout_active`` branch with
+        # ``_entrance_started_at`` anchored before the zoom. Re-anchor (and
+        # restart the beat) so the surviving queue staggers from now instead
+        # of dumping every batch in one burst on the next tick.
+        if self._animator.queued_entrance_count:
+            self._animator.reanchor_entrance_timeline()
+            self._animator.ensure_running()
         self._request_frame(full=True)
 
     def invalidate_textures(self):

@@ -1567,3 +1567,60 @@ def test_image_viewer_gradient(tmp_path_factory, theme):
             except RuntimeError:
                 pass  # WA_DeleteOnClose 已析构
         app.processEvents()
+
+
+@pytest.mark.parametrize("theme", [DARK_THEME], ids=["navy"])
+def test_file_list_grid_animated_settle(tmp_path_factory, theme):
+    """V17：动画路径的落定终态进截图棘轮。
+
+    既有 grid 截图在 reduce_motion=True 下直呈（直读 ``_hover_row``/
+    ``_selection``，不经过动画进度表）——只改动画态像素的生产回归
+    （``_draw_interaction_overlay`` 的 progress 分支、_Tween 落定值、
+    抬升插值）可逃过棘轮。本用例关闭 reduce_motion，以**落定值直接
+    播种动画进度表**（等价 tween 完成后的状态），让交互叠加层的
+    progress 渲染分支进入基线。
+
+    有意不走真实 mouseMoveEvent + tween 泵送：假 layout 顶替 + 可见
+    控件 + 动画帧的组合在 teardown/GC 阶段触发 C 级段错误（实测，
+    三种清理策略均复现）；直播种方案零假对象、零活跃定时器，落定
+    值与 reduce_motion 终态逐像素一致是契约——若回归让两条路径落到
+    不同终态，本用例与既有 grid_navy 摘要的分歧即为信号。
+    """
+    root, _tmp = _stable_library_root(tmp_path_factory, "file_list_animated")
+    app = QApplication.instance() or QApplication([])
+    from AssetsManager.application.bootstrap import ApplicationBootstrap
+    from AssetsManager.panels.file_list import FileListPanel
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(root)
+    services = bootstrap.runtime_for(session).services
+    library = build_sample_library(
+        root, "representative", tag_service=services.tag_service)
+    panel = None
+    try:
+        themes.set_theme(theme)
+        panel = FileListPanel()
+        panel.set_scoped_services(services)
+        panel.navigate_to(str(library.root), set_root=True)
+        panel._model._wait_for_scan()
+        panel.resize(scaled_px(900), scaled_px(560))
+        grid = panel._grid_widget
+        # 动画态：解除本模块的 reduce_motion 钉扎（内存级），以落定值
+        # 播种 progress 表——交互叠加层读 progress 渲染抬升/描边。
+        grid._animator._reduce_motion = False
+        grid._hover_row = 0
+        grid._selection = {0}
+        grid._animator._hover_progress[0] = 1.0
+        grid._animator._selection_progress[0] = 1.0
+        app.processEvents()
+        name = f"file_list_grid_animated_settle_{theme.lower()}"
+        digest = _capture(panel, name, theme=theme,
+                           profile="representative",
+                           state="hover+selected (animated settle)")
+        _check_digest(name, digest)
+    finally:
+        if panel is not None:
+            panel.shutdown()
+            panel.deleteLater()
+
+
+

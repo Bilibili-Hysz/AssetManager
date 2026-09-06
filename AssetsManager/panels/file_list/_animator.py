@@ -159,6 +159,15 @@ class Animator:
         self._entrance_started_at = None
         self._entrance_batches_done = 0
 
+    def reanchor_entrance_timeline(self) -> None:
+        """Reset the entrance time window so a surviving queue staggers from
+        now (V20): a queue that froze mid-zoom keeps its pre-zoom anchor, and
+        the next tick would otherwise compute a huge ``batches_due`` and dump
+        the whole queue in one burst. Anchoring via ``None`` defers to the
+        next tick's clock (same seam the tests drive)."""
+        self._entrance_started_at = None
+        self._entrance_batches_done = 0
+
     def reset_for_model_reset(self) -> None:
         """Drop all per-row animation state for a new model generation."""
         self._thumb_opacity.clear()
