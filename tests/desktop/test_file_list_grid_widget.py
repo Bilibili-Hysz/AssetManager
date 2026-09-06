@@ -2009,6 +2009,45 @@ def test_long_stall_settles_exactly_without_stalling_at_fraction(monkeypatch):
     assert widget._animator.thumbnail_opacity(1) == 1.0
 
 
+def test_late_settle_is_distinguished_in_motion_stats(monkeypatch):
+    """A settle whose elapsed time far exceeds the nominal duration must be
+    recorded as *late* — both in the always-on counters and in the recorder
+    event attributes (motion-direction §10: 超时落定可测量，不得混入正常落定).
+    A 2 s stall is late for every motion tier (largest shipped tier is 300 ms
+    slow → the 1.25×_LATE_FACTOR threshold sits at 375 ms)."""
+    clock = {"t": 100.0}
+    widget = _make_fade_widget(monkeypatch, clock)
+    animator = widget._animator
+
+    events: list[tuple[str, float, dict]] = []
+
+    class _Recorder:
+        def record(self, name, elapsed_ms, *, session_token=None,
+                   generation=None, path=None, attributes=None):
+            events.append((name, elapsed_ms, dict(attributes or {})))
+
+    animator.set_performance_recorder(_Recorder())
+    animator.begin_thumbnail_fade(1, has_visible_texture=False, allow_fade=True)
+
+    clock["t"] += 2.0  # far past any tier duration × _LATE_FACTOR
+    animator._anim_tick()
+
+    stats = animator.motion_stats
+    assert stats["started"] == 1
+    assert stats["settled"] == 1
+    assert stats["late_settled"] == 1
+    expected_late_ms = (2.0 - animator._thumb_fade_duration_s()) * 1000.0
+    assert stats["max_late_ms"] == pytest.approx(expected_late_ms, abs=1.0)
+
+    names = [name for name, _elapsed, _attr in events]
+    assert names == ["grid.motion_start", "grid.motion_settle"]
+    start_elapsed, settle_elapsed = events[0][1], events[1][1]
+    assert start_elapsed == 0.0
+    assert settle_elapsed == pytest.approx(2000.0, abs=1.0)
+    assert events[1][2]["late"] is True
+    widget.deleteLater()
+
+
 def test_hover_tween_retargets_from_displayed_value(monkeypatch):
     """Mid-flight unhover resumes from the displayed value (§6.3), not 0."""
     import AssetsManager.panels.file_list._animator as animator_module
@@ -2019,10 +2058,11 @@ def test_hover_tween_retargets_from_displayed_value(monkeypatch):
     hovered = {"row": 1}
     widget._layout = type("_Layout", (), {"row_at": lambda _self, _x, _y: hovered["row"]})()
 
-    move = lambda: widget.mouseMoveEvent(QMouseEvent(
-        QEvent.Type.MouseMove, QPointF(0, 0), QPointF(0, 0),
-        Qt.MouseButton.NoButton, Qt.MouseButton.NoButton,
-        Qt.KeyboardModifier.NoModifier, QPointingDevice.primaryPointingDevice()))
+    def move() -> None:
+        widget.mouseMoveEvent(QMouseEvent(
+            QEvent.Type.MouseMove, QPointF(0, 0), QPointF(0, 0),
+            Qt.MouseButton.NoButton, Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier, QPointingDevice.primaryPointingDevice()))
 
     move()  # enter row 1 — seeds the hover tween toward 1.0
     clock["t"] += 0.06  # half of the fast tier
@@ -2044,3 +2084,111 @@ def test_hover_tween_retargets_from_displayed_value(monkeypatch):
     widget._animator._anim_tick()
     assert widget._animator.hover_progress_value(1) is None  # settled out
     widget.deleteLater()
+
+
+def test_grid_pending_presentation_superseded_by_newer_generation_while_hidden():
+    """隐藏期内的更新提交替换更旧的待呈现代（begin_presentation 的第二道
+    世代闸门）：只呈现最新代，且被替换的旧代不得再入队或在 show 后回放
+    ——否则隐藏期连发的两次提交会先闪一帧旧内容。"""
+    app = QApplication.instance() or QApplication([])
+    widget = FileListGridWidget()
+    widget._model_rows = 3
+    widget._animator._reduce_motion = False
+
+    assert widget.begin_presentation(4, [0, 1]) is True
+    assert widget._animator._pending_presentation == (4, [0, 1], True)
+
+    assert widget.begin_presentation(5, [1, 2]) is True
+    assert widget._animator._pending_presentation == (5, [1, 2], True)
+    # 旧代不得顶替已排队的更新代（generation <= pending[0] → False）。
+    assert widget.begin_presentation(4, [0]) is False
+    assert widget._animator._pending_presentation == (5, [1, 2], True)
+
+    widget.show()
+    app.processEvents()
+    assert widget._animator._presented_generation == 5
+    assert widget._animator._entrance_queue == [1, 2]
+    widget.deleteLater()
+    app.processEvents()
+
+
+def test_external_seeded_thumbnail_fade_anchors_at_first_tick_and_settles(monkeypatch):
+    """外部播种分支（_tick_thumbnail_fades 的 started_at is None）：首 tick
+    以当前显示值回锚时间轴——显示值不跳变，剩余时长走完即精确落定。
+    若回锚错误（如锚到 now 或锚到 0 起点），首 tick 的显示值会跳到 0 或
+    直接落定，破坏"播种进度被保留"的契约。"""
+    clock = {"t": 100.0}
+    widget = _make_fade_widget(monkeypatch, clock)
+    animator = widget._animator
+
+    # Programmatic poke: progress without a started_at anchor.
+    animator._thumb_opacity[1] = 0.5
+    assert animator._thumb_fade_started.get(1) is None
+
+    animator._anim_tick()
+    assert animator._thumb_fade_started[1] == pytest.approx(
+        100.0 - 0.5 * animator._thumb_fade_duration_s())
+    assert animator.thumbnail_opacity(1) == pytest.approx(0.5, abs=0.01)
+
+    clock["t"] += 0.25 * animator._thumb_fade_duration_s()
+    animator._anim_tick()
+    assert animator.thumbnail_opacity(1) == pytest.approx(0.75, abs=0.01)
+
+    clock["t"] += animator._thumb_fade_duration_s()  # well past the end
+    animator._anim_tick()
+    assert 1 not in animator._thumb_opacity  # settled exactly, no 0.99 stall
+    assert not animator._anim_timer.isActive()  # nothing left to animate
+    widget.deleteLater()
+
+
+def test_recommitted_presentation_resets_entrance_time_window(monkeypatch):
+    """世代隔离 × 时间窗交互（begin_presentation / _tick_entrance）：错峰
+    进行中提交新一代必须重锚错峰时间窗（_entrance_started_at 与
+    _entrance_batches_done 归零）——旧代锚点累计的流逝窗口不得泄入新一代
+    首个 tick，否则错峰节奏被旧时间线劫持（新一代首帧就按旧锚补发超额
+    批次）。同时锁定迟到追赶数学：晚到的 tick 按流逝的 16ms 窗口数补发
+    批次（不拉伸、不塌缩），首批 max(1,·) 规则保证零流逝也出第一批。
+
+    刻意用非 16ms 整数倍的窗口数（5.625 / 2.5 窗）避开 int() 截断的整数
+    边界，保证断言只对"锚点/计数是否重置"敏感。
+    """
+    import AssetsManager.panels.file_list._animator as animator_module
+
+    clock = {"t": 100.0}
+    monkeypatch.setattr(animator_module, "monotonic", lambda: clock["t"])
+    app = QApplication.instance() or QApplication([])
+    widget = FileListGridWidget()
+    widget._animator._reduce_motion = False
+    widget._model_rows = 48
+    widget.show()
+    app.processEvents()
+
+    # Gen 1: 24 行 → 首批批大小 n = max(1, 24//12) = 2（n 按**当前剩余队列**
+    # 重算，随释放收缩）。
+    gen1 = list(range(24))
+    assert widget.begin_presentation(1, gen1) is True
+    widget._animator._anim_tick()  # 零流逝：首批 max(1, 0) 规则兜底
+    assert widget._animator._entrance_visible == {0, 1}
+
+    clock["t"] += 0.09  # 5.625 窗 → int=5，扣掉已发的 1 批 → 补发 4 批；
+    # 剩余 22 行 → n 已收缩为 1 → 本 tick 恰好补发 4 行。
+    widget._animator._anim_tick()
+    assert widget._animator._entrance_visible == set(range(6))
+    assert widget._animator._entrance_batches_done == 5
+
+    # 错峰进行中提交新一代：队列替换 + 可见集清空，时间窗重锚。
+    gen2 = list(range(24, 48))
+    assert widget.begin_presentation(2, gen2) is True
+    assert widget._animator._entrance_queue == gen2
+    assert widget._animator._entrance_visible == set()
+
+    clock["t"] += 0.04  # 新代锚点后 2.5 窗 → int=2 → 补发 2 批 × n=2 = 4 行
+    widget._animator._anim_tick()
+    # 若旧锚未重置：elapsed 从 100.0 起算（10.625 窗 → 10 批）减旧 done 5
+    # → 5 批 = 10 行——补发行数与集合都会偏离下面的精确断言。
+    assert widget._animator._entrance_visible == {24, 25, 26, 27}
+    assert widget._animator._entrance_batches_done == 2
+    assert widget._animator.thumbnail_opacity(24) == 0.0  # 新代淡入自 0 起步
+    assert widget._animator.thumbnail_opacity(24) == 0.0  # 新代淡入自 0 起步
+    widget.deleteLater()
+    app.processEvents()

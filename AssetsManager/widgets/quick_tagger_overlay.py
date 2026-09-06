@@ -66,22 +66,25 @@ class QuickTaggerOverlay(OverlayShell):
         except Exception:
             self._all_library_tags = []
 
+        # V15: TagService exposes the plural batch API (get_tags_for_files);
+        # the historical singular get_tags_for_file never existed on the
+        # production service and the AttributeError was swallowed below,
+        # leaving the overlay permanently on "no tags" for real libraries.
+        try:
+            result = self._tag_service.get_tags_for_files(
+                self._library_root, self._paths[:20]
+            ) or {}
+        except Exception:
+            self._current_tags = []
+            result = {}
         if len(self._paths) == 1:
-            try:
-                self._current_tags = self._tag_service.get_tags_for_file(
-                    self._library_root, self._paths[0]
-                ) or []
-            except Exception:
-                self._current_tags = []
+            self._current_tags = next(iter(result.values()), [])
         else:
-            try:
-                common: set[str] | None = None
-                for p in self._paths[:20]:
-                    t_set = set(self._tag_service.get_tags_for_file(self._library_root, p) or [])
-                    common = t_set if common is None else common & t_set
-                self._current_tags = sorted(common or set())
-            except Exception:
-                self._current_tags = []
+            common: set[str] | None = None
+            for tags in result.values():
+                t_set = set(tags or [])
+                common = t_set if common is None else common & t_set
+            self._current_tags = sorted(common or set())
 
     def _setup_ui(self) -> None:
         root_layout = QVBoxLayout(self)

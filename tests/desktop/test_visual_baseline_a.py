@@ -43,6 +43,28 @@ desktop 套件来验证截图摘要——那是共享进程模式，滚动条 tr
 对话框几何的跨会话争用另有单点防护：``_capture`` 对 TabbedDialog 族置
 ``_geometry_restored=True`` 阻断从共享 settings.json 恢复几何。
 
+**2026-09-06 三重钉扎后复查账本**（全套 xdist ×3 + 追加复跑，共 4 轮）：
+``settings_dialog_appearance`` 摘要红 3/4 轮，形态为摘要尺寸 460x520
+（期望 860x620）——显式 resize 后仍被布局 sizeHint 收缩，属钉扎 2
+docstring 自认的"app 级字体污染先于 fixture 则成为新基准"非免疫面
+（sizeHint 随 app 字体走），非几何恢复路径；触发率未收敛，仍按本家族
+登记。``command_palette_open`` / ``main_window_empty`` / ``empty_panel``
+本轮 0/4 触发（钉扎后收敛）。另：本轮把 info 面板两处功能性红
+（``test_info_micro_tabs`` 语言残留 / ``test_info_ai_tag`` 分区可见性
+残留）定性为 settings 派生的同 worker 共享状态而非渲染残留——两用例侧
+已按钉扎模式自免疫（详见各自模块 docstring），不再属本家族。
+
+**2026-09-06 复查轮 #2（审查+补测轮，全套 xdist ×3 + 收尾复验 ×1）**：
+R1 903 全绿；R2 ``test_settings_dialog_six_tabs[navy]`` 红；R3
+``test_main_window_empty_library`` 红；R4（新增 2 用例后复验）
+``six_tabs`` 复红——三名成员隔离 ``-n 0`` 单用例各 ×3 复跑全绿，维持
+noise 定性。三重钉扎后家族**未整体收敛，成员触发率轮转**：本轮 0/4
+的成员为 ``settings_dialog_appearance``（前账本 3/4 轮的 sizeHint 收缩
+面本轮消失）、``empty_panel``、``command_palette_open``；仍活跃的是
+``settings_six_tabs``（2/4）与 ``main_window_empty``（1/4，前账本 0/4
+后复燃）。进程级渲染/字体残留面仍在，按既有家族登记不修；若后续轮
+出现清单外成员或隔离复跑红，才升级为真回归调查。
+
 **阶段 F 前置件扩展（2026-09-06）**：截图目录从 12 张扩到主报告 §9.3
 点名的全组件清单——设置六页、分享设置四页、全部编辑模态（TagEditor /
 BatchRename / TagStyle / SidebarSettings / ShareQR / ColorPicker / 崩溃恢复
@@ -181,9 +203,14 @@ def _apply_app_startup_style() -> None:
     （set_font/pointSize）或残留自己的 stylesheet，而文字渲染参与逐行
     哈希。这里每用例重放生产启动的两步：全局主题 QSS + 基准字体
     （PreferNoHinting、pointSize 经 scaled_pt——钉 1.0 后即系统默认 pt）。
-    基准 pt 取自**全新 QFont()**（平台默认），不取 ``existing.font()``——
-    后者可能已被前序测试改写，重放会把污染固化成"新基准"（摘要轮转
-    漂移的根因，2026-09-06 审查定性）。
+    基准 pt 取自**全新 QFont()**，不取 ``existing.font()``：二者解析自
+    同一应用级字体（Qt 文档：QFont() "uses the application's default
+    font"，2026-09-06 审查实证——app.setFont 污染后 QFont() 会返回被污染
+    的族/字号，**并不免疫**），区别只在 QFont() 是不带前次 resolve-mask
+    变更的全新对象。基准 pt 因此只有"取用例启动时的 app 字体"这么干净；
+    app 级字体污染（如 window.py `_on_ui_scale_changed` → app.setFont）
+    若发生在本 fixture 之前仍会成为新基准——摘要轮转漂移的根治归因于
+    钉扎 1（几何）与钉扎 3（caret），字体残留按 §0 偶发家族登记。
     ``instance()`` 声明返回 QCoreApplication，但桌面会话下必然是
     QApplication（conftest 已建）；isinstance 收窄给类型检查器看。
     """
@@ -193,7 +220,7 @@ def _apply_app_startup_style() -> None:
     if not isinstance(existing, QApplication):
         return  # 理论不可达：桌面用例必有 QApplication
     existing.setStyleSheet(themes.stylesheet())
-    font = QFont()  # 平台默认族+pt——免疫 app 级字体污染
+    font = QFont()  # 解析自当前 app 字体的全新对象（见上：不免疫污染）
     font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
     base_pt = font.pointSize()
     existing.setProperty("base_font_size", base_pt)
@@ -219,10 +246,15 @@ def visual_baseline_env(restored_theme):
     _clear_window_geometry()
     _apply_app_startup_style()
     saved_lang = _pin_language()
+    app = QApplication.instance()
+    # cursorFlashTime 是进程级状态（_grab_settled_digest 在抓取内置 0），
+    # 与主题/语言同纪律：用例结束还原，避免钉扎泄漏给同 worker 后续测试。
+    saved_cursor_flash = app.cursorFlashTime() if app is not None else None
     yield
     from AssetsManager import i18n
     i18n._current_lang = saved_lang
-    app = QApplication.instance()
+    if app is not None and saved_cursor_flash is not None:
+        app.setCursorFlashTime(saved_cursor_flash)
     if app is not None:
         app.processEvents()
 
@@ -528,6 +560,43 @@ def _check_digest(name: str, digest: str) -> None:
     assert entries[name] == digest, (
         f"{name} visual digest changed — if intentional, regenerate with "
         f"SCREENSHOT_UPDATE=1 and review the PNG evidence diff")
+
+
+def test_manifest_covers_every_png_evidence_file():
+    """PNG 证据轨与 manifest.json 三方对账（2026-09-06 变异抽检补的对账面）。
+
+    ``_capture`` 只在再生模式写 PNG + manifest，验证模式下二者从不被读
+    回——删除任何一张 PNG（含非摘要豁免件 startup_window /
+    plugin_manager_dialog）全套测试仍绿（变异抽检实证：删
+    empty_panel_navy.png 后六页摘要用例照常通过）。这里锁两条不变式：
+    1) PNG 文件集合 == manifest 键集合（双向失配即红，豁免件同受对账
+       约束——它们只是"无摘要"，不是"无 manifest"）；
+    2) 摘要棘轮每个条目都有对应 PNG（摘要轨不得与证据轨脱钩）。
+    manifest.json 与 digests 同为入库快照，静默丢失即红。
+    """
+    manifest_path = EVIDENCE_DIR / "manifest.json"
+    assert manifest_path.is_file(), (
+        "screenshot manifest.json missing — it is a committed evidence "
+        "artifact; restore it or regenerate with SCREENSHOT_UPDATE=1")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    pngs = {p.stem for p in EVIDENCE_DIR.glob("*.png")}
+    assert pngs == set(manifest), (
+        "PNG evidence files and manifest.json disagree — regenerate with "
+        f"SCREENSHOT_UPDATE=1 and review the diff; png_without_manifest="
+        f"{sorted(pngs - set(manifest))} manifest_without_png="
+        f"{sorted(set(manifest) - pngs)}")
+    # V21: assert the snapshot exists BEFORE reading it — a missing file
+    # should surface as the seeded-digest diagnostic, not FileNotFoundError.
+    assert DIGESTS_PATH.is_file(), (
+        "digest snapshot missing — run SCREENSHOT_UPDATE=1 once to seed it")
+    digest_names = {
+        line.split("=", 1)[0]
+        for line in DIGESTS_PATH.read_text(encoding="utf-8").splitlines()
+        if "=" in line and not line.startswith("#")
+    }
+    orphan_digests = sorted(digest_names - pngs)
+    assert not orphan_digests, (
+        f"digest entries without PNG evidence: {orphan_digests}")
 
 
 # ── 整窗/面板 fixture ────────────────────────────────────────────
@@ -1399,7 +1468,7 @@ def test_quick_look_image(tmp_path_factory, theme):
 
 class _QuickTaggerStubService:
     """QuickTaggerOverlay 读取面的定值桩（test_quick_tagger_overlay.py 的
-    _FakeTagService 同款）：get_all_tags(root) + get_tags_for_file(root, path)。
+    _FakeTagService 同款）：get_all_tags(root) + get_tags_for_files(root, paths)（V15 真实契约）。
     生产侧 application.TagService 的方法面与之不同（list_tags/get_tags），
     浮层构造期对缺失方法按 except 兜底为空——为让截图带真实标签内容，
     这里按浮层的契约面给桩（面板 → 浮层的适配接缝在 V05 登记范围之外，
@@ -1415,8 +1484,8 @@ class _QuickTaggerStubService:
     def get_all_tags(self, _root):
         return list(self.all_tags)
 
-    def get_tags_for_file(self, _root, _path):
-        return list(self.CURRENT_TAGS)
+    def get_tags_for_files(self, _root, paths):
+        return {p: list(self.CURRENT_TAGS) for p in paths}
 
 
 @pytest.mark.parametrize("theme", [DARK_THEME], ids=["navy"])

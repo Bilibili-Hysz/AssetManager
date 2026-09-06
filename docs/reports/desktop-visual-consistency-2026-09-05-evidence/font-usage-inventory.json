@@ -727,7 +727,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\quick_look_overlay.py",
-      "line": 458,
+      "line": 469,
       "role_hint": "font",
       "unit": "px",
       "value": "{fs_md}"
@@ -735,7 +735,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\quick_look_overlay.py",
-      "line": 467,
+      "line": 478,
       "role_hint": "font",
       "unit": "px",
       "value": "{fs_xs}"
@@ -743,7 +743,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\quick_look_overlay.py",
-      "line": 473,
+      "line": 484,
       "role_hint": "font",
       "unit": "px",
       "value": "{fs_sm}"
@@ -751,7 +751,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\quick_look_overlay.py",
-      "line": 490,
+      "line": 501,
       "role_hint": "font",
       "unit": "px",
       "value": "{fs_xs}"
@@ -759,7 +759,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\quick_look_overlay.py",
-      "line": 495,
+      "line": 506,
       "role_hint": "font",
       "unit": "px",
       "value": "{fs_sm}"
@@ -767,7 +767,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\quick_tagger_overlay.py",
-      "line": 189,
+      "line": 192,
       "role_hint": "f",
       "unit": "px",
       "value": "{scaled_pt(themes.font_size('md'))}"
@@ -775,7 +775,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\quick_tagger_overlay.py",
-      "line": 193,
+      "line": 196,
       "role_hint": "f",
       "unit": "px",
       "value": "{scaled_pt(themes.font_size('xs'))}"
@@ -783,7 +783,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\quick_tagger_overlay.py",
-      "line": 198,
+      "line": 201,
       "role_hint": "f",
       "unit": "px",
       "value": "{scaled_pt(themes.font_size('sm'))}"
@@ -791,7 +791,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\quick_tagger_overlay.py",
-      "line": 204,
+      "line": 207,
       "role_hint": "f",
       "unit": "px",
       "value": "{scaled_pt(themes.font_size('sm'))}"
@@ -799,7 +799,7 @@
     {
       "family": "qss_px",
       "file": "AssetsManager\\widgets\\quick_tagger_overlay.py",
-      "line": 208,
+      "line": 211,
       "role_hint": "f",
       "unit": "px",
       "value": "{scaled_pt(themes.font_size('xxs'))}"

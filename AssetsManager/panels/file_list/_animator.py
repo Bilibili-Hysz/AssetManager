@@ -110,6 +110,9 @@ class Animator:
         self._anim_timer.setInterval(16)
         self._anim_timer.timeout.connect(self._anim_tick)
         self._entrance_queue: list[int] = []
+        # bookkeeping-only (V19): written/cleared with the entrance lifecycle
+        # but never read by rendering — visibility is derived from
+        # ``_thumb_opacity``. Kept because tests assert the write/clear pairs.
         self._entrance_visible: set[int] = set()
         self._entrance_started_at: float | None = None
         self._entrance_batches_done = 0
@@ -118,8 +121,9 @@ class Animator:
         # M0 measurement points (lightweight): the counters are always
         # maintained; an optional PerformanceRecorder receives
         # grid.motion_start / grid.motion_settle events when attached via
-        # set_performance_recorder() (wired from the widget's
-        # set_performance_context). No UI consumes this yet.
+        # set_performance_recorder().  Attachment is opt-in: the widget's
+        # set_performance_context() does NOT wire it, so no recorder is
+        # attached in production yet (stage E doc: 数据可得不接 UI).
         self.motion_stats: dict[str, float] = {
             "started": 0,
             "settled": 0,

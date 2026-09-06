@@ -207,6 +207,17 @@ class QuickLookOverlay(OverlayShell):
         self._apply_styles()
         self._update_display()
 
+    def closeEvent(self, event) -> None:
+        # V16: the panel keeps a write-only reference to this overlay and
+        # never clears it, so a dismissed QuickLook would otherwise hold its
+        # decoded full-resolution pixmap (a 48 MP frame is ~190 MB) until the
+        # next open replaces the canvas. Release the big state here; the
+        # widget shell stays alive (tests and the panel touch it after
+        # close), only the pixels go.
+        self._image_canvas.set_pixmap(None)
+        self._file_paths = []
+        super().closeEvent(event)
+
     @property
     def current_index(self) -> int:
         """Current zero-based index of viewed file."""

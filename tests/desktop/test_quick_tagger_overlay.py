@@ -18,8 +18,9 @@ class _FakeTagService:
     def get_all_tags(self, root: str):
         return sorted(self.tags)
 
-    def get_tags_for_file(self, root: str, filepath: str):
-        return self.file_tags.get(filepath, [])
+    def get_tags_for_files(self, root: str, paths):
+        # 真实契约（V15）：TagService 批量 API 返回按解析路径键控的 dict。
+        return {p: self.file_tags.get(p, []) for p in paths}
 
     def add_tag_to_files(self, root: str, paths: list[str], tag: str):
         self.tags.add(tag)
