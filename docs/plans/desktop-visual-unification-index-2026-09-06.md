@@ -61,7 +61,7 @@
 | ~~`_CORNER_R`→主题派生~~ | ✅ 完成（2026-09-06，df2a9f6）：24 shipped 主题 md 全=10，派生零漂移；回退链保历史字面 10 | — |
 | 上游 issue：PySide6 FAST_FAIL / Vite `~` 路径 | 用户决定是否上报 | 质量轮/E 轮登记 |
 | ~~低置信度死 i18n key 深审~~ | ✅ 完成（2026-09-06）：动态前缀感知改良扫描——98 零引用中仅 5 个整族全死（window.*/statusbar.*）已删，93 个部分死家族存档保留（动态构造风险） | — |
-| push 远端（2026-09-06 实测 `origin/master..HEAD` = **2**：df2a9f6、6c70153） | **用户决策** | — |
+| push 远端（2026-09-06 晚间实测 `origin/master..HEAD` = **5**（W 轮 4 提交 + df2a9f6；GitHub 连接间歇中断，恢复后 `git push origin master` 即可）） | **用户决策** | — |
 | 并行 lan 线收尾（树内未提交产物 + gen_ts_types 2 红的 contracts 再生） | 其会话 | — |
 
 ## 5. 已知限制与运行约定（要点）
