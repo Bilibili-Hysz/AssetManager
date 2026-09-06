@@ -144,6 +144,36 @@ def test_media_scrim_variant_is_pure_black_180(qapp):
         _dismiss(shell)
 
 
+def test_scrim_none_shell_paints_no_backdrop(qapp):
+    """scrim_variant=None 的 paintEvent 契约：透明窗口零绘制。
+
+    CommandPalette 依赖"无遮罩背景"（浮动卡片 + 全透明窗口）。属性级
+    断言（scrim_variant is None）挡不住 paintEvent 丢掉 early-return 的
+    回归——paintEvent 一旦无条件 fillRect，透明窗口就会整面 172 alpha
+    的 workspace 遮罩。此处用与 media 变体相同的渲染法锁定"零绘制"：
+    采样点保持完全透明（alpha 0）。
+    """
+    shell = OverlayShell()
+    shell.scrim_variant = None
+    try:
+        assert shell.scrim_variant is None
+        # Real overlays set WA_TranslucentBackground; mirror that so the
+        # render below composites over transparency like production does.
+        shell.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        shell.resize(120, 90)
+        img = QImage(120, 90, QImage.Format.Format_ARGB32_Premultiplied)
+        img.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(img)
+        shell.render(painter, QPoint(0, 0))
+        painter.end()
+        px = img.pixelColor(5, 45)
+        assert px.alpha() == 0, (
+            "scrim_variant=None must not paint any backdrop — the palette "
+            "floats its card on a fully transparent window")
+    finally:
+        _dismiss(shell)
+
+
 # ── Refresh contract (theme / language / ui-scale) ────────────────
 
 
@@ -190,6 +220,26 @@ def test_shell_disconnects_via_shutdown_alias(qapp, bus, monkeypatch):
         assert calls == [1]
     finally:
         shell.deleteLater()
+
+
+@pytest.mark.parametrize("finish", ["accept", "reject"])
+def test_refresh_bus_disconnects_via_done_paths(qapp, bus, request, finish, monkeypatch):
+    """accept()/reject() funnel through QDialog.done() (verified against Qt
+    semantics) without a closeEvent, so the release must hook done() too —
+    the palette closes via accept()/reject(), not close()."""
+    overlay = request.getfixturevalue("palette")
+    overlay.show()
+    qapp.processEvents()
+    calls: list[int] = []
+    monkeypatch.setattr(overlay, "refresh_overlay_chrome", lambda: calls.append(1))
+    bus.theme_changed.emit("x")
+    assert calls == [1]
+    getattr(overlay, finish)()
+    qapp.processEvents()
+    bus.theme_changed.emit("y")
+    bus.language_changed.emit("zh")
+    bus.ui_scale_changed.emit(1.0)
+    assert calls == [1], f"{finish}() must disconnect the refresh bus via done()"
 
 
 def test_command_palette_rescales_card_width_on_scale_change(qapp, bus, palette, monkeypatch):
@@ -336,3 +386,39 @@ def test_overlay_focus_returns_to_parent_window_widget(qapp):
 
 def test_focus_target_hook_defaults_to_none():
     assert OverlayShell._focus_target(OverlayShell.__new__(OverlayShell)) is None
+
+
+def test_focus_return_survives_destroyed_target_widget(qapp):
+    """_return_focus 的 RuntimeError 分支：_focus_return_to 记录的控件在
+    归还发生前 C++ 对象已被销毁（teardown 竞态：宿主窗口先于 overlay
+    关闭）时，dismissal 不得抛 RuntimeError 崩溃——护栏吞掉异常即可，
+    不要求归还成功。"""
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    parent = QWidget()
+    edit = QLineEdit(parent)
+    parent.show()
+    edit.setFocus()
+    qapp.processEvents()
+    dlg = QuickTaggerOverlay(
+        ["/path/to/a.png"], "/root", tag_service=_FakeTagService(), parent=parent
+    )
+    try:
+        dlg.show()
+        qapp.processEvents()
+        assert dlg._focus_return_to is edit
+
+        # Destroy the recorded target's C++ object while the overlay still
+        # holds the Python reference (the exact teardown-race shape).
+        edit.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+        # WA_DeleteOnClose destroys the overlay's own C++ object during
+        # close(), so nothing beyond "did not raise" can be asserted here.
+        dlg.close()  # must not raise RuntimeError
+        qapp.processEvents()
+    finally:
+        _dismiss(dlg)
+        parent.close()
+        parent.deleteLater()
+        qapp.processEvents()
