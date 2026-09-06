@@ -24,6 +24,7 @@ from AssetsManager.core import icons, themes
 from AssetsManager.core.signal_bus import get as bus
 from AssetsManager.core.color_utils import alpha
 from AssetsManager.core.ui_scale import scaled_px, scaled_pt
+from AssetsManager.widgets.stylekit import StyleKit
 
 _log = logging.getLogger(__name__)
 
@@ -219,6 +220,16 @@ class WorkspaceBar(QTabBar):
         tab_rect = self.tabRect(idx)
         target_x = tab_rect.x()
         target_width = tab_rect.width()
+
+        if StyleKit.reduce_motion():
+            # Jump straight to the target — no motion (V07 contract: every
+            # decorative animation honours the shared reduce-motion switch).
+            self._indicator_anim.stop()
+            self._indicator_width_anim.stop()
+            self._indicator_pos = target_x
+            self._indicator_width = target_width
+            self.update()
+            return
 
         # Animate position
         self._indicator_anim.stop()

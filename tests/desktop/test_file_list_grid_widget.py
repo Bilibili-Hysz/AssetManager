@@ -1951,3 +1951,96 @@ def test_icon_detect_dpr_and_cross_screen_scaling(monkeypatch):
 
     sensed_icon = icons.icon("settings", color="#ffffff", size=16)
     assert not sensed_icon.isNull()
+
+
+# ── M0 time-driven animator (motion-direction §6.2) ────────────────────
+
+
+def _make_fade_widget(monkeypatch, clock):
+    """Widget whose animator reads the controllable fake clock."""
+    import AssetsManager.panels.file_list._animator as animator_module
+
+    monkeypatch.setattr(animator_module, "monotonic", lambda: clock["t"])
+    widget = FileListGridWidget()
+    widget._animator._reduce_motion = False
+    return widget
+
+
+def test_thumbnail_fade_advances_by_elapsed_time_not_tick_count(monkeypatch):
+    """16 ms ticks vs one long jump must land on the same progress value."""
+    clock = {"t": 100.0}
+
+    def drive(tick_ms, ticks):
+        widget = _make_fade_widget(monkeypatch, clock)
+        widget._animator.begin_thumbnail_fade(1, has_visible_texture=False, allow_fade=True)
+        total = 0.0
+        for _ in range(ticks):
+            clock["t"] += tick_ms / 1000.0
+            total += tick_ms / 1000.0
+            widget._animator._anim_tick()
+        return widget, total
+
+    slow_widget, slow_total = drive(16, 8)     # 8 × 16 ms ≈ nominal cadence
+    fast_widget, fast_total = drive(33, 4)     # 4 × 33 ms — coalesced beats
+    jump_widget, jump_total = drive(128, 1)    # one late 128 ms timeout
+
+    assert abs(slow_total - jump_total) < 0.01
+    a = slow_widget._animator.thumbnail_opacity(1)
+    b = fast_widget._animator.thumbnail_opacity(1)
+    c = jump_widget._animator.thumbnail_opacity(1)
+    assert a == pytest.approx(b, abs=0.02)
+    assert a == pytest.approx(c, abs=0.02)
+    # All three consumed the same wall time, so all sit at the same ramp point
+    # (~total/0.12) — a count-driven model would have diverged widely.
+
+
+def test_long_stall_settles_exactly_without_stalling_at_fraction(monkeypatch):
+    """One tick after a 500 ms stall must settle the fade, never stall at 0.99."""
+    clock = {"t": 100.0}
+    widget = _make_fade_widget(monkeypatch, clock)
+    widget._animator.begin_thumbnail_fade(1, has_visible_texture=False, allow_fade=True)
+
+    clock["t"] += 0.5  # far past the 120 ms micro tier
+    widget._animator._anim_tick()
+
+    # Settle semantics: the per-row entry is removed; the renderer default
+    # (1.0) takes over. Nothing may remain half-faded.
+    assert 1 not in widget._animator._thumb_opacity
+    assert widget._animator.thumbnail_opacity(1) == 1.0
+
+
+def test_hover_tween_retargets_from_displayed_value(monkeypatch):
+    """Mid-flight unhover resumes from the displayed value (§6.3), not 0."""
+    import AssetsManager.panels.file_list._animator as animator_module
+    clock = {"t": 100.0}
+    monkeypatch.setattr(animator_module, "monotonic", lambda: clock["t"])
+    widget = FileListGridWidget()
+    widget._animator._reduce_motion = False
+    hovered = {"row": 1}
+    widget._layout = type("_Layout", (), {"row_at": lambda _self, _x, _y: hovered["row"]})()
+
+    move = lambda: widget.mouseMoveEvent(QMouseEvent(
+        QEvent.Type.MouseMove, QPointF(0, 0), QPointF(0, 0),
+        Qt.MouseButton.NoButton, Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier, QPointingDevice.primaryPointingDevice()))
+
+    move()  # enter row 1 — seeds the hover tween toward 1.0
+    clock["t"] += 0.06  # half of the fast tier
+    widget._animator._anim_tick()
+    mid = widget._animator.hover_progress_value(1)
+    assert mid is not None and 0.2 < mid < 0.95
+
+    # Leave row 1: the target flips to 0.0 and the tween re-anchors from `mid`.
+    hovered["row"] = 2
+    move()
+    clock["t"] += 0.06
+    widget._animator._anim_tick()
+    # The tick that discovers the flipped target re-anchors the tween at the
+    # displayed value in the same instant — no jump to the old start (§6.3).
+    after = widget._animator.hover_progress_value(1)
+    assert after is not None and after == pytest.approx(mid)
+
+    clock["t"] += 0.5  # well past the tier duration
+    widget._animator._anim_tick()
+    assert widget._animator.hover_progress_value(1) is None  # settled out
+    widget.deleteLater()

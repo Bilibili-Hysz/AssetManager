@@ -57,7 +57,13 @@ class PanelContent(QWidget):
         self._show_anim.setStartValue(0.0)
         self._show_anim.setEndValue(1.0)
         self._show_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._show_anim.start()
+        # V07 contract: honour the shared reduce-motion switch. The animation
+        # object stays owned (the lifecycle test asserts parent/stopped) but
+        # never starts, so the panel simply appears fully opaque.
+        from AssetsManager.widgets.stylekit import StyleKit
+
+        if not StyleKit.reduce_motion():
+            self._show_anim.start()
 
     # ── Signal lifecycle ────────────────────────────────────────
 
