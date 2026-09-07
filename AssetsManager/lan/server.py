@@ -29,6 +29,7 @@ from AssetsManager.lan.runtime_validation import (
     _validate_runtime_service_bindings,
 )
 from AssetsManager.lan.token_revocations import TokenRevocationRegistry
+from AssetsManager.lan.zip_resources import ZIP_BUDGET_APP_KEY, get_process_zip_budget
 from AssetsManager.lan.ws import WebSocketManager
 from AssetsManager.lan.scanner import DirectoryScanner
 from AssetsManager.lan.tunnel import TunnelManager
@@ -349,15 +350,17 @@ class _LanServerImpl(LanServerLifecycleMixin):
 
     def _build_app(self) -> None:
         """Build a fresh aiohttp application for the next event loop."""
+        # Rebuilt apps and lightweight legacy constructors must retain the
+        # credential-probe guard instead of silently disabling it.
+        if getattr(self, "_skip_auth_rate_limiter", None) is None:
+            self._skip_auth_rate_limiter = RateLimiter(max_requests=120, window_seconds=60)
         security_mw = create_security_middleware(
             self._rate_limiter,
             self._ip_blacklist,
             self._auth_rate_limiter,
             browse_rate_limiter=self._browse_rate_limiter,
-            # ``getattr`` keeps lightweight test/compatibility skeletons that
-            # predate this defensive bucket valid; production __init__ always
-            # creates the limiter above.
-            skip_auth_rate_limiter=getattr(self, "_skip_auth_rate_limiter", None),
+            skip_auth_rate_limiter=self._skip_auth_rate_limiter,
+            credential_auth_required=self._uses_credential_auth,
             ip_whitelist=self._ip_whitelist,
             tunnel_active=self._tunnel_active,
             tunnel_identity_resolver=self._tunnel_identity_resolver,
@@ -370,6 +373,7 @@ class _LanServerImpl(LanServerLifecycleMixin):
         self._app = app
         app[LAN_APP_KEY] = self
         app[ZIP_EXECUTOR_APP_KEY] = self._ensure_zip_executor()
+        app[ZIP_BUDGET_APP_KEY] = get_process_zip_budget()
         setup_routes(app)
 
     def _tunnel_identity_resolver(self, request) -> str | None:
@@ -1100,6 +1104,19 @@ class _LanServerImpl(LanServerLifecycleMixin):
     # in api.py and read back through route_policy.request_policy — there is
     # no hardcoded path list to keep aligned here.
 
+    def _uses_credential_auth(self, request) -> bool:
+        """Share the actual auth-chain gate with the defensive probe budget."""
+        policy = request_policy(request)
+        if policy.auth == "public":
+            return False
+        if policy.auth == "public_optional":
+            return self._auth_mode != "none"
+        return (
+            self._access_key_hash is not None
+            or self._password_hash is not None
+            or self._has_active_users()
+        )
+
     async def _resolve_principal(self, request):
         """Resolve a LAN credential into a principal, or ``None``.
 
@@ -1195,13 +1212,8 @@ class _LanServerImpl(LanServerLifecycleMixin):
             ensure_guest()
             return await proceed()
 
-        # Check if any auth is configured
-        has_key = self._access_key_hash is not None
-        has_password = self._password_hash is not None
-        has_users = self._has_active_users()
-
         # No auth required if nothing configured
-        if not has_key and not has_password and not has_users:
+        if not self._uses_credential_auth(request):
             set_request_principal(request, principal_for_request("guest"))
             return await proceed()
 

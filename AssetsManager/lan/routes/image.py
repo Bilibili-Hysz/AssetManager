@@ -9,7 +9,7 @@ from aiohttp import web
 from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.lan.path_guard import PathGuardError, assert_under_root
 from AssetsManager.lan.routes._errors import error_response
-from AssetsManager.lan.safe_open import MAX_INLINE_READ_BYTES, SafeOpenError, read_safe_file
+from AssetsManager.lan.safe_open import FileIdentity, MAX_INLINE_READ_BYTES, SafeOpenError, read_safe_file
 from AssetsManager.application.media.decoders import decoder_for
 from AssetsManager.application.thumbnail_service import finalize_pil_image, process_image_snapshot
 from AssetsManager.lan.routes._helpers import (
@@ -17,10 +17,11 @@ from AssetsManager.lan.routes._helpers import (
     MEDIA_CACHE_HEADERS,
     PRIVATE_PREVIEW_HEADERS,
     PUBLIC_PREVIEW_HEADERS,
-    build_media_etag,
+    build_snapshot_media_etag,
     etag_matches,
     get_lan,
     get_thumbnail_service,
+    inspect_raster_bytes as _inspect_image_bytes,
     media_not_modified,
     require_permission,
     serve_blur_gated_raster,
@@ -36,46 +37,37 @@ _SAFE_IMAGE_EXTS = IMAGE_EXTS - {".svg"}
 # LAN server process; decoded/thumbnail output remains separately bounded by
 # its max-dimension setting.
 MAX_IMAGE_SOURCE_BYTES = MAX_INLINE_READ_BYTES
-_IMAGE_CONTENT_TYPES = {
-    "JPEG": "image/jpeg",
-    "PNG": "image/png",
-    "GIF": "image/gif",
-    "BMP": "image/bmp",
-    "WEBP": "image/webp",
-    "TIFF": "image/tiff",
-    "ICO": "image/x-icon",
-}
 
 
-def _inspect_image_bytes(body: bytes) -> str | None:
-    try:
-        from io import BytesIO
-        from PIL import Image
-        with BytesIO(body) as stream:
-            with Image.open(stream) as image:
-                image.verify()
-                return _IMAGE_CONTENT_TYPES.get(str(image.format).upper())
-    except Exception:
-        return None
-
-
-def _inspect_image(path: Path) -> str | None:
-    """Validate the file as a supported raster image and return its MIME type.
-
-    ``Image.verify`` reads image structure without materializing the whole
-    raster.  This prevents an image-looking text/executable file from being
-    exposed merely because it has an image suffix.
-    """
-    try:
-        from PIL import Image
-
-        with Image.open(path) as image:
-            image.verify()
-            return _IMAGE_CONTENT_TYPES.get(str(image.format).upper())
-    except Exception:
-        # Image parsing is a security gate: fail closed for malformed, unknown,
-        # truncated, or otherwise unsupported content.
-        return None
+async def _blurred_snapshot_response(
+    request: web.Request,
+    target: Path,
+    source_body: bytes,
+    source_identity: FileIdentity,
+    max_size: int,
+) -> web.StreamResponse:
+    """Render captured source bytes under the current blur policy."""
+    svc = get_thumbnail_service(request)
+    processed = await asyncio.to_thread(
+        process_image_snapshot,
+        svc,
+        target,
+        source_body,
+        max_size,
+        True,
+        source_identity.as_tuple(),
+    )
+    if processed is None:
+        return error_response(
+            "Failed to process image", status=500, code="internal_error",
+            headers=PRIVATE_PREVIEW_HEADERS,
+        )
+    body, content_type = processed
+    return web.Response(
+        body=body,
+        content_type=content_type,
+        headers=PRIVATE_PREVIEW_HEADERS,
+    )
 
 
 def _not_found() -> web.Response:
@@ -84,31 +76,15 @@ def _not_found() -> web.Response:
     return web.Response(status=404)
 
 
-def _media_source_etag(request: web.Request, target: Path, *, blurred: bool) -> str:
-    """Source-identity validator for /api/image: mtime+size plus the
-    normalized query, with the blur decision bound in so a policy flip
-    invalidates cached copies."""
-    try:
-        source_stat = target.stat()
-    except OSError:
-        source_stat = None
-    return build_media_etag(
-        "image",
-        source_stat.st_mtime_ns if source_stat else None,
-        source_stat.st_size if source_stat else None,
-        blurred,
-        query=dict(request.query),
-    )
-
-
 async def _serve_decoded_raster(
     request: web.Request,
     target: Path,
     media_decoder,
     *,
+    source_body: bytes,
+    source_identity: FileIdentity,
     max_size: int,
     public: bool = False,
-    etag: str | None = None,
 ) -> web.StreamResponse:
     """Deliver a decoder-backed format (RAW/PSD) through the WEBP pipeline.
 
@@ -118,16 +94,6 @@ async def _serve_decoded_raster(
     browser-renderable rasters, so the original-bytes delivery paths never
     apply here — the response is always the shared WEBP pipeline output.
     """
-    lan = get_lan(request)
-    try:
-        source_body, _identity = await asyncio.to_thread(
-            read_safe_file,
-            lan.library_root,
-            target,
-            max_bytes=MAX_IMAGE_SOURCE_BYTES,
-        )
-    except (SafeOpenError, OSError, ValueError):
-        return _not_found()
     pil = await asyncio.to_thread(
         media_decoder.decode_bytes, source_body, max_dim=max_size,
     )
@@ -143,13 +109,46 @@ async def _serve_decoded_raster(
             headers=PRIVATE_PREVIEW_HEADERS,
         )
     body, content_type = processed
+    etag = None
+    if not should_blur:
+        if not public:
+            etag = await asyncio.to_thread(
+                build_snapshot_media_etag,
+                "image",
+                source_identity,
+                body,
+                content_type,
+                query=dict(request.query),
+            )
+        # Hashing occurs before the final policy decision so this await remains
+        # adjacent to an eventual unblurred response or 304.
+        if await should_blur_target(request, target):
+            # ``finalize_pil_image`` owns and closes ``pil``. Decode the same
+            # admitted bytes again so a late policy change cannot become 500.
+            pil = await asyncio.to_thread(
+                media_decoder.decode_bytes, source_body, max_dim=max_size,
+            )
+            processed = (
+                await asyncio.to_thread(finalize_pil_image, pil, max_size, True)
+                if pil is not None
+                else None
+            )
+            if processed is None:
+                return error_response(
+                    "Failed to process image", status=500, code="internal_error",
+                    headers=PRIVATE_PREVIEW_HEADERS,
+                )
+            body, content_type = processed
+            should_blur = True
     if should_blur:
         headers = PRIVATE_PREVIEW_HEADERS
     elif public:
         headers = PUBLIC_PREVIEW_HEADERS
     else:
-        # LAN image route: private hour-cache revalidated via If-None-Match.
-        headers = {**MEDIA_CACHE_HEADERS, **({"ETag": etag} if etag else {})}
+        assert etag is not None
+        if etag_matches(request, etag):
+            return media_not_modified(etag)
+        headers = {**MEDIA_CACHE_HEADERS, "ETag": etag}
     return web.Response(body=body, content_type=content_type, headers=headers)
 
 
@@ -175,12 +174,8 @@ async def serve_verified_image(
         target = assert_under_root(lan.library_root, target)
     except PathGuardError:
         return _not_found()
-    if media_decoder is not None:
-        return await _serve_decoded_raster(
-            request, target, media_decoder, max_size=max_size, public=public,
-        )
     try:
-        source_body, _source_identity = await asyncio.to_thread(
+        source_body, source_identity = await asyncio.to_thread(
             read_safe_file,
             lan.library_root,
             target,
@@ -188,47 +183,47 @@ async def serve_verified_image(
         )
     except (SafeOpenError, OSError, ValueError):
         return _not_found()
+    if media_decoder is not None:
+        return await _serve_decoded_raster(
+            request,
+            target,
+            media_decoder,
+            source_body=source_body,
+            source_identity=source_identity,
+            max_size=max_size,
+            public=public,
+        )
     content_type = await asyncio.to_thread(_inspect_image_bytes, source_body)
     if content_type is None:
         return _not_found()
 
-    svc = get_thumbnail_service(request)
-    resolved = await asyncio.to_thread(
-        svc.resolve,
-        target,
-        lan.thumbnail_dir,
-        max_size=max_size,
-        blur_tags=lan.blur_tags,
-        library_root=lan.library_root,
-    )
-    if not resolved.found or resolved.source_path is None:
-        return _not_found()
-
-    if resolved.should_blur:
-        processed = await asyncio.to_thread(
-            process_image_snapshot, svc, target, source_body, max_size, True,
-        )
-        if processed is None:
-            return error_response(
-                "Failed to process image", status=500, code="internal_error",
-                headers=PRIVATE_PREVIEW_HEADERS,
-            )
-        body, processed_content_type = processed
-        return web.Response(
-            body=body,
-            content_type=processed_content_type,
-            headers=PRIVATE_PREVIEW_HEADERS,
+    should_blur = await should_blur_target(request, target)
+    if should_blur:
+        return await _blurred_snapshot_response(
+            request, target, source_body, source_identity, max_size,
         )
 
     headers = PUBLIC_PREVIEW_HEADERS if public else PRIVATE_PREVIEW_HEADERS
-    if max_size < 256 or resolved.cache_hit:
+    if max_size < 256:
+        svc = get_thumbnail_service(request)
         processed = await asyncio.to_thread(
             process_image_snapshot, svc, target, source_body, max_size, False,
         )
         if processed is not None:
             body, processed_content_type = processed
+            # Re-evaluate after processing: the source bytes remain the same,
+            # but a policy change must never expose the unblurred render.
+            if await should_blur_target(request, target):
+                return await _blurred_snapshot_response(
+                    request, target, source_body, source_identity, max_size,
+                )
             return web.Response(body=body, content_type=processed_content_type, headers=headers)
 
+    # Last blur-policy await before direct public/private source-byte delivery.
+    if await should_blur_target(request, target):
+        return await _blurred_snapshot_response(
+            request, target, source_body, source_identity, max_size,
+        )
     return web.Response(body=source_body, content_type=content_type, headers=headers)
 
 
@@ -241,10 +236,8 @@ async def handle_image(request: web.Request) -> web.StreamResponse:
     rel_path = request.query.get("path", "")  # query already decoded once
     target = validate_path(lan, rel_path)
 
-    # Re-check containment after the final resolution before handing the path
-    # to FileResponse or Pillow.  PathGuard resolves symlinks and rejects
-    # escapes, but the on-disk entry may have been swapped since; the single
-    # shared predicate keeps this TOCTOU defense out of route-local logic.
+    # Re-check containment after final resolution before taking the one
+    # root-confined snapshot used for validation and delivery.
     media_decoder = (
         None
         if target.suffix.lower() in _SAFE_IMAGE_EXTS
@@ -259,39 +252,56 @@ async def handle_image(request: web.Request) -> web.StreamResponse:
     except PathGuardError:
         return _not_found()
 
+    try:
+        source_body, source_identity = await asyncio.to_thread(
+            read_safe_file,
+            lan.library_root,
+            target,
+            max_bytes=MAX_IMAGE_SOURCE_BYTES,
+        )
+    except (SafeOpenError, OSError, ValueError):
+        return _not_found()
     if media_decoder is not None:
-        # The blur decision must precede the validator so a 304 can never
-        # mask newly blurred content.
-        if await should_blur_target(request, target):
-            return await _serve_decoded_raster(
-                request, target, media_decoder, max_size=BLURRED_PREVIEW_SIZE,
-            )
-        etag = _media_source_etag(request, target, blurred=False)
-        if etag_matches(request, etag):
-            return media_not_modified(etag)
         return await _serve_decoded_raster(
-            request, target, media_decoder, max_size=BLURRED_PREVIEW_SIZE, etag=etag,
+            request,
+            target,
+            media_decoder,
+            source_body=source_body,
+            source_identity=source_identity,
+            max_size=BLURRED_PREVIEW_SIZE,
         )
 
-    content_type = await asyncio.to_thread(_inspect_image, target)
+    content_type = await asyncio.to_thread(_inspect_image_bytes, source_body)
     if content_type is None:
         return _not_found()
-
     should_blur = await should_blur_target(request, target)
-    etag = None
     if not should_blur:
-        # Revalidation lands after permission/PathGuard/blur checks and
-        # before the file read: a hit skips the decode and transfer.
-        etag = _media_source_etag(request, target, blurred=False)
-        if etag_matches(request, etag):
-            return media_not_modified(etag)
+        etag = await asyncio.to_thread(
+            build_snapshot_media_etag,
+            "image",
+            source_identity,
+            source_body,
+            content_type,
+            query=dict(request.query),
+        )
+        # No later await follows this policy check before direct bytes/304.
+        should_blur = await should_blur_target(request, target)
+        if not should_blur:
+            if etag_matches(request, etag):
+                return media_not_modified(etag)
+            return web.Response(
+                body=source_body,
+                content_type=content_type,
+                headers={**MEDIA_CACHE_HEADERS, "ETag": etag},
+            )
     return await serve_blur_gated_raster(
         request,
         target,
         should_blur=should_blur,
         content_type=content_type,
         max_size=BLURRED_PREVIEW_SIZE,
-        etag=etag,
+        source_body=source_body,
+        source_identity=source_identity,
     )
 
 

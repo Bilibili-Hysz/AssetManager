@@ -375,3 +375,7 @@ def setup_routes(app: web.Application):
     if spa_assets.exists():
         app.router.add_static("/assets", spa_assets, show_index=False)
         declare(app, "/assets", _PUBLIC_SKIP)
+    spa_fonts = SPA_DIR / "fonts"
+    if spa_fonts.exists():
+        app.router.add_static("/fonts", spa_fonts, show_index=False)
+        declare(app, "/fonts", _PUBLIC_SKIP)

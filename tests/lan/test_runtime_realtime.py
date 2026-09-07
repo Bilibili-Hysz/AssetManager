@@ -194,6 +194,49 @@ async def test_websocket_preserves_tags_projection_domain():
 
 
 @pytest.mark.anyio
+async def test_websocket_broadcasts_rating_service_collection_invalidation(tmp_path):
+    """A session-bound rating mutation reaches an admitted LAN client."""
+    from AssetsManager.application import ApplicationBootstrap
+
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    lan = _Lan(runtime)
+
+    @web.middleware
+    async def auth(request, handler):
+        set_request_principal(request, principal_for_request("local_ui"), {})
+        return await handler(request)
+
+    app = web.Application(middlewares=[auth])
+    app[LAN_APP_KEY] = lan
+    setup_routes(app)
+    client = await _client(app)
+    target = session.root / "rated.txt"
+    target.parent.mkdir(parents=True)
+    target.write_text("rating", encoding="utf-8")
+    try:
+        ws = await client.ws_connect("/ws")
+        assert await ws.receive_json() == {
+            "type": "runtime_ready", "epoch": runtime.epoch, "revision": 0,
+        }
+
+        runtime.services.metadata_service.set_rating(session.root_str, target, 5)
+
+        assert await ws.receive_json() == {
+            "type": "projection_invalidated", "epoch": runtime.epoch,
+            "revision": 1,
+            "domains": ["metadata", "project_detail", "collections"],
+            "paths": ["rated.txt"],
+        }
+        await ws.close()
+    finally:
+        await client.close()
+        runtime.close()
+        bootstrap.library_service.close()
+
+
+@pytest.mark.anyio
 async def test_revoked_user_websocket_is_closed_before_runtime_invalidation_delivery():
     app, runtime, lan = _user_cookie_app()
     client = await _client(app)

@@ -351,12 +351,95 @@ class TreeItemResponse:
 
 
 @dataclass(frozen=True)
+class ZipCleanupDiagnosticsResponse:
+    """Safe operational counters for deferred ZIP archive cleanup.
+
+    The cleanup service deliberately exposes counts, elapsed time, and an
+    exception *type* only.  Paths, archive names, callback identities, and
+    exception messages are never part of this admin diagnostic contract.
+    """
+
+    pending_count: int
+    retry_attempts: int
+    completed_count: int
+    oldest_pending_seconds: float
+    last_error_type: str | None
+
+    @classmethod
+    def from_record(
+        cls, record: Mapping[str, object]
+    ) -> "ZipCleanupDiagnosticsResponse":
+        error_type = record.get("last_error_type")
+        # ``ZipCleanupService`` records ``type(exc).__name__``.  Retain only
+        # that identifier-shaped value as a defense against a future source
+        # accidentally supplying exception text or another sensitive value.
+        safe_error_type = (
+            error_type
+            if isinstance(error_type, str) and error_type.isidentifier()
+            else None
+        )
+        return cls(
+            _as_int(record.get("pending_count", 0)),
+            _as_int(record.get("retry_attempts", 0)),
+            _as_int(record.get("completed_count", 0)),
+            _as_float(record.get("oldest_pending_seconds", 0)),
+            safe_error_type,
+        )
+
+    def to_dict(self) -> dict[str, int | float | str | None]:
+        return {
+            "pending_count": self.pending_count,
+            "retry_attempts": self.retry_attempts,
+            "completed_count": self.completed_count,
+            "oldest_pending_seconds": self.oldest_pending_seconds,
+            "last_error_type": self.last_error_type,
+        }
+
+
+@dataclass(frozen=True)
+class ZipResourcesResponse:
+    """Admin-only ZIP admission and deferred-cleanup diagnostics."""
+
+    active_jobs: int
+    reserved_bytes: int
+    max_jobs: int
+    max_reserved_bytes: int
+    cleanup: ZipCleanupDiagnosticsResponse
+
+    @classmethod
+    def from_record(cls, record: Mapping[str, object]) -> "ZipResourcesResponse":
+        raw_cleanup = record.get("cleanup")
+        cleanup = (
+            ZipCleanupDiagnosticsResponse.from_record(raw_cleanup)
+            if isinstance(raw_cleanup, Mapping)
+            else ZipCleanupDiagnosticsResponse.from_record({})
+        )
+        return cls(
+            _as_int(record.get("active_jobs", 0)),
+            _as_int(record.get("reserved_bytes", 0)),
+            _as_int(record.get("max_jobs", 0)),
+            _as_int(record.get("max_reserved_bytes", 0)),
+            cleanup,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "active_jobs": self.active_jobs,
+            "reserved_bytes": self.reserved_bytes,
+            "max_jobs": self.max_jobs,
+            "max_reserved_bytes": self.max_reserved_bytes,
+            "cleanup": self.cleanup.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
 class StatsResponse:
     connections: int
     requests: int
     bytes_transferred: int | None
     bytes_transferred_fmt: str | None
     uptime: float
+    zip_resources: ZipResourcesResponse | None = None
 
     @classmethod
     def from_record(cls, record: Mapping[str, object]) -> "StatsResponse":
@@ -367,15 +450,24 @@ class StatsResponse:
         # route only formats when the raw count is not None.
         bytes_transferred = record.get("bytes_transferred")
         bytes_transferred_fmt = record.get("bytes_transferred_fmt")
+        raw_zip_resources = record.get("zip_resources")
+        zip_resources = (
+            ZipResourcesResponse.from_record(raw_zip_resources)
+            if isinstance(raw_zip_resources, Mapping)
+            else None
+        )
         return cls(_as_int(record.get("connections", 0)), _as_int(record.get("requests", 0)),
                    _as_int(bytes_transferred) if bytes_transferred is not None else None,
                    str(bytes_transferred_fmt) if bytes_transferred_fmt is not None else None,
-                   _as_float(record.get("uptime", 0)))
+                   _as_float(record.get("uptime", 0)), zip_resources)
 
     def to_dict(self) -> dict[str, object]:
-        return {"connections": self.connections, "requests": self.requests,
+        result: dict[str, object] = {"connections": self.connections, "requests": self.requests,
                 "bytes_transferred": self.bytes_transferred,
                 "bytes_transferred_fmt": self.bytes_transferred_fmt, "uptime": self.uptime}
+        if self.zip_resources is not None:
+            result["zip_resources"] = self.zip_resources.to_dict()
+        return result
 
 
 @dataclass(frozen=True)

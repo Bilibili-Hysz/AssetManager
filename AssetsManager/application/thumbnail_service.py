@@ -18,7 +18,7 @@ from AssetsManager.application.context import (
     session_operation,
 )
 from AssetsManager.core.database import DatabaseManager
-from AssetsManager.core.file_snapshot import FileSnapshotError, read_snapshot
+from AssetsManager.core.file_snapshot import FileSnapshotError, open_under_root, read_snapshot
 from AssetsManager.core.path_resolver import root_identity
 from AssetsManager.core.thumbnail_key import (
     ThumbnailSourceFingerprint,
@@ -481,6 +481,8 @@ class ThumbnailService:
         blur_tags: set[str] | None = None,
         db_conn: sqlite3.Connection | None = None,
         library_root: str | Path | None = None,
+        *,
+        allow_legacy_cache: bool = True,
     ) -> ThumbnailResult:
         """Resolve the source image for a thumbnail request.
 
@@ -505,27 +507,39 @@ class ThumbnailService:
         is_decoder_media = (
             not is_image and not is_video and decoder_for(target.suffix) is not None
         )
+        strict_source_identity: ThumbnailSourceIdentity | None = None
+        if not allow_legacy_cache:
+            strict_source_identity = thumbnail_source_identity(target)
+            if strict_source_identity is None:
+                return ThumbnailResult()
 
         # Try cache before admitting the original. A cache hit does not consume
         # the source bytes, so it can still be served when the source changed.
         if thumbnail_dir.exists() and not is_original_request:
             cache_keys = []
             for profile in self._webp_profiles_for_size(max_size):
-                cache_key = profiled_thumbnail_cache_key_v3(target, profile)
+                cache_key = profiled_thumbnail_cache_key_v3(
+                    target, profile, strict_source_identity
+                )
                 if cache_key not in cache_keys:
                     cache_keys.append(cache_key)
-            v2_key = self._cache_key(target)
+            v2_key = self._cache_key(target, strict_source_identity)
             if v2_key not in cache_keys:
                 cache_keys.append(v2_key)
-            legacy_key = self._legacy_cache_key(target)
-            if legacy_key not in cache_keys:
-                cache_keys.append(legacy_key)
+            if allow_legacy_cache:
+                legacy_key = self._legacy_cache_key(target)
+                if legacy_key not in cache_keys:
+                    cache_keys.append(legacy_key)
             for cache_key in cache_keys:
                 cached = thumbnail_dir / f"{cache_key}.webp"
                 artifact_identity = admit_thumbnail_cache_artifact(cached, max_size)
                 if artifact_identity is None:
                     continue
                 should_blur = self._check_blur(target, blur_tags, db_conn, library_root)
+                if strict_source_identity is not None:
+                    self._validate_resolved_source(
+                        target, strict_source_identity, library_root
+                    )
                 return ThumbnailResult(
                     source_path=cached,
                     should_blur=should_blur,
@@ -536,12 +550,18 @@ class ThumbnailService:
         # This is a pre-open size check. It bounds the source before blur policy
         # lookup or decoding, but does not make a later path-based open atomic.
         source_identity = None
+        if strict_source_identity is not None:
+            self._validate_resolved_source(target, strict_source_identity, library_root)
         if (is_image or is_video or is_audio or is_decoder_media) and target.is_file():
-            source_identity = validate_thumbnail_source(target)
+            source_identity = validate_thumbnail_source(target, strict_source_identity)
 
         should_blur = self._check_blur(target, blur_tags, db_conn, library_root)
 
         if (is_image or is_decoder_media or is_audio) and target.is_file():
+            if strict_source_identity is not None:
+                self._validate_resolved_source(
+                    target, strict_source_identity, library_root
+                )
             return ThumbnailResult(
                 source_path=target,
                 should_blur=should_blur,
@@ -553,16 +573,16 @@ class ThumbnailService:
         if is_video and target.is_file():
             cache_key = self._cache_key(target, source_identity)
             frame = thumbnail_dir / f"{cache_key}.jpg"
-            legacy_key = self._legacy_cache_key(target)
-            if legacy_key != cache_key:
-                legacy_frame = thumbnail_dir / f"{legacy_key}.jpg"
-            else:
-                legacy_frame = frame
+            legacy_frame = frame
+            if allow_legacy_cache:
+                legacy_key = self._legacy_cache_key(target)
+                if legacy_key != cache_key:
+                    legacy_frame = thumbnail_dir / f"{legacy_key}.jpg"
             with cache_owner_lock(thumbnail_dir):
                 if frame.is_file():
                     selected_frame = frame
                     selected_key = cache_key
-                elif legacy_frame.is_file():
+                elif allow_legacy_cache and legacy_frame != frame and legacy_frame.is_file():
                     selected_frame = legacy_frame
                     selected_key = legacy_key
                 else:
@@ -588,6 +608,10 @@ class ThumbnailService:
                     cache_key=selected_key,
                 )
                 frame = selected_frame
+            if strict_source_identity is not None:
+                self._validate_resolved_source(
+                    target, strict_source_identity, library_root
+                )
             return ThumbnailResult(
                 source_path=frame,
                 should_blur=should_blur,
@@ -778,6 +802,22 @@ class ThumbnailService:
             for tag in tag_repository.get_tags(str(target.resolve()))
         }
         return bool(file_tags & {t.lower() for t in blur_tags})
+
+    @staticmethod
+    def _validate_resolved_source(
+        target: Path,
+        expected_identity: ThumbnailSourceIdentity,
+        library_root: str | Path | None = None,
+    ) -> None:
+        """Reject a strict cache result when its original has changed."""
+        root = Path(library_root) if library_root is not None else target.parent
+        try:
+            with open_under_root(root, target, expected_identity=expected_identity):
+                pass
+        except (FileSnapshotError, OSError, ValueError) as exc:
+            raise ThumbnailSourceChangedError(target) from exc
+        if thumbnail_source_identity(target) != expected_identity:
+            raise ThumbnailSourceChangedError(target)
 
     @staticmethod
     def _webp_profiles_for_size(max_size: int) -> list[str]:

@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from stat import S_ISREG
-from typing import BinaryIO, Iterator, Self
+from typing import BinaryIO, Self
 
 class SnapshotPathEscapeError(ValueError):
     """A snapshot candidate resolves outside its supplied root."""
@@ -193,11 +193,9 @@ def read_snapshot(
     )
     try:
         body = b"".join(chunks)
-        return body, chunks.identity  # type: ignore[attr-defined]
+        return body, chunks.identity
     finally:
-        close = getattr(chunks, "close", None)
-        if close is not None:
-            close()
+        chunks.close()
 
 
 class _SnapshotIterator:
@@ -211,6 +209,7 @@ class _SnapshotIterator:
     ) -> None:
         self._opened = opened
         self._chunk_size = chunk_size
+        self._remaining = opened.size
         self.identity = opened.identity
         self._closed = False
 
@@ -221,15 +220,18 @@ class _SnapshotIterator:
         if self._closed:
             raise StopIteration
         try:
-            chunk = self._opened.file.read(self._chunk_size)
+            # Never chase a growing file until EOF: both the bytes exposed
+            # and memory consumed are bounded by the admitted handle size.
+            chunk = self._opened.file.read(min(self._chunk_size, self._remaining))
         except Exception:
             self.close()
             raise
         if chunk:
+            self._remaining -= len(chunk)
             return chunk
         try:
             current = FileIdentity.from_stat(os.fstat(self._opened.file.fileno()))
-            if current != self._opened.identity:
+            if self._remaining or current != self._opened.identity:
                 raise FileSnapshotError("file changed while being read")
         finally:
             self.close()
@@ -251,13 +253,13 @@ def iter_snapshot(
     expected_identity: FileIdentity | tuple[int, int, int, int] | None = None,
     max_bytes: int | None = None,
     chunk_size: int = 1024 * 1024,
-) -> Iterator[bytes]:
+) -> _SnapshotIterator:
     """Yield a root-confined snapshot in bounded chunks.
 
     The final-open handle remains owned by the iterator until EOF (or explicit
     ``close``), so callers such as ZIP writers never materialize an entire
-    source file in memory.  ``max_bytes`` is checked before any bytes are
-    yielded and the identity is checked again at EOF.
+    source file in memory. The opened size caps all reads, even if the source
+    grows. Identity and length are checked before successful completion.
     """
     if chunk_size <= 0:
         raise ValueError("chunk_size must be positive")

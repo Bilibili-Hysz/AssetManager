@@ -17,13 +17,13 @@ from AssetsManager.lan.routes._helpers import LAN_APP_KEY, get_lan, get_share_se
 from AssetsManager.lan.routes._telemetry import record_route_event
 from AssetsManager.lan.routes.image import BLURRED_PREVIEW_SIZE, serve_verified_image
 from AssetsManager.lan.principal import principal_for_request
-from AssetsManager.lan.safe_open import MAX_INLINE_READ_BYTES, SafeOpenError, read_safe_file
+from AssetsManager.lan.safe_open import SafeOpenError
+from AssetsManager.lan.file_response import SafeFileResponse, open_download_file
 from AssetsManager.lan.utils import get_local_ip
 
 _log = logging.getLogger(__name__)
 
 _SAFE_IMAGE_EXTS = IMAGE_EXTS - {".svg"}
-MAX_SHARE_DOWNLOAD_BYTES = MAX_INLINE_READ_BYTES
 
 
 def _content_disposition_filename(name: str) -> str:
@@ -317,46 +317,37 @@ async def handle_share_download(request):
             return error_response("Not a file", status=status, code="bad_request")
 
         try:
-            if target.stat().st_size > MAX_SHARE_DOWNLOAD_BYTES:
-                # Keep public share admission opaque: an over-sized or
-                # unavailable target has the same response as a missing one.
-                status = 404
-                return error_response("Share not found", status=status, code="not_found")
-            body, _identity = await asyncio.to_thread(
-                read_safe_file,
-                lan.library_root,
-                target,
-                max_bytes=MAX_SHARE_DOWNLOAD_BYTES,
-            )
+            opened = await open_download_file(lan.library_root, target)
         except (SafeOpenError, OSError, ValueError):
             status = 404
             return error_response("Share not found", status=status, code="not_found")
-        set_request_principal(request, principal_for_request("share"))
-        response = web.Response(
-            body=body,
-            headers={"Content-Disposition": _content_disposition_filename(target.name)},
-        )
-
-        # M2: count the download only after the response bytes are prepared
-        # (FileResponse construction verifies the file is readable), so a
-        # client that aborts mid-transfer still consumes quota but a failed
-        # response never does.  The DB increment is atomic against
-        # max_downloads, so concurrent races surface here as 429 instead of
-        # an oversold download.
-        if not share_svc.increment_download(share_id):
-            status = 429
-            return error_response(
-                "Download limit reached",
-                status=status,
-                code="rate_limited",
-                extra={"retry_after": 0},
-                headers={"Retry-After": "0"},
+        handed_off = False
+        try:
+            set_request_principal(request, principal_for_request("share"))
+            response = SafeFileResponse(
+                request, opened,
+                headers={"Content-Disposition": _content_disposition_filename(target.name)},
             )
+            # Atomic admission follows successful final-open. Aborted transfers
+            # still consume a download; metadata-only HEAD requests do not.
+            if request.method != "HEAD" and not share_svc.increment_download(share_id):
+                status = 429
+                return error_response(
+                    "Download limit reached",
+                    status=status,
+                    code="rate_limited",
+                    extra={"retry_after": 0},
+                    headers={"Retry-After": "0"},
+                )
+            status = 200
+            outcome = "response_ready"
+            response_path = target
+            handed_off = True
+            return response
+        finally:
+            if not handed_off:
+                opened.close()
 
-        status = 200
-        outcome = "response_ready"
-        response_path = target
-        return response
     finally:
         record_route_event(
             lan,

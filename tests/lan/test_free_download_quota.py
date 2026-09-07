@@ -220,10 +220,10 @@ def test_download_route_does_not_consume_when_file_response_preparation_fails(tm
     monkeypatch.setattr(downloads, "require_permission", lambda _request, _capability: True)
     monkeypatch.setattr(downloads, "validate_path", lambda _lan, _path: target)
 
-    def failing_safe_read(*_args, **_kwargs):
+    async def failing_safe_read(*_args, **_kwargs):
         raise OSError("simulated final-open failure")
 
-    monkeypatch.setattr(downloads, "read_safe_file", failing_safe_read)
+    monkeypatch.setattr(downloads, "open_download_file", failing_safe_read)
     consumed = []
     monkeypatch.setattr(
         downloads,
@@ -498,16 +498,18 @@ def test_file_download_preflight_denies_before_consume(tmp_path, monkeypatch):
 
 
 def test_preflight_store_error_keeps_legacy_flow(tmp_path, monkeypatch):
+    from aiohttp import web
     from AssetsManager.lan.routes import downloads
-    from AssetsManager.lan.safe_open import read_safe_file as real_read
 
     target = tmp_path / "asset.txt"
     payload = b"legacy-bytes"
     target.write_bytes(payload)
+    app = web.Application()
+    app[LAN_APP_KEY] = SimpleNamespace()
     request = make_mocked_request(
         "GET",
         "/api/download/asset.txt",
-        app={LAN_APP_KEY: SimpleNamespace()},
+        app=app,
         match_info={"path": "asset.txt"},
     )
     monkeypatch.setattr(downloads, "require_permission", lambda _request, _capability: True)
@@ -517,7 +519,6 @@ def test_preflight_store_error_keeps_legacy_flow(tmp_path, monkeypatch):
         raise RuntimeError("store down")
 
     monkeypatch.setattr(downloads, "get_free_download_quota_info", broken_info)
-    monkeypatch.setattr(downloads, "read_safe_file", real_read)
 
     consumed_calls = []
 
@@ -530,9 +531,14 @@ def test_preflight_store_error_keeps_legacy_flow(tmp_path, monkeypatch):
 
     monkeypatch.setattr(downloads, "consume_free_download_quota", fake_consume)
 
-    response = asyncio.run(downloads.handle_download(request))
-    assert response.status == 200
-    assert response.body == payload
+    async def serve():
+        response = await downloads.handle_download(request)
+        assert response.status == 200
+        assert response.content_length == len(payload)
+        await response.prepare(request)
+
+    asyncio.run(serve())
+    assert b"".join(call.args[0] for call in request._payload_writer.write.call_args_list) == payload
     assert consumed_calls == [True]
 
 

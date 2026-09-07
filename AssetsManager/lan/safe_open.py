@@ -24,7 +24,7 @@ SafeOpenError = FileSnapshotError
 SafeOpenedFile = OpenedFile
 
 # Upper bound for LAN routes that must materialize a source as ``bytes``
-# (image verification/blur and legacy single-file responses).  ZIP and file
+# (image verification and blur). ZIP and file
 # streaming paths use ``iter_safe_file`` instead and are bounded separately by
 # their request-level resource budgets.
 MAX_INLINE_READ_BYTES = 64 * 1024 * 1024

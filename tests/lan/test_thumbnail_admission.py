@@ -133,7 +133,7 @@ async def test_thumbnail_route_marks_unblurred_processed_output_private_cacheabl
         response = await client.get("/api/thumbnails/image.png?size=128")
         await response.read()
         assert response.status == 200
-        assert response.headers["Cache-Control"] == "private, max-age=3600"
+        assert response.headers["Cache-Control"] == "private, no-cache"
         assert response.headers["ETag"].startswith('W/"')
     finally:
         await client.close()

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import io
 import re
 import concurrent.futures
 import logging
@@ -11,6 +12,7 @@ import time
 import threading
 import zipfile
 from collections import deque
+from contextlib import closing
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -24,14 +26,16 @@ from AssetsManager.core.format_utils import CATEGORY_MAP, format_size
 from AssetsManager.domain.asset import IMAGE_EXTS
 from AssetsManager.domain.event_bus import get_event_bus
 from AssetsManager.domain.events import ActivityChanged, PresenceChanged
-from AssetsManager.lan.path_guard import MissingPathError, PathEscapeError, PathGuard, PathGuardError, assert_under_root
+from AssetsManager.lan.path_guard import MissingPathError, PathEscapeError, PathGuard, PathGuardError
+from AssetsManager.lan import zip_resources
+from AssetsManager.lan.zip_sources import ZipLimitExceeded, scan_zip_sources
 from AssetsManager.lan.routes._errors import error_response
 from AssetsManager.lan.safe_open import (
-    MAX_INLINE_READ_BYTES,
-    SafeOpenError,
+    FileIdentity,
     iter_safe_file,
-    read_safe_file,
 )
+from AssetsManager.lan.zip_resources import ZipReservation
+from AssetsManager.lan.zip_cleanup import cleanup_zip_path
 
 _log = logging.getLogger(__name__)
 
@@ -48,28 +52,21 @@ ROLE_GUEST = "guest"
 
 _SANITIZE_RE = re.compile(r'[\x00-\x1f\x7f"\\/]')
 
-# Preview response headers shared by the raster-serving routes.  Blurred
-# output always uses the private variant: an asset can become sensitive
-# again when blur_tags change, so blurred bytes must never be publicly
-# cached.  Unblurred originals may be public (gallery media) or private.
+# Preview responses can become sensitive when blur tags change. Blurred
+# output is never stored; other previews must revalidate before reuse.
 PRIVATE_PREVIEW_HEADERS = {
     "Cache-Control": "private, no-store",
     "X-Content-Type-Options": "nosniff",
 }
 PUBLIC_PREVIEW_HEADERS = {
-    "Cache-Control": "public, max-age=3600",
+    "Cache-Control": "private, no-cache",
     "X-Content-Type-Options": "nosniff",
 }
 
-# Media routes (/api/image, /api/thumbnails) serve immutable-per-source bytes,
-# so unlike the JSON API (no-store) they may be privately cached for an hour
-# and revalidated with ETag/If-None-Match.  The cache MUST stay private: the
-# LAN server fronts a multi-user library and a shared proxy must not reuse
-# one user's bytes for another.  Blurred output is excluded - it keeps
-# PRIVATE_PREVIEW_HEADERS because blur policy can tighten at any time and a
-# cached pre-blur copy would be a privacy leak.
+# Every reuse must consult the current authorization and blur policy. ETags
+# still save transfer bytes, but cannot bypass those checks with a fresh hit.
 MEDIA_CACHE_HEADERS = {
-    "Cache-Control": "private, max-age=3600",
+    "Cache-Control": "private, no-cache",
     "X-Content-Type-Options": "nosniff",
 }
 
@@ -91,6 +88,43 @@ def build_media_etag(*identity_parts: object, query: dict[str, str] | None = Non
     return f'W/"{hasher.hexdigest()[:32]}"'
 
 
+def build_snapshot_media_etag(
+    kind: str,
+    identity: FileIdentity,
+    body: bytes,
+    content_type: str,
+    *,
+    query: dict[str, str] | None = None,
+) -> str:
+    """Bind a preview validator to its admitted source and rendered bytes."""
+    return build_media_etag(
+        kind, *identity.as_tuple(), content_type,
+        hashlib.sha256(body).hexdigest(), query=query,
+    )
+
+
+def inspect_raster_bytes(body: bytes) -> str | None:
+    """Verify the exact captured raster bytes before original-byte delivery."""
+    content_types = {
+        "JPEG": "image/jpeg",
+        "PNG": "image/png",
+        "GIF": "image/gif",
+        "BMP": "image/bmp",
+        "WEBP": "image/webp",
+        "TIFF": "image/tiff",
+        "ICO": "image/x-icon",
+    }
+    try:
+        from PIL import Image
+
+        with io.BytesIO(body) as stream:
+            with Image.open(stream) as image:
+                image.verify()
+                return content_types.get(str(image.format).upper())
+    except Exception:
+        return None
+
+
 def etag_matches(request: web.Request, etag: str) -> bool:
     """RFC 7232 If-None-Match comparison (comma lists and ``*``)."""
     header = request.headers.get("If-None-Match")
@@ -106,7 +140,7 @@ def media_not_modified(etag: str) -> web.Response:
 
 # Blurred output is resized to this bound (like the high-resolution
 # thumbnail route) so a hostile multi-GB raster cannot force unbounded
-# memory/CPU work; unblurred originals are streamed by FileResponse.
+# memory/CPU work; original previews use bounded, verified byte snapshots.
 BLURRED_PREVIEW_SIZE = 1920
 
 
@@ -270,6 +304,7 @@ __all__ = [
     "PRIVATE_PREVIEW_HEADERS",
     "PUBLIC_PREVIEW_HEADERS",
     "build_media_etag",
+    "build_snapshot_media_etag",
     "etag_matches",
     "media_not_modified",
     "LAN_APP_KEY",
@@ -296,6 +331,7 @@ __all__ = [
     "get_share_service",
     "get_tag_service",
     "get_thumbnail_service",
+    "inspect_raster_bytes",
     "matches_exclude",
     "MAX_QUERY_LENGTH",
     "oversized_query",
@@ -594,33 +630,21 @@ async def serve_blur_gated_raster(
     should_blur: bool,
     content_type: str,
     max_size: int,
+    source_body: bytes,
+    source_identity: FileIdentity | None = None,
     etag: str | None = None,
 ) -> web.StreamResponse:
-    """Deliver a raster after the shared blur-policy decision.
+    """Deliver captured raster bytes after the shared blur-policy decision.
 
-    The invariant lives here and only here: a ``should_blur`` asset is
-    always returned as the processed WEBP, and a processing failure is a
+    A ``should_blur`` asset is returned as the processed WEBP, and a failure is a
     500 — the original is never served for a blurred asset, otherwise an
     operational error would become a privacy leak.
     """
     if should_blur:
         svc = get_thumbnail_service(request)
-        try:
-            body, _identity = await asyncio.to_thread(
-                read_safe_file,
-                get_lan(request).library_root,
-                target,
-                max_bytes=MAX_INLINE_READ_BYTES,
-            )
-        except (SafeOpenError, OSError, ValueError):
-            return error_response(
-                "Failed to process image",
-                status=500,
-                code="internal_error",
-                headers=PRIVATE_PREVIEW_HEADERS,
-            )
         processed = await asyncio.to_thread(
-            process_image_snapshot, svc, target, body, max_size, True,
+            process_image_snapshot, svc, target, source_body, max_size, True,
+            source_identity.as_tuple() if source_identity is not None else None,
         )
         if processed is None:
             return error_response(
@@ -635,79 +659,96 @@ async def serve_blur_gated_raster(
             content_type=processed_content_type,
             headers=PRIVATE_PREVIEW_HEADERS,
         )
-    try:
-        body, _identity = await asyncio.to_thread(
-            read_safe_file,
-            get_lan(request).library_root,
-            target,
-            max_bytes=MAX_INLINE_READ_BYTES,
-        )
-    except (SafeOpenError, OSError, ValueError):
-        return error_response(
-            "File not found",
-            status=404,
-            code="not_found",
-            headers=PRIVATE_PREVIEW_HEADERS,
-        )
     return web.Response(
-        body=body,
+        body=source_body,
         content_type=content_type,
         headers={**MEDIA_CACHE_HEADERS, **({"ETag": etag} if etag else {})},
     )
 
 
-def _zip_entry_allowed(root: Path, entry: str) -> bool:
-    if os.path.islink(entry):
-        return False
-    try:
-        assert_under_root(root, entry)
-        return True
-    except (PathGuardError, ValueError, OSError):
-        return False
+MAX_ZIP_SOURCE_BYTES = 500 * 1024 * 1024
 
 
-def build_zip_sync(target_paths: list[tuple[Path, str | None]], zip_path: str) -> str | None:
+class _ZipBuildCancelled(Exception):
+    """Internal worker exit after its requesting coroutine is cancelled."""
+
+
+class _BoundedZipOutput(io.BufferedRandom):
+    """Seekable output that rejects writes beyond its reserved disk extent.
+
+    ZIP headers are rewritten in place, so summing writes would overcount.
+    Checking the resulting offset before every write also includes compressor
+    flushes and the central directory written by ``ZipFile.close``.
+    """
+
+    def __init__(self, raw: io.RawIOBase, max_bytes: int) -> None:
+        super().__init__(raw)
+        self._max_bytes = max_bytes
+
+    def write(self, data: Any, /) -> int:
+        if self.tell() + memoryview(data).nbytes > self._max_bytes:
+            raise ZipLimitExceeded(f"ZIP output exceeds {self._max_bytes} bytes")
+        return super().write(data)
+
+
+def build_zip_sync(
+    target_paths: list[tuple[Path, str | None]],
+    zip_path: str,
+    *,
+    cancel_event: threading.Event | None = None,
+) -> str | None:
+    """Build an archive atomically from bounded, final-open source snapshots.
+
+    Route size estimates are advisory: enforce the aggregate limit again on
+    the opened files. Any read/write failure invalidates the entire archive,
+    including failures detected after a member's last chunk was written.
+    """
+    remaining = MAX_ZIP_SOURCE_BYTES
+
+    def check_cancelled() -> None:
+        if cancel_event is not None and cancel_event.is_set():
+            raise _ZipBuildCancelled()
+
+    def add_member(zf: zipfile.ZipFile, root: Path, path: str | Path, name: str) -> None:
+        nonlocal remaining
+        check_cancelled()
+        with closing(iter_safe_file(root, path)) as source:
+            # Inspect the owned handle before any read. Traversal metadata
+            # can be stale by the time this member is opened.
+            if source.identity.size > remaining:
+                raise ZipLimitExceeded("ZIP exceeds source byte limit")
+            with zf.open(name, "w") as entry:
+                for chunk in source:
+                    check_cancelled()
+                    if len(chunk) > remaining:
+                        raise ZipLimitExceeded("ZIP exceeds source byte limit")
+                    entry.write(chunk)
+                    remaining -= len(chunk)
+
     try:
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
-            for target, arc_name in target_paths:
-                if arc_name is None:
-                    arc_name = target.name
-                if target.is_file():
-                    try:
-                        source = iter_safe_file(target.parent, target)
-                        with zf.open(arc_name, "w") as entry:
-                            for chunk in source:
-                                entry.write(chunk)
-                    except (SafeOpenError, OSError, ValueError):
-                        _log.warning("Failed to add file to ZIP: %s", target)
-                        continue
-                elif target.is_dir():
-                    root = target.resolve()
-                    for dirpath, dirnames, filenames in os.walk(target):
-                        dirnames[:] = [
-                            d for d in dirnames
-                            if not d.startswith(".") and not os.path.islink(os.path.join(dirpath, d))
-                        ]
-                        for fname in filenames:
-                            if fname.startswith("."):
-                                continue
-                            fp = os.path.join(dirpath, fname)
-                            arc = os.path.join(arc_name, os.path.relpath(fp, target))
-                            try:
-                                if not _zip_entry_allowed(root, fp):
-                                    _log.warning(
-                                        "Skipping ZIP entry outside archive root: %s", fp
-                                    )
-                                    continue
-                                source = iter_safe_file(root, fp)
-                                with zf.open(arc, "w") as entry:
-                                    for chunk in source:
-                                        entry.write(chunk)
-                            except (SafeOpenError, OSError, ValueError):
-                                _log.warning("Failed to add file to ZIP: %s", fp)
+        check_cancelled()
+        with io.FileIO(zip_path, "w+") as raw:
+            with _BoundedZipOutput(raw, zip_resources.MAX_ZIP_OUTPUT_BYTES) as output:
+                with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+                    with closing(scan_zip_sources(
+                        target_paths, source_limit=MAX_ZIP_SOURCE_BYTES,
+                        check_cancelled=check_cancelled,
+                    )) as sources:
+                        for root, path, arc_name in sources:
+                            add_member(zf, root, path, arc_name)
+                        check_cancelled()
         return zip_path
-    except Exception:
-        _log.exception("Failed to create ZIP at %s", zip_path)
+    except Exception as exc:
+        if isinstance(exc, _ZipBuildCancelled):
+            _log.debug("Cancelled ZIP at %s", zip_path)
+        else:
+            _log.exception("Failed to create ZIP at %s", zip_path)
+        try:
+            os.unlink(zip_path)
+        except OSError:
+            pass
+        if isinstance(exc, ZipLimitExceeded):
+            raise
         return None
 
 
@@ -738,28 +779,71 @@ async def build_zip_async(
     request: web.Request | None,
     targets: list[tuple[Path, str | None]],
     zip_path: str,
+    *,
+    reservation: ZipReservation | None = None,
 ) -> str | None:
     loop = asyncio.get_running_loop()
     executor = _zip_executor_for(request)
+    if reservation is not None and reservation.reserved_bytes < zip_resources.MAX_ZIP_OUTPUT_BYTES:
+        raise ValueError("ZIP reservation is smaller than the archive output limit")
+    cancel_event = threading.Event()
+    work_completed = threading.Event()
+    worker_reservation = reservation.retain() if reservation is not None else None
 
-    def cleanup() -> None:
+    def release_cancelled_reservations() -> None:
+        if reservation is not None:
+            reservation.release()
+        if worker_reservation is not None:
+            worker_reservation.release()
+
+    def finish_worker() -> None:
+        # Runs in the worker (or a native Future callback), independently of
+        # the request event loop. Old server loops may already have stopped.
+        if cancel_event.is_set():
+            cleanup_zip_path(zip_path, release_cancelled_reservations)
+        elif worker_reservation is not None:
+            worker_reservation.release()
+
+    def run_build() -> str | None:
         try:
-            os.unlink(zip_path)
-        except OSError:
-            pass
+            return build_zip_sync(targets, zip_path, cancel_event=cancel_event)
+        finally:
+            work_completed.set()
+            finish_worker()
 
+    def queued_work_done(future: concurrent.futures.Future) -> None:
+        if future.cancelled():
+            # Executor shutdown may cancel a job before run_build executes.
+            cancel_event.set()
+            work_completed.set()
+            finish_worker()
+
+    submitted = None
     try:
         if executor is None:
-            # Legacy test/mocked app without a server-provided executor.
-            work = loop.run_in_executor(None, build_zip_sync, targets, zip_path)
+            work = loop.run_in_executor(None, run_build)
         else:
-            work = loop.run_in_executor(executor, build_zip_sync, targets, zip_path)
+            submitted = executor.submit(run_build)
+            submitted.add_done_callback(queued_work_done)
+            work = asyncio.wrap_future(submitted, loop=loop)
     except BaseException:
-        cleanup()
+        cancel_event.set()
+        if submitted is None:
+            finish_worker()
+        else:
+            submitted.cancel()
+            if work_completed.is_set():
+                finish_worker()
         raise
 
     try:
         return await asyncio.shield(work)
     except asyncio.CancelledError:
-        work.add_done_callback(lambda _finished: cleanup())
+        cancel_event.set()
+        if submitted is not None:
+            submitted.cancel()
+        if work_completed.is_set():
+            # Close the completion/cancellation race even when the worker
+            # finished just before it could observe cancel_event.
+            finish_worker()
         raise

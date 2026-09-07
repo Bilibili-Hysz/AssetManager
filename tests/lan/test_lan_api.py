@@ -2868,7 +2868,7 @@ async def test_directory_download_size_estimation_does_not_block_event_loop(tmp_
         assert release.wait(timeout=2)
         return 0
 
-    monkeypatch.setattr(downloads, "_estimate_download_size", block_size)
+    monkeypatch.setattr(downloads, "_estimate_batch_download_size" if batch else "_estimate_download_size", block_size)
     client = await _make_client(app)
     try:
         if batch:
@@ -2890,30 +2890,28 @@ async def test_directory_download_size_estimation_does_not_block_event_loop(tmp_
 
 
 @pytest.mark.anyio
-async def test_file_only_batch_download_does_not_offload_size_estimation(tmp_path, monkeypatch):
+async def test_file_only_batch_download_estimates_in_a_worker(tmp_path, monkeypatch):
     from AssetsManager.lan.routes import downloads
 
     app, library, _conn = _make_lan_app(tmp_path)
     (library / "asset.txt").write_text("download me", encoding="utf-8")
 
-    offloaded_functions: list[str] = []
+    loop_thread = threading.get_ident()
+    scan_threads: list[int] = []
+    original_estimate = downloads._estimate_batch_download_size
 
-    async def record_offload(function, *_args, **_kwargs):
-        # Size estimation is cheap for file-only batches and must stay on the
-        # loop; the quota consume intentionally runs in a worker (its SQLite
-        # commit would otherwise block the event loop) since batch 60.
-        name = getattr(function, "__name__", str(function))
-        offloaded_functions.append(name)
-        return function(*_args, **_kwargs)
+    def record_estimate(targets):
+        scan_threads.append(threading.get_ident())
+        return original_estimate(targets)
 
-    monkeypatch.setattr(downloads.asyncio, "to_thread", record_offload)
+    monkeypatch.setattr(downloads, "_estimate_batch_download_size", record_estimate)
     client = await _make_client(app)
     try:
         response = await client.post(
             "/api/download/batch", json={"paths": ["asset.txt"]}, headers=_local_ui_headers(app)
         )
         assert response.status == 200
-        assert "_estimate_batch_download_size" not in offloaded_functions
+        assert scan_threads and all(thread != loop_thread for thread in scan_threads)
     finally:
         await client.close()
 
@@ -4389,26 +4387,32 @@ class TestPasswordHashLeakRegression:
             await client.close()
 
 
-def test_file_response_cleanup_runs_when_write_fails(tmp_path):
+def test_file_response_cleanup_runs_when_prepare_fails_after_open(tmp_path, monkeypatch):
     import os
     import pytest
     from AssetsManager.lan.routes.downloads import _file_response_with_cleanup
+    from aiohttp.test_utils import make_mocked_request
 
     zip_path = tmp_path / "download.zip"
     zip_path.write_bytes(b"zip")
 
-    async def _fail(_data=b""):
+    opened = []
+
+    async def _fail(_request, handle, *_args):
+        opened.append(handle)
         raise RuntimeError("client disconnected")
 
-    # request=None: no task callback, only the write_eof cleanup path.
-    response = _file_response_with_cleanup(None, str(zip_path), filename="download.zip", write_eof=_fail)
+    # No task callback: prepare owns both the handle and archive cleanup.
+    response = _file_response_with_cleanup(None, str(zip_path), filename="download.zip")
+    monkeypatch.setattr(response, "_prepare_open_file", _fail)
 
     async def _run():
         with pytest.raises(RuntimeError):
-            await response.write_eof()
+            await response.prepare(make_mocked_request("GET", "/download.zip"))
 
     import anyio
     anyio.run(_run)
+    assert opened and opened[0].closed
     assert not os.path.exists(zip_path)
 
 
@@ -4429,7 +4433,8 @@ async def test_download_rejects_over_size_limit(tmp_path, monkeypatch, method, u
     if patch_limit is None:
         # Exercise the real default limit with an oversized file.
         big = library / "big.bin"
-        big.write_bytes(b"x" * (downloads.MAX_BATCH_DOWNLOAD_BYTES + 1))
+        with big.open("wb") as output:
+            output.truncate(downloads.MAX_BATCH_DOWNLOAD_BYTES + 1)
         small = library / "small.txt"
         small.write_text("ok", encoding="utf-8")
     else:
@@ -4439,7 +4444,6 @@ async def test_download_rejects_over_size_limit(tmp_path, monkeypatch, method, u
         (folder / "one.txt").write_bytes(b"123456")
         (folder / "two.txt").write_bytes(b"abcdef")
 
-    limit = patch_limit if patch_limit is not None else downloads.MAX_BATCH_DOWNLOAD_BYTES
     client = await _make_client(app)
     try:
         if method == "get":
@@ -4448,8 +4452,8 @@ async def test_download_rejects_over_size_limit(tmp_path, monkeypatch, method, u
             resp = await client.post(url, json=body, headers=_local_ui_headers(app))
         assert resp.status == 413
         data = await resp.json()
-        assert "Total size exceeds" in data["error"]
-        assert data["total_bytes"] > limit
+        assert data["code"] == "zip_limits_exceeded"
+        assert data["error"] == "ZIP resource limits exceeded"
     finally:
         await client.close()
 

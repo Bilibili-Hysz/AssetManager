@@ -15,6 +15,7 @@ thread (the security middleware). Do not add UI-thread or worker-thread
 call paths without adding synchronization first.
 """
 from typing import cast
+import hashlib
 import ipaddress
 import logging
 import math
@@ -152,6 +153,7 @@ def create_security_middleware(
     *,
     browse_rate_limiter: "RateLimiter | None" = None,
     skip_auth_rate_limiter: "RateLimiter | None" = None,
+    credential_auth_required: "Callable[[web.Request], bool] | None" = None,
     ip_whitelist: list[str] | None = None,
     tunnel_active: "Callable[[], bool] | None" = None,
     tunnel_identity_resolver: "Callable[[web.Request], str | None] | None" = None,
@@ -175,6 +177,12 @@ def create_security_middleware(
     """
     allowed_ips = {_normalize_ip(ip) for ip in (ip_whitelist or []) if ip}
     browse_limiter = browse_rate_limiter or rate_limiter
+    # This is only a budget exemption, never an authentication cache. Every
+    # request still passes through authentication, revocation and permissions.
+    # Store bounded, short-lived digests rather than plaintext credentials.
+    verified_credentials: OrderedDict[bytes, float] = OrderedDict()
+    credential_ttl = 60.0
+    max_verified_credentials = 4096
 
     @web.middleware
     async def security_middleware(request: web.Request, handler):
@@ -285,15 +293,30 @@ def create_security_middleware(
         # Media/status routes intentionally have no anonymous request budget,
         # but a request carrying a credential still enters the expensive
         # authentication chain (revocation lookup plus PBKDF2).  Apply a
-        # separate generous limiter only to credential-bearing skip requests
-        # so random-token probing cannot turn those routes into an unlimited
-        # CPU/DB oracle while ordinary guest polling remains unaffected.
-        if skip_rate and skip_auth_rate_limiter is not None:
+        # separate limiter to unknown credentials. Recently authenticated
+        # credentials bypass this probe budget so loading a large thumbnail
+        # grid does not lock out legitimate users after 120 requests.
+        credential_digest: bytes | None = None
+        if (
+            policy.auth != "public"
+            and skip_auth_rate_limiter is not None
+            and (credential_auth_required is None or credential_auth_required(request))
+        ):
             from AssetsManager.lan.routes._helpers import get_auth_token
 
-            if get_auth_token(request):
-                active_limiter = skip_auth_rate_limiter
-                if not skip_auth_rate_limiter.is_allowed(bucket_key):
+            token = get_auth_token(request)
+            if token:
+                now = time.monotonic()
+                while verified_credentials and next(iter(verified_credentials.values())) <= now:
+                    verified_credentials.popitem(last=False)
+                credential_digest = hashlib.sha256(token.encode()).digest()
+                if skip_rate:
+                    active_limiter = skip_auth_rate_limiter
+                if (
+                    skip_rate
+                    and credential_digest not in verified_credentials
+                    and not skip_auth_rate_limiter.is_allowed(bucket_key)
+                ):
                     retry_after = skip_auth_rate_limiter.retry_after(bucket_key)
                     _log.warning("Credential rate limit exceeded for skip route: %s", bucket_key)
                     return error_response(
@@ -350,8 +373,23 @@ def create_security_middleware(
                 )
 
         # Add rate limit headers
-        response = await handler(request)
-        if isinstance(response, web.Response):
+        try:
+            response = await handler(request)
+        finally:
+            if credential_digest is not None:
+                from AssetsManager.lan.routes._helpers import get_request_principal
+
+                principal = get_request_principal(request)
+                # Rejected/revoked credentials immediately lose their budget
+                # exemption. Handler failures do not invalidate valid auth.
+                if principal is not None and principal.authenticated:
+                    verified_credentials[credential_digest] = time.monotonic() + credential_ttl
+                    verified_credentials.move_to_end(credential_digest)
+                    while len(verified_credentials) > max_verified_credentials:
+                        verified_credentials.popitem(last=False)
+                else:
+                    verified_credentials.pop(credential_digest, None)
+        if isinstance(response, web.StreamResponse) and not response.prepared:
             remaining = active_limiter.get_remaining(bucket_key)
             response.headers["X-RateLimit-Remaining"] = str(remaining)
         return _attach_visitor_cookie(response)

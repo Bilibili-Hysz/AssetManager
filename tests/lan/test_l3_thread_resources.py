@@ -68,7 +68,7 @@ async def test_build_zip_async_cleans_path_after_cancellation(tmp_path, monkeypa
     release = threading.Event()
     finished = threading.Event()
 
-    def blocking_build(_targets, path):
+    def blocking_build(_targets, path, *, cancel_event):
         started.set()
         assert release.wait(5)
         Path(path).write_bytes(b"zip")

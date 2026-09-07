@@ -4,7 +4,6 @@ from __future__ import annotations
 import pytest
 from PIL import Image
 
-from AssetsManager.lan.routes import _helpers as route_helpers
 from AssetsManager.lan.routes._helpers import LAN_APP_KEY
 from AssetsManager.lan.routes.image import handle_image, serve_verified_image
 from tests.lan.support.api_helpers import _make_client, _make_lan_app
@@ -82,7 +81,7 @@ async def test_image_route_streams_verified_image_with_conservative_headers(tmp_
         assert response.headers["Content-Type"] == "image/png"
         # Non-blur media is privately cacheable and carries a revalidation
         # validator (E-D3); blurred output keeps "private, no-store".
-        assert response.headers["Cache-Control"] == "private, max-age=3600"
+        assert response.headers["Cache-Control"] == "private, no-cache"
         assert response.headers["X-Content-Type-Options"] == "nosniff"
         assert response.headers["ETag"].startswith('W/"')
         assert await response.read() == expected
@@ -107,7 +106,7 @@ async def test_image_route_rejects_image_suffix_with_non_image_content(tmp_path)
 async def test_image_route_rejects_source_above_inline_budget(tmp_path, monkeypatch):
     app, library, _conn = _make_lan_app(tmp_path)
     _image(library / "large.png")
-    monkeypatch.setattr(route_helpers, "MAX_INLINE_READ_BYTES", 1)
+    monkeypatch.setattr("AssetsManager.lan.routes.image.MAX_IMAGE_SOURCE_BYTES", 1)
     _register_image_route(app)
     client = await _make_client(app)
     try:
@@ -167,7 +166,7 @@ async def test_public_verified_media_rejects_svg_and_invalid_raster(tmp_path):
         ok = await client.get("/api/public-media", params={"name": "valid.png"})
         assert ok.status == 200
         assert ok.headers["X-Content-Type-Options"] == "nosniff"
-        assert ok.headers["Cache-Control"] == "public, max-age=3600"
+        assert ok.headers["Cache-Control"] == "private, no-cache"
         assert (await ok.read()).startswith(b"\x89PNG")
         for name in ("unsafe.svg", "fake.jpg", "missing.png"):
             response = await client.get("/api/public-media", params={"name": name})

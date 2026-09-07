@@ -13,6 +13,8 @@ from AssetsManager.core.format_utils import format_size
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.lan.dto import RuntimeCursorResponse, StatsResponse
 from AssetsManager.lan.routes._errors import error_response
+from AssetsManager.lan.zip_cleanup import get_process_zip_cleanup
+from AssetsManager.lan.zip_resources import ZIP_BUDGET_APP_KEY, get_process_zip_budget
 from AssetsManager.lan.routes._helpers import (
     get_lan,
     get_auth_service,
@@ -155,12 +157,24 @@ async def handle_stats(request):
         return error_response("Admin access required", status=403, code="forbidden")
     lan = get_lan(request)
     status = lan.status()
+    budget = request.app.get(ZIP_BUDGET_APP_KEY)
+    if budget is None:
+        budget = get_process_zip_budget()
+    budget_snapshot = budget.snapshot()
+    cleanup_snapshot = get_process_zip_cleanup().snapshot()
     return web.json_response(StatsResponse.from_record({
         "connections": status.get("connections", 0),
         "requests": status.get("requests", 0),
         "bytes_transferred": status.get("bytes_transferred"),
         "bytes_transferred_fmt": format_size(status["bytes_transferred"]) if status.get("bytes_transferred") is not None else None,
         "uptime": status.get("uptime", 0),
+        "zip_resources": {
+            "active_jobs": budget_snapshot.get("active_jobs", 0),
+            "reserved_bytes": budget_snapshot.get("reserved_bytes", 0),
+            "max_jobs": budget.max_jobs,
+            "max_reserved_bytes": budget.max_reserved_bytes,
+            "cleanup": cleanup_snapshot,
+        },
     }).to_dict())
 
 

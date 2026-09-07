@@ -202,7 +202,7 @@ async def test_route_responses_are_normalized_and_keep_envelopes(tmp_path, monke
         tags_payload = (await tags.json())["tags"]
         assert tags_payload == [{"id": None, "name": "hero", "count": 1}]
         assert set((await stats.json()).keys()) == {
-            "connections", "requests", "bytes_transferred", "bytes_transferred_fmt", "uptime",
+            "connections", "requests", "bytes_transferred", "bytes_transferred_fmt", "uptime", "zip_resources",
         }
         tree_payload = await tree.json()
         assert set(tree_payload.keys()) == {"tree", "depth_config"}
@@ -333,7 +333,11 @@ async def test_stats_route_preserves_unavailable_bytes_as_null(tmp_path, monkeyp
     try:
         response = await client.get("/api/stats", headers=_local_ui_headers(app))
         assert response.status == 200
-        assert await response.json() == {
+        payload = await response.json()
+        resources = payload.pop("zip_resources")
+        assert resources["active_jobs"] == 0
+        assert resources["cleanup"]["pending_count"] == 0
+        assert payload == {
             "connections": 3,
             "requests": 11,
             "bytes_transferred": None,
