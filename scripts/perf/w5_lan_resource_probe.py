@@ -40,7 +40,8 @@ def _rss_mb() -> float:
                         ("peak_ws", ctypes.c_size_t), ("ws", ctypes.c_size_t),
                         *[(f"_q{i}", ctypes.c_size_t) for i in range(6)]]
 
-        pm = PM(); pm.cb = ctypes.sizeof(PM)
+        pm = PM()
+        pm.cb = ctypes.sizeof(PM)
         ctypes.windll.psapi.GetProcessMemoryInfo(
             ctypes.windll.kernel32.GetCurrentProcess(), ctypes.byref(pm), pm.cb)
         return pm.ws / (1024 * 1024)
