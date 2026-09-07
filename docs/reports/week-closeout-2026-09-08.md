@@ -76,6 +76,22 @@ onefile 最大化首次运行和复跑超时均观察到前台已不是目标、
 
 主试用候选优先 onedir；onefile 最大化链路保留验收限制。完整目录清单、构建位置及最终探针哈希均在 manifest 中。尚未验收活动下载关闭、真实托盘图标恢复、浏览器实时订阅；这三项与包基本链路分开记录。
 
+## 3.2 N1 进展附录（2026-09-08 晚间，主代理执行）
+
+**onefile 最大化退出未决项已关闭，定性为桌面输入竞争，非产品缺陷：**
+
+| 实验 | 结果 | 证据 |
+|---|---|---|
+| 探针复跑（复现环境） | 首次退出即 30s 超时；观测：窗口已退最大化、前台已失、API 仍 200 | [run1](week-closeout-2026-09-08-evidence/n1-onefile-max-run1.txt) |
+| 手动排水实验（无强杀） | 聚焦主窗口发送 Ctrl+Q → **4.2s 干净退出 code 0**；前置 IsZoomed=True 实测 | [实验记录](week-closeout-2026-09-08-evidence/n1-drain-experiment.txt) |
+| 安静桌面探针全链路 | Ctrl+Q exit 0 + 几何持久化（maximized=True）+ 重开后窗口/备注/评分保留 → **PASS** | [run2](week-closeout-2026-09-08-evidence/n1-onefile-max-run2.txt) |
+| 加固探针确认运行 | Ctrl+Q 发送前即刻复验前台 + 一次重试（仅验收设施加固）→ **PASS** | [run3](week-closeout-2026-09-08-evidence/n1-onefile-max-run3.txt) |
+
+结论：退出路径本身健康（4.2s / exit 0 / 持久化正确）；历史 INVALID 与前台在按键送达窗口内
+被合法抢占一致——繁忙桌面上 SetForegroundWindow/keybd_event 的经典竞态。探针加固仅限验收
+设施，未改生产 UI。**候选包四场景现全部 PASS（每场景 ≥1 次全链路证据）。**
+N1 剩余：活动下载关窗场景、真实托盘图标恢复（未开始）。
+
 ## 4. 已明确移交的范围
 
 - **N1 包与真实工作流**：先收口 onefile 最大化退出的未决结果，再做活动下载关闭、浏览器实时订阅与真实托盘图标恢复；已通过三场景保留证据，受影响修改后再补验。

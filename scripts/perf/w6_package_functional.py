@@ -299,15 +299,27 @@ def _focus_window(hwnd: int, *, purpose: str, timeout_s: float = 5.0) -> None:
 
 
 def _send_ctrl_q(hwnd: int) -> None:
-    """Invoke the application's registered Ctrl+Q exit action via keyboard input."""
+    """Invoke the application's registered Ctrl+Q exit action via keyboard input.
+
+    Foreground is re-verified immediately before the keystrokes and the
+    focus/verify cycle is retried once: on a busy desktop another window can
+    legally steal foreground between verification and send, and keys that go
+    to the wrong window must never be scored as a product exit failure
+    (N1: the historical onefile-maximized exit timeouts).
+    """
     ctypes, _wintypes, _entry_type = _win32()
     user32 = ctypes.windll.user32
-    _focus_window(hwnd, purpose="package window for Ctrl+Q")
-    # Foreground activation is asynchronous from the target Qt event loop.
-    # Do not queue the shortcut in the same scheduling turn that activated it.
-    time.sleep(0.15)
-    if int(user32.GetForegroundWindow() or 0) != hwnd:
-        raise _invalid("package window lost foreground before Ctrl+Q; shortcut was not sent")
+    last_error = "foreground never settled on the package window"
+    for attempt in (1, 2):
+        _focus_window(hwnd, purpose="package window for Ctrl+Q")
+        # Foreground activation is asynchronous from the target Qt event loop.
+        # Do not queue the shortcut in the same scheduling turn that activated it.
+        time.sleep(0.15)
+        if int(user32.GetForegroundWindow() or 0) == hwnd:
+            break
+        last_error = f"attempt {attempt}: package window lost foreground before Ctrl+Q"
+    else:
+        raise _invalid(f"{last_error}; shortcut was not sent")
     # keybd_event sends the registered application shortcut; no menu geometry
     # or untranslated action text is assumed.
     user32.keybd_event(0x11, 0, 0, 0)       # VK_CONTROL down

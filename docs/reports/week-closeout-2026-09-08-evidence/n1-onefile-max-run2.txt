@@ -1,0 +1,21 @@
+bundle: onefile (D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\f758725a\lifecycle\artifacts\dist-clean-process\AssetManager.exe)
+runtime: C:\Users\86177\AppData\Local\Temp\w6-func-1o4sjruw\runtime
+library: C:\Users\86177\AppData\Local\Temp\w6-func-1o4sjruw\library (12 files)
+lan: http://127.0.0.1:9561 (password auth)
+settings seeded: C:\Users\86177\AppData\Local\Temp\w6-func-1o4sjruw\runtime\Shared\settings.json
+AUTO-OPEN: will focus the sole seeded StartupWindow and press Enter once
+launched pid=48724
+exe sha256: d749a55df6a63cdfad5bb5c87202c471faeb8f9dd0a4e7ff17e4759ba717541f
+info OK: share_name='W6-Functional' auth='password'
+window OK: hwnd=22614046 pid=48400 class='Qt6110QWindowIcon' maximized=True
+login OK (lan_token cookie issued)
+font OK (48256 bytes, byte-identical to webui/dist)
+thumbnail single OK (178 bytes WEBP)
+thumbnail batch OK (12/12)
+notes/rating OK (saved via LAN, read back identical)
+live change OK (live_added.png listed in /api/files)
+close: {'normal_exit': {'entry': 'Ctrl+Q', 'exit_code': 0}, 'hide_observation': 'not_run (use --observe-hide; diagnostic only)'}
+geometry persisted: {'window_maximized': True, 'has_geometry': True}
+AUTO-OPEN: reopening the sole seeded library card
+restart OK (window state + notes/rating persisted)
+W6 FUNCTIONAL (onefile maximized): PASS
