@@ -1,7 +1,7 @@
 """Performance baseline script — run manually to track key operation timings.
 
 Usage:
-    python -m tests.perf_baseline
+    python -m tests.perf.perf_baseline
 
 Output: Markdown table with timings for reproducible micro-benchmarks.
 """
@@ -164,7 +164,7 @@ def main():
         unit = "ms" if "avg_ms" in r else "us" if "avg_us" in r else "ms"
         print(f"| {r['operation']} | {details} | {avg} {unit} | {min_val} {unit} |")
 
-    print("\nRun `python -m tests.perf_baseline` to regenerate.")
+    print("\nRun `python -m tests.perf.perf_baseline` to regenerate.")
 
 
 if __name__ == "__main__":

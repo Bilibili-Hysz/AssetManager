@@ -1,4 +1,8 @@
 from unittest.mock import Mock
+import pytest
+
+# Bind the fixed 8765 port — must never run concurrently (C02: loadgroup).
+pytestmark = pytest.mark.xdist_group(name="serial")
 
 
 def test_constructed_private_server_requires_preflight_before_lifecycle(monkeypatch):

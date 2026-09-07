@@ -1,5 +1,8 @@
 """G6-6 security-preflight integration contract tests.
 
+# Bind the fixed 8765 port — must never run concurrently (C02: loadgroup).
+pytestmark = pytest.mark.xdist_group(name="serial")
+
 These tests document the expected shared start-preflight interface because the
 contract report says that the interface is not implemented yet. The minimum proposed interface is ``preflight: SecurityPreflight | None`` on
 ``ShareManager.start`` and ``LanServer.start``. The desktop mixin must construct

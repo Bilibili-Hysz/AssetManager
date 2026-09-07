@@ -1,14 +1,21 @@
 """Shared test fixtures."""
 import itertools
-import logging
 import os
 import shutil
 import sqlite3
 import tempfile
-import time
 from pathlib import Path
 
 import pytest
+from tests.test_support.runtime_isolation import install_pytest_runtime
+
+# This must precede every AssetsManager import, including imports made while
+# pytest collects test modules.  Each pytest interpreter deliberately gets a
+# new domain, even when it was launched by another pytest process.
+_ORIGINAL_TEMP_ENV = " ".join(
+    os.environ.get(name, "") for name in ("TMP", "TEMP", "TMPDIR")
+).lower()
+_RUNTIME_ISOLATION = install_pytest_runtime()
 
 # ── DSH sandbox basetemp sweep tolerance ──────────────────────────
 # Under the DSH harness sandbox a pytest-created basetemp directory can
@@ -20,7 +27,7 @@ import pytest
 # basetemp; skipping it on PermissionError is a strict no-op in every
 # non-sandbox environment and preserves the exit code that reflects the
 # actual test results.
-import _pytest.tmpdir as _pytest_tmpdir_plugin
+import _pytest.tmpdir as _pytest_tmpdir_plugin  # noqa: E402
 
 _original_cleanup_dead_symlinks = _pytest_tmpdir_plugin.cleanup_dead_symlinks
 
@@ -103,320 +110,31 @@ def _fast_pbkdf2(request):
             setattr(auth, name, value)
 
 
-# ── Test-session runtime-data protection ──────────────────────────
-# Tests create per-library SQLite databases and identity markers under
-# RuntimeData/.  A full suite can leave tens of thousands of artifact
-# directories behind.  We snapshot user-facing config files before the
-# session and sweep test-produced RuntimeData artifacts afterwards, while
-# never touching real user libraries (identified by their identity marker,
-# which records the resolved library root path).
-_SESSION_START: float | None = None
-_PRESERVED_SHARED_FILES: dict[str, bytes | None] = {}
-
-# Debug escape hatch: keep everything (e.g. when inspecting test artifacts).
-_KEEP_RUNTIME_DATA = os.environ.get("AM_KEEP_TEST_RUNTIME_DATA") == "1"
-
-# Defensive ceiling for the session-end RuntimeData sweep.  A single test run
-# should never burn minutes of wall-clock time on cleanup, no matter how many
-# orphan directories accumulated across previous sessions (a crashed run could
-# leave hundreds).  When the budget is exhausted the sweep stops and the
-# leftovers are retried by the next session — cleanup is incremental by
-# design, so nothing is lost, only deferred.
-_CLEANUP_BUDGET_SECONDS = 30.0
-
-# User-facing config files that tests may legitimately write through
-# AppSettings / TagLibrary / ToolScheduler singletons; restored afterwards.
-_PROTECTED_SHARED_FILES = ("settings.json", "tag_library.json", "tools.json")
-
-
 def _is_test_root(map_key: str) -> bool:
     """True when a library-root identity points into a pytest workspace.
 
-    Matches roots under the system temp dir (the default pytest basetemp)
-    or whose path contains "pytest" (e.g. a custom ``--basetemp``).
+    Test-created library slots belong to this process's RuntimeData root, so
+    this is used only for prompt per-test cleanup rather than global
+    attribution.
     """
     try:
         root = Path(map_key).resolve()
     except (OSError, ValueError):
         return False
-    key = str(root).lower()
-    return key.startswith(tempfile.gettempdir().lower()) or "pytest" in key
-
-
-def _read_identity(path: Path) -> str | None:
-    """Return the library-root key recorded in an identity marker, or None."""
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace").strip()
-    except OSError:
-        return None
-    return text or None
-
-
-def _remove_dir_retry(path: Path, attempts: int = 2, delay: float = 0.5) -> None:
-    """Remove a directory, retrying briefly for in-process handle release.
-
-    Handles held by reconciliation workers usually outlive this window;
-    a single quick retry catches transient locks while a persistent failure
-    simply keeps the identity pair for the next pytest process (which holds
-    no stale handles and removes it).
-    """
-    for _ in range(attempts):
-        shutil.rmtree(path, ignore_errors=True)
-        if not path.exists():
-            return
-        time.sleep(delay)
-
-
-def _unlink_best_effort(path: Path) -> None:
-    """Delete a marker file, tolerating a lock held elsewhere.
-
-    Same contract as :func:`_remove_dir_retry`: cleanup runs from
-    ``pytest_sessionfinish``, so an OSError raised here would abort the hook
-    and take the test report with it.  A marker left behind is harmless --
-    the next session (fresh process, no stale handles) removes it.
-    """
-    try:
-        path.unlink(missing_ok=True)
-    except OSError:
-        pass
-
-
-def _cleanup_budget_exhausted(deadline: float) -> bool:
-    """True once the session-end sweep has spent its wall-clock budget.
-
-    Logs once per hit (the sweep runs in the master, not in xdist workers).
-    """
-    if time.monotonic() <= deadline:
-        return False
-    logging.getLogger(__name__).warning(
-        "RuntimeData cleanup exceeded its %.0fs budget; skipping the "
-        "remainder (leftover artifacts are retried by the next session)",
-        _CLEANUP_BUDGET_SECONDS,
-    )
-    return True
-
-
-def _db_library_root(db_path: Path) -> str | None:
-    """Recover the library root recorded inside an orphaned library DB.
-
-    ``library_stats.library_path`` is written by every opened library;
-    ``assets.library_root`` is a secondary source.  Read-only access, any
-    failure returns None (caller falls back to the age buffer).
-    """
-    import sqlite3
-    from urllib.parse import quote
-
-    try:
-        uri = f"file:{quote(db_path.as_posix(), safe='/')}?mode=ro"
-        conn = sqlite3.connect(uri, uri=True, timeout=1)
-        try:
-            row = conn.execute(
-                "SELECT library_path FROM library_stats LIMIT 1"
-            ).fetchone()
-            if row and row[0]:
-                return str(row[0])
-            row = conn.execute(
-                "SELECT library_root FROM assets LIMIT 1"
-            ).fetchone()
-            if row and row[0]:
-                return str(row[0])
-        finally:
-            conn.close()
-    except Exception:
-        return None
-    return None
-
-
-def _preserve_shared_config() -> None:
-    """Snapshot user config files so tests cannot permanently modify them."""
-    from AssetsManager.core.path_resolver import SHARED_DIR
-
-    for name in _PROTECTED_SHARED_FILES:
-        path = Path(SHARED_DIR) / name
-        try:
-            original = path.read_bytes() if path.exists() else None
-        except OSError:
-            original = None
-        _PRESERVED_SHARED_FILES[str(path)] = original
-
-
-def _restore_shared_config() -> None:
-    """Restore the snapshot taken at session start."""
-    for path_str, original in _PRESERVED_SHARED_FILES.items():
-        path = Path(path_str)
-        try:
-            if original is None:
-                path.unlink(missing_ok=True)
-            else:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(original)
-        except OSError:
-            pass
-    _PRESERVED_SHARED_FILES.clear()
-
-
-def _cleanup_test_runtime_data() -> None:
-    """Remove RuntimeData artifacts created by the test session.
-
-    Only artifacts whose library-root identity resolves inside the system
-    temp workspace (or contains "pytest") are removed; real user libraries,
-    their identity markers, locks, and the Shared/ config files are never
-    touched.
-    """
-    if _KEEP_RUNTIME_DATA:
-        return
-    from AssetsManager.core.path_resolver import SHARED_DIR
-
-    runtime_root = Path(SHARED_DIR).parent  # RuntimeData/
-    shared = Path(SHARED_DIR)
-    if not runtime_root.exists():
-        return
-    start = _SESSION_START or 0.0
-    deadline = time.monotonic() + _CLEANUP_BUDGET_SECONDS
-
-    # 1. Library data directories whose identity points at a pytest root.
-    for entry in runtime_root.iterdir():
-        if _cleanup_budget_exhausted(deadline):
-            return
-        if not entry.is_dir():
-            continue
-        if entry.name in ("Shared", "_orphaned"):
-            continue
-        map_key = _read_identity(shared / f"{entry.name}.identity")
-        if map_key and _is_test_root(map_key):
-            _remove_dir_retry(entry)
-            if entry.exists():
-                # Deletion failed (a handle is still held in-process, e.g.
-                # by a reconciliation worker finishing its task).  Keep the
-                # identity marker so a later session (fresh process,
-                # released handles) can retry the pair.
-                continue
-            identity = shared / f"{entry.name}.identity"
-            _unlink_best_effort(identity)
-            _unlink_best_effort(Path(str(identity) + ".pending.lock"))
-
-    # 1b. Identity-less orphan dirs.  Pure thumbnail-cache dirs are always
-    #     test artifacts; bare-db dirs are inspected through
-    #     ``library_stats.library_path`` for their root (a fresh real
-    #     library could look identical, so unverifiable dirs fall back to a
-    #     24h age buffer).
-    _DB_SIDECARS = {"assetmanager.db", "assetmanager.db-wal", "assetmanager.db-shm"}
-    for entry in runtime_root.iterdir():
-        if _cleanup_budget_exhausted(deadline):
-            return
-        if not entry.is_dir() or entry.name in ("Shared", "_orphaned"):
-            continue
-        if (shared / f"{entry.name}.identity").exists():
-            continue  # handled above
-        try:
-            names = {p.name for p in entry.iterdir()}
-        except OSError:
-            continue
-        if not names:
-            shutil.rmtree(entry, ignore_errors=True)
-            continue
-        if names == {".thumbnails"}:
-            shutil.rmtree(entry, ignore_errors=True)
-            continue
-        if not names <= _DB_SIDECARS | {".thumbnails"}:
-            continue  # has user-data sidecars (favorites/recent) — keep
-        try:
-            mtime = entry.stat().st_mtime
-        except OSError:
-            continue
-        if "assetmanager.db" in names:
-            root_key = _db_library_root(entry / "assetmanager.db")
-            if root_key and _is_test_root(root_key):
-                shutil.rmtree(entry, ignore_errors=True)
-                continue
-            if mtime >= start:
-                # Created during this session without an identity marker:
-                # a real library always gets one from open_library, so this
-                # is a test artifact (cleanup raced the identity marker).
-                shutil.rmtree(entry, ignore_errors=True)
-                continue
-        if mtime < time.time() - 24 * 3600:
-            shutil.rmtree(entry, ignore_errors=True)
-
-    # 2. Orphaned identity markers whose data directory is gone (the
-    #    library was deleted or its dir was never fully created).  Any
-    #    marker pointing at a pytest root is a test artifact; real-library
-    #    markers always have their data dir present and are kept.
-    for identity in shared.glob("*.identity"):
-        data_dir = runtime_root / identity.name[: -len(".identity")]
-        if data_dir.exists():
-            continue
-        map_key = _read_identity(identity)
-        if map_key and _is_test_root(map_key):
-            identity.unlink(missing_ok=True)
-            Path(str(identity) + ".pending.lock").unlink(missing_ok=True)
-
-    # 2b. Library lock files created during the session (their owning test
-    #     process has exited, so no live holder can be affected).  Historical
-    #     lock files are left untouched because they cannot be attributed.
-    for lock in shared.glob("library-*.lock"):
-        try:
-            if lock.stat().st_mtime >= start:
-                lock.unlink(missing_ok=True)
-        except OSError:
-            pass
-
-    # 3. Undo backup directories created during the session (their owner
-    #    test process is dead by now).
-    undo_root = Path(tempfile.gettempdir())
-    for entry in undo_root.glob("AssetsManager_undo_*"):
-        try:
-            if entry.stat().st_mtime >= start:
-                shutil.rmtree(entry, ignore_errors=True)
-                Path(str(entry) + ".assetsmanager-owner").unlink(missing_ok=True)
-        except OSError:
-            pass
-
-    # 3b. Historical stale undo backups are left to the application's own
-    #     startup cleanup (7-day policy).  Sweeping them here would scan the
-    #     whole temp dir (tens of thousands of entries after heavy test
-    #     runs) and they are frequently pinned by OS-level handles anyway;
-    #     see scripts/cleanup_undo_zombies.ps1 for a manual admin sweep.
-
-    # 4. Restore-quarantine dirs produced during the session.
-    orphaned = runtime_root / "_orphaned"
-    if orphaned.exists():
-        for entry in orphaned.iterdir():
-            try:
-                if entry.stat().st_mtime >= start:
-                    shutil.rmtree(entry, ignore_errors=True)
-            except OSError:
-                pass
-
-
-def _is_xdist_worker() -> bool:
-    """True when running under pytest-xdist as a non-master worker.
-
-    Workers are separate processes that each run session hooks; shared
-    config restore and RuntimeData cleanup must happen exactly once in the
-    master after every worker has finished.
-    """
-    return bool(os.environ.get("PYTEST_XDIST_WORKER"))
-
-
-def pytest_sessionstart(session):
-    global _SESSION_START
-    _SESSION_START = time.time()
-    if not _is_xdist_worker():
-        _preserve_shared_config()
+    return _RUNTIME_ISOLATION.owns_runtime_path(root)
 
 
 def pytest_sessionfinish(session, exitstatus):
-    if _is_xdist_worker():
-        return
-    _restore_shared_config()
-    _cleanup_test_runtime_data()
-    # tmp_path replacement dirs live under the workspace root (see the
-    # fixture below); best-effort sweep of what the sandbox still allows.
-    for path in _SANDBOX_TMP_PATHS:
-        shutil.rmtree(path, ignore_errors=True)
-    _SANDBOX_TMP_PATHS.clear()
-    shutil.rmtree(_TMP_PATHS_ROOT, ignore_errors=True)
+    """Keep the run domain alive until pytest and atexit hooks finish.
+
+    ``pytest_sessionfinish`` runs before pytest's remaining teardown hooks and
+    before application ``atexit`` handlers. Removing the domain here would
+    make pytest's own temp/report cleanup race with us and could let a later
+    settings saver recreate part of the directory. The isolation object's
+    earliest registered atexit handler performs the token-checked removal
+    after those hooks have completed.
+    """
+    return None
 
 
 # ── Sandbox-tolerant tmp_path / mkdtemp ───────────────────────────
@@ -425,25 +143,27 @@ def pytest_sessionfinish(session, exitstatus):
 # mode leaks into an ACL that denies listing and file creation even to the
 # creating process.  pytest's built-in tmp_path therefore errors at setup.
 # When the sandbox temp dir is detected we replace tempfile.mkdtemp with a
-# default-mode mkdir under the workspace root and route tmp_path through it;
+# default-mode mkdir under the isolated scratch directory and route mkdtemp
+# through it;
 # TemporaryDirectory and test-local mkdtemp calls inherit the fix, and the
 # one-unique-dir-per-test semantics stay unchanged everywhere else.
-_TMP_PATHS_ROOT = Path(__file__).resolve().parent.parent / ".pytest-tmp-paths"
 _TMP_PATHS_COUNTER = itertools.count()
-_SANDBOX_TEMP = "dsh-" in tempfile.gettempdir().lower()
-_SANDBOX_TMP_PATHS: list[Path] = []
+_SANDBOX_TEMP = "dsh-" in _ORIGINAL_TEMP_ENV
 
 
-def _sandbox_mkdtemp(suffix=None, prefix=None, base_dir=None) -> str:
-    base = Path(base_dir) if base_dir is not None else _TMP_PATHS_ROOT
-    base.mkdir(exist_ok=True)
+def _sandbox_mkdtemp(suffix=None, prefix=None, dir=None) -> str:  # noqa: A002
+    base = Path(dir) if dir is not None else _RUNTIME_ISOLATION.scratch_root
+    base.mkdir(parents=True, exist_ok=True)
     name = f"{prefix or 'tmp'}{suffix or ''}{next(_TMP_PATHS_COUNTER)}-{os.getpid()}"
     path = base / name
     path.mkdir()  # default mode — the sandbox breaks 0o700 directories
     return str(path)
 
 
+@pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
+    if config.option.basetemp is None:
+        config.option.basetemp = str(_RUNTIME_ISOLATION.pytest_root)
     if _SANDBOX_TEMP:
         tempfile.mkdtemp = _sandbox_mkdtemp
     config.addinivalue_line(
@@ -451,20 +171,6 @@ def pytest_configure(config):
         "real_pbkdf2_cost: observe production PBKDF2 cost constants "
         "(skip the fast-PBKDF2 override)",
     )
-
-
-@pytest.fixture
-def tmp_path(request) -> Path:
-    path = Path(tempfile.mkdtemp(prefix="am-test-"))
-    if _SANDBOX_TEMP:
-        # Deferred cleanup: a per-test rmtree can run before the monkeypatch
-        # fixture is undone (parameter order), tripping over a leaked
-        # os.scandir patch; sweep these at session end like pytest's own
-        # basetemp retention does.
-        _SANDBOX_TMP_PATHS.append(path)
-    else:
-        request.addfinalizer(lambda: shutil.rmtree(path, ignore_errors=True))
-    return path
 
 
 @pytest.fixture
@@ -567,13 +273,14 @@ def _cleanup_stores():
     from AssetsManager.domain import event_bus as _eb
     _eb._instance = None
 
-    # Clean up RuntimeData directories created from temp paths
+    # Only remove paths resolved inside this interpreter's RuntimeData.  A
+    # monkeypatched resolver can otherwise target a user-owned directory.
+    if os.environ.get("AM_KEEP_TEST_RUNTIME_DATA") == "1":
+        return
     for root_key in opened_roots:
         try:
             data_dir = library_data_dir(root_key)
-            # Only clean up directories that look like test artifacts
-            # (roots under the system temp dir or containing "pytest").
-            if _is_test_root(str(root_key)):
+            if _RUNTIME_ISOLATION.owns_runtime_path(data_dir):
                 if data_dir.exists():
                     shutil.rmtree(data_dir, ignore_errors=True)
         except Exception:

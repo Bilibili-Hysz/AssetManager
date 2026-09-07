@@ -21,7 +21,12 @@ DIRECTORY_LIST_1K_MAX = 2.0      # 1,000 files in a single directory
 DIRECTORY_LIST_10K_MAX = 15.0     # 10,000 files
 METADATA_READ_MAX = 0.02          # single-file metadata fetch
 TAG_LIST_MAX = 0.1                # full tag listing
-PATHGUARD_RESOLVE_MAX = 0.001     # single path resolution
+# PathGuard.resolve is FS-bound on Windows (Path.resolve → final-path syscall,
+# ~0.6-0.9 ms median measured 2026-09-07, scripts/perf/p2_gate_baselines.py).
+# 1 ms left <25% headroom and flaked against the suite's own "catch 10x+
+# regressions, not micro-benchmarks" intent; 3 ms keeps a ~3.5x machine
+# multiplier while still failing a true 10x regression (~8 ms).
+PATHGUARD_RESOLVE_MAX = 0.003     # single path resolution
 SEARCH_INDEXED_MAX = 0.5          # indexed name search
 BATCH_SIZE_SANITY = 500 * 1024 * 1024  # 500 MB — must match LAN limit
 
