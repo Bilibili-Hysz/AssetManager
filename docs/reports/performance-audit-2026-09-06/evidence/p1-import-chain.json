@@ -1,0 +1,193 @@
+{
+  "measurement": "import-chain",
+  "command": "python -X importtime -c \"import main\"",
+  "runs": 3,
+  "totals_us_per_run": [
+    356560,
+    371416,
+    355224
+  ],
+  "total_import_median_us": 356560,
+  "top_modules_by_median_self_us": [
+    {
+      "module": "PySide6.QtWidgets",
+      "self_us": 27012,
+      "cum_us": 175282
+    },
+    {
+      "module": "AssetsManager.core.themes",
+      "self_us": 26555,
+      "cum_us": 68315
+    },
+    {
+      "module": "shibokensupport.signature.lib.pyi_generator",
+      "self_us": 19020,
+      "cum_us": 24067
+    },
+    {
+      "module": "PySide6.QtCore",
+      "self_us": 17162,
+      "cum_us": 17162
+    },
+    {
+      "module": "shibokensupport.signature.parser",
+      "self_us": 13629,
+      "cum_us": 14753
+    },
+    {
+      "module": "shiboken6.Shiboken",
+      "self_us": 10413,
+      "cum_us": 76264
+    },
+    {
+      "module": "_colorize",
+      "self_us": 7591,
+      "cum_us": 32681
+    },
+    {
+      "module": "AssetsManager.core.settings",
+      "self_us": 7075,
+      "cum_us": 36534
+    },
+    {
+      "module": "shibokensupport.signature.mapping",
+      "self_us": 6705,
+      "cum_us": 6705
+    },
+    {
+      "module": "PySide6.QtGui",
+      "self_us": 6534,
+      "cum_us": 23764
+    },
+    {
+      "module": "AssetsManager.core.path_resolver",
+      "self_us": 6264,
+      "cum_us": 14180
+    },
+    {
+      "module": "_hashlib",
+      "self_us": 5765,
+      "cum_us": 5765
+    },
+    {
+      "module": "site",
+      "self_us": 4658,
+      "cum_us": 21545
+    },
+    {
+      "module": "inspect",
+      "self_us": 4637,
+      "cum_us": 18264
+    },
+    {
+      "module": "json",
+      "self_us": 4590,
+      "cum_us": 11235
+    },
+    {
+      "module": "AssetsManager.app",
+      "self_us": 4276,
+      "cum_us": 255145
+    },
+    {
+      "module": "shibokensupport.signature.lib.enum_sig",
+      "self_us": 4120,
+      "cum_us": 4120
+    },
+    {
+      "module": "typing",
+      "self_us": 4023,
+      "cum_us": 4098
+    },
+    {
+      "module": "encodings",
+      "self_us": 3958,
+      "cum_us": 7901
+    },
+    {
+      "module": "shibokensupport.signature.layout",
+      "self_us": 3869,
+      "cum_us": 18689
+    }
+  ],
+  "package_rollup_median_self_us": [
+    {
+      "package": "PySide6",
+      "self_us": 59831.0
+    },
+    {
+      "package": "AssetsManager",
+      "self_us": 54814.0
+    },
+    {
+      "package": "shibokensupport",
+      "self_us": 53967.0
+    },
+    {
+      "package": "shiboken6",
+      "self_us": 12567.0
+    },
+    {
+      "package": "encodings",
+      "self_us": 11251.0
+    },
+    {
+      "package": "json",
+      "self_us": 11137.0
+    },
+    {
+      "package": "compression",
+      "self_us": 10233.0
+    },
+    {
+      "package": "re",
+      "self_us": 8113.0
+    },
+    {
+      "package": "_colorize",
+      "self_us": 7591.0
+    },
+    {
+      "package": "zipfile",
+      "self_us": 6919.0
+    },
+    {
+      "package": "_hashlib",
+      "self_us": 5765.0
+    },
+    {
+      "package": "site",
+      "self_us": 4658.0
+    },
+    {
+      "package": "inspect",
+      "self_us": 4637.0
+    },
+    {
+      "package": "pathlib",
+      "self_us": 4260.0
+    },
+    {
+      "package": "typing",
+      "self_us": 4023.0
+    }
+  ],
+  "interesting_subtrees_median_cum_us": {
+    "PySide6.QtWidgets": 175282,
+    "PySide6.QtGui": 23764,
+    "PySide6.QtCore": 17162,
+    "PySide6": 124394,
+    "json": 11235,
+    "logging": 82323
+  },
+  "environment": {
+    "python": "3.14.3",
+    "platform": "Windows-11-10.0.26220-SP0",
+    "processor": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+    "qt_qpa_platform": "",
+    "pyside6": "6.11.0",
+    "psutil": "7.2.2",
+    "total_ram_gb": 31.9,
+    "cpu_max_ghz": 3.2
+  }
+}

@@ -1,0 +1,198 @@
+{
+  "measurement": "startup-segments",
+  "runs": 3,
+  "totals_to_startup_ui_ms": [
+    1147.4,
+    1125.8,
+    1126.5
+  ],
+  "median_to_startup_ui_ms": 1126.5,
+  "totals_including_library_open_ms": [
+    2148.0,
+    2083.8,
+    2081.4
+  ],
+  "median_including_library_open_ms": 2083.8,
+  "segments_median": {
+    "add_library_deferred_pump": {
+      "median_ms": 8.4,
+      "min_ms": 8.1,
+      "max_ms": 8.8
+    },
+    "add_library_session_open": {
+      "median_ms": 1.0,
+      "min_ms": 0.8,
+      "max_ms": 141.8
+    },
+    "application_bootstrap_ctor": {
+      "median_ms": 0.1,
+      "min_ms": 0.1,
+      "max_ms": 0.1
+    },
+    "application_bootstrap_imports": {
+      "median_ms": 799.6,
+      "min_ms": 795.5,
+      "max_ms": 802.2
+    },
+    "crash_handler_install": {
+      "median_ms": 18.9,
+      "min_ms": 18.7,
+      "max_ms": 19.8
+    },
+    "deferred_plugins_gl_warmup": {
+      "median_ms": 8.3,
+      "min_ms": 8.2,
+      "max_ms": 8.7
+    },
+    "dock_refresh_handlers": {
+      "median_ms": 0.1,
+      "min_ms": 0.1,
+      "max_ms": 0.1
+    },
+    "i18n_init": {
+      "median_ms": 2.5,
+      "min_ms": 2.3,
+      "max_ms": 2.6
+    },
+    "import_app_chain": {
+      "median_ms": 182.5,
+      "min_ms": 179.7,
+      "max_ms": 186.6
+    },
+    "library_scan_wait": {
+      "median_ms": 2.4,
+      "min_ms": 0.3,
+      "max_ms": 2.4
+    },
+    "mainwindow_create": {
+      "median_ms": 928.7,
+      "min_ms": 834.8,
+      "max_ms": 932.8
+    },
+    "mainwindow_show_first_paint": {
+      "median_ms": 14.8,
+      "min_ms": 13.5,
+      "max_ms": 15.0
+    },
+    "qapplication_create": {
+      "median_ms": 55.7,
+      "min_ms": 55.4,
+      "max_ms": 66.3
+    },
+    "startup_window_create": {
+      "median_ms": 20.0,
+      "min_ms": 19.9,
+      "max_ms": 20.7
+    },
+    "startup_window_show_first_paint": {
+      "median_ms": 11.6,
+      "min_ms": 11.3,
+      "max_ms": 12.0
+    },
+    "system_tray": {
+      "median_ms": 27.4,
+      "min_ms": 27.1,
+      "max_ms": 28.5
+    },
+    "tag_library_load": {
+      "median_ms": 0.0,
+      "min_ms": 0.0,
+      "max_ms": 0.0
+    },
+    "theme_stylesheet_font": {
+      "median_ms": 2.2,
+      "min_ms": 2.1,
+      "max_ms": 2.3
+    }
+  },
+  "rows": [
+    {
+      "segments_ms": {
+        "import_app_chain": 186.6,
+        "crash_handler_install": 18.7,
+        "qapplication_create": 66.3,
+        "i18n_init": 2.5,
+        "theme_stylesheet_font": 2.1,
+        "application_bootstrap_imports": 802.2,
+        "tag_library_load": 0.0,
+        "application_bootstrap_ctor": 0.1,
+        "dock_refresh_handlers": 0.1,
+        "system_tray": 28.5,
+        "startup_window_create": 20.7,
+        "startup_window_show_first_paint": 11.3,
+        "deferred_plugins_gl_warmup": 8.2,
+        "mainwindow_create": 834.8,
+        "add_library_session_open": 141.8,
+        "add_library_deferred_pump": 8.8,
+        "library_scan_wait": 0.3,
+        "mainwindow_show_first_paint": 15.0
+      },
+      "total_to_startup_ui_ms": 1147.4,
+      "total_including_library_open_ms": 2148.0,
+      "run": 1,
+      "cache": "cold"
+    },
+    {
+      "segments_ms": {
+        "import_app_chain": 182.5,
+        "crash_handler_install": 19.8,
+        "qapplication_create": 55.4,
+        "i18n_init": 2.3,
+        "theme_stylesheet_font": 2.2,
+        "application_bootstrap_imports": 795.5,
+        "tag_library_load": 0.0,
+        "application_bootstrap_ctor": 0.1,
+        "dock_refresh_handlers": 0.1,
+        "system_tray": 27.1,
+        "startup_window_create": 19.9,
+        "startup_window_show_first_paint": 12.0,
+        "deferred_plugins_gl_warmup": 8.7,
+        "mainwindow_create": 932.8,
+        "add_library_session_open": 1.0,
+        "add_library_deferred_pump": 8.4,
+        "library_scan_wait": 2.4,
+        "mainwindow_show_first_paint": 13.5
+      },
+      "total_to_startup_ui_ms": 1125.8,
+      "total_including_library_open_ms": 2083.8,
+      "run": 2,
+      "cache": "warm"
+    },
+    {
+      "segments_ms": {
+        "import_app_chain": 179.7,
+        "crash_handler_install": 18.9,
+        "qapplication_create": 55.7,
+        "i18n_init": 2.6,
+        "theme_stylesheet_font": 2.3,
+        "application_bootstrap_imports": 799.6,
+        "tag_library_load": 0.0,
+        "application_bootstrap_ctor": 0.1,
+        "dock_refresh_handlers": 0.1,
+        "system_tray": 27.4,
+        "startup_window_create": 20.0,
+        "startup_window_show_first_paint": 11.6,
+        "deferred_plugins_gl_warmup": 8.3,
+        "mainwindow_create": 928.7,
+        "add_library_session_open": 0.8,
+        "add_library_deferred_pump": 8.1,
+        "library_scan_wait": 2.4,
+        "mainwindow_show_first_paint": 14.8
+      },
+      "total_to_startup_ui_ms": 1126.5,
+      "total_including_library_open_ms": 2081.4,
+      "run": 3,
+      "cache": "warm"
+    }
+  ],
+  "environment": {
+    "python": "3.14.3",
+    "platform": "Windows-11-10.0.26220-SP0",
+    "processor": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+    "qt_qpa_platform": "",
+    "pyside6": "6.11.0",
+    "psutil": "7.2.2",
+    "total_ram_gb": 31.9,
+    "cpu_max_ghz": 3.2
+  }
+}

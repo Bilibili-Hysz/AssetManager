@@ -1,0 +1,74 @@
+{
+  "measurement": "scan-scale",
+  "rows": [
+    {
+      "scale": "1k",
+      "files": 1000,
+      "leaf_dirs": 10,
+      "build_library_s": 0.504,
+      "open_session_s": 0.142,
+      "index_tree_build_s": 1.199,
+      "index_tree_count": 1011,
+      "navigate_scan_cold_s": 0.008,
+      "navigate_scan_warm_s": 0.009,
+      "navigate_scan_samples_s": [
+        0.008,
+        0.009,
+        0.008
+      ],
+      "index_search_structured_ms_median": 2.69,
+      "index_search_structured_hits": 200,
+      "service_name_search_ms_median": 87.5,
+      "service_name_search_hits": 200,
+      "stray_open_txn_rollbacks_during_tag_seed": 0,
+      "get_tags_for_files_1k_ms_median": 455.54,
+      "get_tags_for_files_1k_tagged": 100
+    },
+    {
+      "scale": "5k",
+      "files": 5000,
+      "leaf_dirs": 50,
+      "build_library_s": 3.219,
+      "open_session_s": 0.123,
+      "index_tree_build_s": 7.461,
+      "index_tree_count": 5055,
+      "navigate_scan_cold_s": 0.009,
+      "navigate_scan_warm_s": 0.009,
+      "navigate_scan_samples_s": [
+        0.009,
+        0.01,
+        0.009
+      ],
+      "index_search_structured_ms_median": 9.6,
+      "index_search_structured_hits": 200,
+      "service_name_search_ms_median": 94.37,
+      "service_name_search_hits": 200,
+      "stray_open_txn_rollbacks_during_tag_seed": 0,
+      "get_tags_for_files_1k_ms_median": 422.3,
+      "get_tags_for_files_1k_tagged": 100
+    },
+    {
+      "scale": "10k",
+      "files": 10000,
+      "leaf_dirs": 100,
+      "build_library_s": 6.501,
+      "open_session_s": 0.149,
+      "index_tree_build_s": 16.783,
+      "index_tree_count": 10110,
+      "navigate_scan_cold_s": 0.009,
+      "navigate_scan_warm_s": 0.008,
+      "navigate_scan_samples_s": [
+        0.009,
+        0.008,
+        0.009
+      ],
+      "index_search_structured_ms_median": 16.59,
+      "index_search_structured_hits": 200,
+      "service_name_search_ms_median": 101.77,
+      "service_name_search_hits": 200,
+      "stray_open_txn_rollbacks_during_tag_seed": 0,
+      "get_tags_for_files_1k_ms_median": 422.25,
+      "get_tags_for_files_1k_tagged": 100
+    }
+  ]
+}

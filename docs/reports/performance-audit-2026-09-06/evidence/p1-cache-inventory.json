@@ -1,0 +1,1711 @@
+{
+  "measurement": "cache-inventory",
+  "scope": "AssetsManager/** + main.py (lan/ read-only)",
+  "mutable_bindings_total": 122,
+  "cache_like_total": 9,
+  "by_verdict": {
+    "cap-const-present": 2,
+    "eviction-in-module": 6,
+    "review": 1
+  },
+  "cache_like_entries": [
+    {
+      "file": "AssetsManager/application/asset_filters.py",
+      "line": 17,
+      "name": "_category_registry_handlers",
+      "kind": "list",
+      "cache_like": true,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_category_registry_handlers: list[Callable[[], None]] = []",
+      "verdict": "review"
+    },
+    {
+      "file": "AssetsManager/application/library_service.py",
+      "line": 51,
+      "name": "_RESTORE_STAGING_RE_CACHE",
+      "kind": "dict",
+      "cache_like": true,
+      "eviction_calls": [],
+      "cap_constants": [
+        "_EXPIRED_MAX",
+        "_MAX_DATABASE_QUICK_CHECK_SIZE",
+        "_QUARANTINE_ACTIVE_MAX"
+      ],
+      "evidence": "_RESTORE_STAGING_RE_CACHE: dict[str, re.Pattern[str]] = {}",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/application/sequence_service.py",
+      "line": 152,
+      "name": "_SCAN_CACHE",
+      "kind": "OrderedDict",
+      "cache_like": true,
+      "eviction_calls": [
+        "clear",
+        "popitem"
+      ],
+      "cap_constants": [
+        "_SCAN_CACHE_MAX"
+      ],
+      "evidence": "_SCAN_CACHE: \"OrderedDict[str, _DirScan]\" = OrderedDict()",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/application/thumbnail_service.py",
+      "line": 48,
+      "name": "_cache",
+      "kind": "dict",
+      "cache_like": true,
+      "eviction_calls": [
+        "clear",
+        "pop"
+      ],
+      "cap_constants": [
+        "_CACHE_MAX_SIZE"
+      ],
+      "evidence": "_cache: dict[str, tuple[ThumbnailSourceFingerprint, str]] = {}",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/core/icons.py",
+      "line": 100,
+      "name": "_CACHE",
+      "kind": "OrderedDict",
+      "cache_like": true,
+      "eviction_calls": [
+        "clear",
+        "popitem"
+      ],
+      "cap_constants": [
+        "_CACHE_MAX"
+      ],
+      "evidence": "_CACHE: \"OrderedDict[tuple[str, str, int, float], QIcon]\" = OrderedDict()",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/core/workers.py",
+      "line": 19,
+      "name": "_retained_pools",
+      "kind": "dict",
+      "cache_like": true,
+      "eviction_calls": [
+        "pop"
+      ],
+      "cap_constants": [
+        "_REAP_MAX_POLLS"
+      ],
+      "evidence": "_retained_pools: dict[int, QThreadPool] = {}",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/lan/routes/_helpers.py",
+      "line": 68,
+      "name": "MEDIA_CACHE_HEADERS",
+      "kind": "dict",
+      "cache_like": true,
+      "eviction_calls": [],
+      "cap_constants": [
+        "BLURRED_PREVIEW_SIZE"
+      ],
+      "evidence": "MEDIA_CACHE_HEADERS = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/lan/routes/system.py",
+      "line": 32,
+      "name": "_INFO_COUNT_CACHE",
+      "kind": "dict",
+      "cache_like": true,
+      "eviction_calls": [
+        "clear"
+      ],
+      "cap_constants": [
+        "_INFO_COUNT_TTL"
+      ],
+      "evidence": "_INFO_COUNT_CACHE: dict[str, tuple[float, int]] = {}",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/widgets/tag_chip.py",
+      "line": 14,
+      "name": "_synonyms_cache",
+      "kind": "dict",
+      "cache_like": true,
+      "eviction_calls": [
+        "clear"
+      ],
+      "cap_constants": [
+        "_SYNONYMS_CACHE_LIMIT"
+      ],
+      "evidence": "_synonyms_cache: dict[str, str] = {}",
+      "verdict": "eviction-in-module"
+    }
+  ],
+  "all_mutable_bindings": [
+    {
+      "file": "AssetsManager/application/__init__.py",
+      "line": 135,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/application/ai_tagging/__init__.py",
+      "line": 26,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/application/ai_tagging/ollama_client.py",
+      "line": 58,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "AI_TAGGING_IMAGE_MAX_DIM"
+      ],
+      "evidence": "__all__ = [",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/application/asset_filters.py",
+      "line": 17,
+      "name": "_category_registry_handlers",
+      "kind": "list",
+      "cache_like": true,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_category_registry_handlers: list[Callable[[], None]] = []",
+      "verdict": "review"
+    },
+    {
+      "file": "AssetsManager/application/asset_filters.py",
+      "line": 179,
+      "name": "_BUILTIN_CATEGORY_MAP",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_BUILTIN_CATEGORY_MAP: dict[str, str] = {}",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/application/asset_filters.py",
+      "line": 231,
+      "name": "_SORT_KEY_MAP",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_SORT_KEY_MAP: dict[str, str] = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/application/asset_filters.py",
+      "line": 238,
+      "name": "_CATEGORY_MAP",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_CATEGORY_MAP: dict[str, str] = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/application/asset_index_service.py",
+      "line": 37,
+      "name": "_REFRESH_LOCKS",
+      "kind": "OrderedDict",
+      "cache_like": false,
+      "eviction_calls": [
+        "popitem"
+      ],
+      "cap_constants": [
+        "_BUSY_RETRY_LIMIT",
+        "_REFRESH_LOCKS_MAX"
+      ],
+      "evidence": "_REFRESH_LOCKS: OrderedDict[str, threading.RLock] = OrderedDict()",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/application/favorite_service.py",
+      "line": 208,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/application/file_operation_service.py",
+      "line": 102,
+      "name": "_WINDOWS_RESERVED_NAMES",
+      "kind": "set",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_WINDOWS_RESERVED_NAMES = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/application/file_operation_service.py",
+      "line": 159,
+      "name": "_path_locks",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_path_locks: dict[str, threading.Lock] = {}",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/application/gallery_service.py",
+      "line": 603,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/application/import_manifest_store.py",
+      "line": 39,
+      "name": "_IMPORT_STATES",
+      "kind": "set",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "IMPORT_MANIFEST_MAX_BYTES",
+        "IMPORT_MANIFEST_MAX_ITEMS",
+        "IMPORT_MANIFEST_STREAM_MAX_HEADER_BYTES",
+        "IMPORT_MANIFEST_STREAM_MAX_ITEMS",
+        "IMPORT_MANIFEST_STREAM_MAX_ROW_BYTES",
+        "IMPORT_MANIFEST_STREAM_MAX_TOTAL_BYTES",
+        "_RECOVERY_RETIRED_TASK_ID_LIMIT"
+      ],
+      "evidence": "_IMPORT_STATES = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/application/import_manifest_store.py",
+      "line": 47,
+      "name": "_RECOVERY_STATES",
+      "kind": "set",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "IMPORT_MANIFEST_MAX_BYTES",
+        "IMPORT_MANIFEST_MAX_ITEMS",
+        "IMPORT_MANIFEST_STREAM_MAX_HEADER_BYTES",
+        "IMPORT_MANIFEST_STREAM_MAX_ITEMS",
+        "IMPORT_MANIFEST_STREAM_MAX_ROW_BYTES",
+        "IMPORT_MANIFEST_STREAM_MAX_TOTAL_BYTES",
+        "_RECOVERY_RETIRED_TASK_ID_LIMIT"
+      ],
+      "evidence": "_RECOVERY_STATES = {\"prepared\", \"running\", \"degraded\", \"recovery_pending\"}",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/application/import_manifest_store.py",
+      "line": 48,
+      "name": "_TERMINAL_STATES",
+      "kind": "set",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "IMPORT_MANIFEST_MAX_BYTES",
+        "IMPORT_MANIFEST_MAX_ITEMS",
+        "IMPORT_MANIFEST_STREAM_MAX_HEADER_BYTES",
+        "IMPORT_MANIFEST_STREAM_MAX_ITEMS",
+        "IMPORT_MANIFEST_STREAM_MAX_ROW_BYTES",
+        "IMPORT_MANIFEST_STREAM_MAX_TOTAL_BYTES",
+        "_RECOVERY_RETIRED_TASK_ID_LIMIT"
+      ],
+      "evidence": "_TERMINAL_STATES = {\"completed\", \"cancelled\"}",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/application/import_manifest_store.py",
+      "line": 49,
+      "name": "_RECOVERY_PHASES",
+      "kind": "set",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "IMPORT_MANIFEST_MAX_BYTES",
+        "IMPORT_MANIFEST_MAX_ITEMS",
+        "IMPORT_MANIFEST_STREAM_MAX_HEADER_BYTES",
+        "IMPORT_MANIFEST_STREAM_MAX_ITEMS",
+        "IMPORT_MANIFEST_STREAM_MAX_ROW_BYTES",
+        "IMPORT_MANIFEST_STREAM_MAX_TOTAL_BYTES",
+        "_RECOVERY_RETIRED_TASK_ID_LIMIT"
+      ],
+      "evidence": "_RECOVERY_PHASES = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/application/import_manifest_store.py",
+      "line": 59,
+      "name": "_ITEM_TERMINAL_STATES",
+      "kind": "set",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "IMPORT_MANIFEST_MAX_BYTES",
+        "IMPORT_MANIFEST_MAX_ITEMS",
+        "IMPORT_MANIFEST_STREAM_MAX_HEADER_BYTES",
+        "IMPORT_MANIFEST_STREAM_MAX_ITEMS",
+        "IMPORT_MANIFEST_STREAM_MAX_ROW_BYTES",
+        "IMPORT_MANIFEST_STREAM_MAX_TOTAL_BYTES",
+        "_RECOVERY_RETIRED_TASK_ID_LIMIT"
+      ],
+      "evidence": "_ITEM_TERMINAL_STATES = {\"copied\", \"failed\", \"skipped\"}",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/application/import_manifest_store.py",
+      "line": 60,
+      "name": "_ITEM_ALLOWED_TRANSITIONS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "IMPORT_MANIFEST_MAX_BYTES",
+        "IMPORT_MANIFEST_MAX_ITEMS",
+        "IMPORT_MANIFEST_STREAM_MAX_HEADER_BYTES",
+        "IMPORT_MANIFEST_STREAM_MAX_ITEMS",
+        "IMPORT_MANIFEST_STREAM_MAX_ROW_BYTES",
+        "IMPORT_MANIFEST_STREAM_MAX_TOTAL_BYTES",
+        "_RECOVERY_RETIRED_TASK_ID_LIMIT"
+      ],
+      "evidence": "_ITEM_ALLOWED_TRANSITIONS = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/application/import_manifest_store.py",
+      "line": 66,
+      "name": "_ALLOWED_TRANSITIONS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "IMPORT_MANIFEST_MAX_BYTES",
+        "IMPORT_MANIFEST_MAX_ITEMS",
+        "IMPORT_MANIFEST_STREAM_MAX_HEADER_BYTES",
+        "IMPORT_MANIFEST_STREAM_MAX_ITEMS",
+        "IMPORT_MANIFEST_STREAM_MAX_ROW_BYTES",
+        "IMPORT_MANIFEST_STREAM_MAX_TOTAL_BYTES",
+        "_RECOVERY_RETIRED_TASK_ID_LIMIT"
+      ],
+      "evidence": "_ALLOWED_TRANSITIONS = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/application/library_export_service.py",
+      "line": 45,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "_MAX_CENTRAL_DIRECTORY_SIZE",
+        "_MAX_DATABASE_QUICK_CHECK_SIZE",
+        "_MAX_EXPANDED_SIZE",
+        "_MAX_MANIFEST_SIZE",
+        "_MAX_MEMBER_SIZE"
+      ],
+      "evidence": "__all__ = [",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/application/library_governance.py",
+      "line": 160,
+      "name": "_governed_tokens",
+      "kind": "set",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "THUMBNAIL_CACHE_DEFAULT_MAX_BYTES"
+      ],
+      "evidence": "_governed_tokens: set[str] = set()",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/application/library_service.py",
+      "line": 51,
+      "name": "_RESTORE_STAGING_RE_CACHE",
+      "kind": "dict",
+      "cache_like": true,
+      "eviction_calls": [],
+      "cap_constants": [
+        "_EXPIRED_MAX",
+        "_MAX_DATABASE_QUICK_CHECK_SIZE",
+        "_QUARANTINE_ACTIVE_MAX"
+      ],
+      "evidence": "_RESTORE_STAGING_RE_CACHE: dict[str, re.Pattern[str]] = {}",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/application/library_service.py",
+      "line": 117,
+      "name": "_root_ownership",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [
+        "pop"
+      ],
+      "cap_constants": [
+        "_EXPIRED_MAX",
+        "_MAX_DATABASE_QUICK_CHECK_SIZE",
+        "_QUARANTINE_ACTIVE_MAX"
+      ],
+      "evidence": "_root_ownership: dict[str, _RootOwnership] = {}",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/application/library_service.py",
+      "line": 118,
+      "name": "_root_generations",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [
+        "pop"
+      ],
+      "cap_constants": [
+        "_EXPIRED_MAX",
+        "_MAX_DATABASE_QUICK_CHECK_SIZE",
+        "_QUARANTINE_ACTIVE_MAX"
+      ],
+      "evidence": "_root_generations: dict[str, int] = {}",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/application/library_service.py",
+      "line": 119,
+      "name": "_root_restore_recovery",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [
+        "pop"
+      ],
+      "cap_constants": [
+        "_EXPIRED_MAX",
+        "_MAX_DATABASE_QUICK_CHECK_SIZE",
+        "_QUARANTINE_ACTIVE_MAX"
+      ],
+      "evidence": "_root_restore_recovery: dict[str, _RestoreRecoveryState] = {}",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/application/library_settings_adapter.py",
+      "line": 283,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/application/media/__init__.py",
+      "line": 30,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/application/media/decoders.py",
+      "line": 298,
+      "name": "_decoders",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "DEFAULT_DECODE_MAX_DIM"
+      ],
+      "evidence": "_decoders: list[MediaDecoder] = []",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/application/media/decoders.py",
+      "line": 299,
+      "name": "_decoder_by_ext",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [
+        "clear"
+      ],
+      "cap_constants": [
+        "DEFAULT_DECODE_MAX_DIM"
+      ],
+      "evidence": "_decoder_by_ext: dict[str, MediaDecoder] = {}",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/application/reconciliation_queue.py",
+      "line": 229,
+      "name": "_ACTIVE_STATES",
+      "kind": "set",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "_RESTORE_SNAPSHOT_MAX_BYTES",
+        "_RESTORE_SNAPSHOT_MAX_ROWS",
+        "_TRANSITION_OUTBOX_CALLBACK_MAX_AGE_SECONDS"
+      ],
+      "evidence": "_ACTIVE_STATES = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/application/reconciliation_queue.py",
+      "line": 234,
+      "name": "_FINISHED_STATES",
+      "kind": "set",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "_RESTORE_SNAPSHOT_MAX_BYTES",
+        "_RESTORE_SNAPSHOT_MAX_ROWS",
+        "_TRANSITION_OUTBOX_CALLBACK_MAX_AGE_SECONDS"
+      ],
+      "evidence": "_FINISHED_STATES = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/application/runtime_events.py",
+      "line": 103,
+      "name": "EVENT_DOMAINS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "EVENT_DOMAINS: dict[type, tuple[ProjectionDomain, ...]] = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/application/search_syntax.py",
+      "line": 51,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/application/search_syntax.py",
+      "line": 125,
+      "name": "_FIELD_COLUMNS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_FIELD_COLUMNS = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/application/security_preflight.py",
+      "line": 448,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/application/sequence_service.py",
+      "line": 34,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "_SCAN_CACHE_MAX"
+      ],
+      "evidence": "__all__ = [",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/application/sequence_service.py",
+      "line": 152,
+      "name": "_SCAN_CACHE",
+      "kind": "OrderedDict",
+      "cache_like": true,
+      "eviction_calls": [
+        "clear",
+        "popitem"
+      ],
+      "cap_constants": [
+        "_SCAN_CACHE_MAX"
+      ],
+      "evidence": "_SCAN_CACHE: \"OrderedDict[str, _DirScan]\" = OrderedDict()",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/application/thumbnail_cache_lifecycle.py",
+      "line": 16,
+      "name": "_LOCKS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_LOCKS: dict[str, threading.RLock] = {}",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/application/thumbnail_service.py",
+      "line": 48,
+      "name": "_cache",
+      "kind": "dict",
+      "cache_like": true,
+      "eviction_calls": [
+        "clear",
+        "pop"
+      ],
+      "cap_constants": [
+        "_CACHE_MAX_SIZE"
+      ],
+      "evidence": "_cache: dict[str, tuple[ThumbnailSourceFingerprint, str]] = {}",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/background/__init__.py",
+      "line": 11,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [\"EffectChain\", \"EffectSpec\", \"ImageEffectRenderer\"]",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/background/gl/shaders.py",
+      "line": 126,
+      "name": "PRESET_FRAGMENT_SNIPPETS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "PRESET_FRAGMENT_SNIPPETS: dict[str, str] = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/core/config_migrator.py",
+      "line": 39,
+      "name": "MIGRATIONS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "MIGRATIONS = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/core/database.py",
+      "line": 543,
+      "name": "_connection_locks",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [
+        "pop"
+      ],
+      "cap_constants": [
+        "ESCAPE"
+      ],
+      "evidence": "_connection_locks: dict[int, _ConnectionWriteState] = {}",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/core/db_migrations.py",
+      "line": 55,
+      "name": "_BASELINE_SCHEMA_CONTRACT",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_BASELINE_SCHEMA_CONTRACT = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/core/format_utils.py",
+      "line": 26,
+      "name": "_BUILTIN_CATEGORY_MAP",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_BUILTIN_CATEGORY_MAP: dict[str, str] = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/core/icons.py",
+      "line": 27,
+      "name": "_ICON_PATHS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "_CACHE_MAX"
+      ],
+      "evidence": "_ICON_PATHS: dict[str, str] = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/core/icons.py",
+      "line": 88,
+      "name": "_ALIASES",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "_CACHE_MAX"
+      ],
+      "evidence": "_ALIASES = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/core/icons.py",
+      "line": 100,
+      "name": "_CACHE",
+      "kind": "OrderedDict",
+      "cache_like": true,
+      "eviction_calls": [
+        "clear",
+        "popitem"
+      ],
+      "cap_constants": [
+        "_CACHE_MAX"
+      ],
+      "evidence": "_CACHE: \"OrderedDict[tuple[str, str, int, float], QIcon]\" = OrderedDict()",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/core/library_lock.py",
+      "line": 22,
+      "name": "_held_locks",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [
+        "pop"
+      ],
+      "cap_constants": [
+        "PROCESS_QUERY_LIMITED_INFORMATION"
+      ],
+      "evidence": "_held_locks: dict[str, tuple[QLockFile, int]] = {}",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/core/plugins/__init__.py",
+      "line": 32,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/core/plugins/preferences.py",
+      "line": 120,
+      "name": "_path_locks",
+      "kind": "OrderedDict",
+      "cache_like": false,
+      "eviction_calls": [
+        "popitem"
+      ],
+      "cap_constants": [
+        "_PATH_LOCK_CAP"
+      ],
+      "evidence": "_path_locks: OrderedDict[str, threading.RLock] = OrderedDict()",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/core/schema_defs.py",
+      "line": 819,
+      "name": "AUTH_SHARE_SCHEMA_CONTRACT",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "AUTH_SHARE_SCHEMA_CONTRACT: dict[str, SchemaObjectContract] = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/core/schema_defs.py",
+      "line": 867,
+      "name": "SCHEMA_OBJECT_CONTRACT",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "SCHEMA_OBJECT_CONTRACT: dict[str, SchemaObjectContract] = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/core/session_contract.py",
+      "line": 31,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [\"register_library_session\", \"require_library_session\"]",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/core/settings.py",
+      "line": 108,
+      "name": "_VALIDATORS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "AI_TAGGING_DEFAULT_MAX_TAGS",
+        "AI_TAGGING_MAX_TAGS_KEY",
+        "AI_TAGGING_MAX_TAGS_LIMIT",
+        "DEFAULT_RECONCILIATION_OUTBOX_PRUNE_LIMIT",
+        "RECONCILIATION_OUTBOX_PRUNE_LIMIT_KEY",
+        "THUMBNAIL_CACHE_DEFAULT_MAX_BYTES",
+        "THUMBNAIL_CACHE_MAX_BYTES_KEY"
+      ],
+      "evidence": "_VALIDATORS: dict[str, Callable] = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/core/tag_library.py",
+      "line": 18,
+      "name": "DEFAULT_SYNONYMS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "DEFAULT_SYNONYMS = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/core/theme_loader.py",
+      "line": 19,
+      "name": "_REQUIRED_COLOR_TOKENS",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_REQUIRED_COLOR_TOKENS = [",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/core/theme_loader.py",
+      "line": 26,
+      "name": "_PREFIX_GROUPS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_PREFIX_GROUPS = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/core/themes.py",
+      "line": 27,
+      "name": "_THEMES",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [
+        "clear"
+      ],
+      "cap_constants": [
+        "_FONT_SIZE_FALLBACKS"
+      ],
+      "evidence": "_THEMES: dict[str, dict] = {}          # name → merged dict (colors + properties)",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/core/themes.py",
+      "line": 28,
+      "name": "_THEME_NAMES",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [
+        "clear"
+      ],
+      "cap_constants": [
+        "_FONT_SIZE_FALLBACKS"
+      ],
+      "evidence": "_THEME_NAMES: list[str] = []           # display order",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/core/themes.py",
+      "line": 45,
+      "name": "_MIGRATION_MAP",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "_FONT_SIZE_FALLBACKS"
+      ],
+      "evidence": "_MIGRATION_MAP: dict[str, str] = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/core/themes.py",
+      "line": 71,
+      "name": "_REQUIRED_TOKENS",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "_FONT_SIZE_FALLBACKS"
+      ],
+      "evidence": "_REQUIRED_TOKENS = [",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/core/themes.py",
+      "line": 79,
+      "name": "_BUILTIN_EXTENDED_FALLBACKS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "_FONT_SIZE_FALLBACKS"
+      ],
+      "evidence": "_BUILTIN_EXTENDED_FALLBACKS = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/core/themes.py",
+      "line": 120,
+      "name": "_EXTENDED_FALLBACKS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [
+        "clear"
+      ],
+      "cap_constants": [
+        "_FONT_SIZE_FALLBACKS"
+      ],
+      "evidence": "_EXTENDED_FALLBACKS = dict(_BUILTIN_EXTENDED_FALLBACKS)",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/core/themes.py",
+      "line": 121,
+      "name": "_THEME_EXPLICIT_TOKENS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [
+        "clear"
+      ],
+      "cap_constants": [
+        "_FONT_SIZE_FALLBACKS"
+      ],
+      "evidence": "_THEME_EXPLICIT_TOKENS: dict[str, set[str]] = {}",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/core/themes.py",
+      "line": 122,
+      "name": "_PLUGIN_TOKEN_NAMES",
+      "kind": "set",
+      "cache_like": false,
+      "eviction_calls": [
+        "clear"
+      ],
+      "cap_constants": [
+        "_FONT_SIZE_FALLBACKS"
+      ],
+      "evidence": "_PLUGIN_TOKEN_NAMES: set[str] = set()",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/core/themes.py",
+      "line": 339,
+      "name": "_FONT_SIZE_FALLBACKS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "_FONT_SIZE_FALLBACKS"
+      ],
+      "evidence": "_FONT_SIZE_FALLBACKS: dict[str, int] = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/core/themes.py",
+      "line": 443,
+      "name": "_BUILTIN_METRICS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "_FONT_SIZE_FALLBACKS"
+      ],
+      "evidence": "_BUILTIN_METRICS: dict[str, int] = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/core/themes.py",
+      "line": 484,
+      "name": "_MOTION_TIERS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "_FONT_SIZE_FALLBACKS"
+      ],
+      "evidence": "_MOTION_TIERS: dict[str, int] = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/core/thumbnail_key.py",
+      "line": 13,
+      "name": "WEBP_RENDER_PROFILES",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "WEBP_RENDER_PROFILES = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/core/tool_scheduler.py",
+      "line": 27,
+      "name": "DEFAULT_TOOLS",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "DEFAULT_TOOLS = [",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/core/workers.py",
+      "line": 19,
+      "name": "_retained_pools",
+      "kind": "dict",
+      "cache_like": true,
+      "eviction_calls": [
+        "pop"
+      ],
+      "cap_constants": [
+        "_REAP_MAX_POLLS"
+      ],
+      "evidence": "_retained_pools: dict[int, QThreadPool] = {}",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/dialogs/sharing_settings/__init__.py",
+      "line": 13,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/dock_factory.py",
+      "line": 36,
+      "name": "PANELS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "PANELS = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/dock_factory.py",
+      "line": 44,
+      "name": "_DOCK_TITLES",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [
+        "pop"
+      ],
+      "cap_constants": [],
+      "evidence": "_DOCK_TITLES: dict[QDockWidget, tuple[str, str, list]] = {}  # dock -> (i18n_key, title, extra_buttons)",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/i18n/__init__.py",
+      "line": 20,
+      "name": "_translations",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_translations: dict[str, dict] = {}  # {lang_code: data_dict}",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/lan/api.py",
+      "line": 96,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "_PUBLIC_AUTH_STRICT_CAP"
+      ],
+      "evidence": "__all__ = [",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/lan/routes/__init__.py",
+      "line": 100,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/lan/routes/_errors.py",
+      "line": 146,
+      "name": "_HTTP_ERROR_CODES",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_HTTP_ERROR_CODES = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/lan/routes/_helpers.py",
+      "line": 57,
+      "name": "PRIVATE_PREVIEW_HEADERS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "BLURRED_PREVIEW_SIZE"
+      ],
+      "evidence": "PRIVATE_PREVIEW_HEADERS = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/lan/routes/_helpers.py",
+      "line": 61,
+      "name": "PUBLIC_PREVIEW_HEADERS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "BLURRED_PREVIEW_SIZE"
+      ],
+      "evidence": "PUBLIC_PREVIEW_HEADERS = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/lan/routes/_helpers.py",
+      "line": 68,
+      "name": "MEDIA_CACHE_HEADERS",
+      "kind": "dict",
+      "cache_like": true,
+      "eviction_calls": [],
+      "cap_constants": [
+        "BLURRED_PREVIEW_SIZE"
+      ],
+      "evidence": "MEDIA_CACHE_HEADERS = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/lan/routes/_helpers.py",
+      "line": 295,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "BLURRED_PREVIEW_SIZE"
+      ],
+      "evidence": "",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/lan/routes/_telemetry.py",
+      "line": 16,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [\"record_route_event\"]",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/lan/routes/favorites.py",
+      "line": 118,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/lan/routes/gallery.py",
+      "line": 24,
+      "name": "_ALLOWED_KINDS",
+      "kind": "set",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_ALLOWED_KINDS = {\"all\", \"artwork\", \"works\"}",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/lan/routes/gallery.py",
+      "line": 25,
+      "name": "_ALLOWED_SORTS",
+      "kind": "set",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_ALLOWED_SORTS = {\"updated\", \"name\"}",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/lan/routes/gallery.py",
+      "line": 133,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/lan/routes/image.py",
+      "line": 308,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "BLURRED_PREVIEW_SIZE"
+      ],
+      "evidence": "__all__ = [\"handle_image\", \"serve_verified_image\"]",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/lan/routes/quicksearch.py",
+      "line": 98,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "_DEFAULT_LIMIT",
+        "_MAX_LIMIT"
+      ],
+      "evidence": "__all__ = [\"handle_quicksearch\"]",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/lan/routes/sequence.py",
+      "line": 69,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [\"handle_sequence_neighbors\"]",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/lan/routes/system.py",
+      "line": 32,
+      "name": "_INFO_COUNT_CACHE",
+      "kind": "dict",
+      "cache_like": true,
+      "eviction_calls": [
+        "clear"
+      ],
+      "cap_constants": [
+        "_INFO_COUNT_TTL"
+      ],
+      "evidence": "_INFO_COUNT_CACHE: dict[str, tuple[float, int]] = {}",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/lan/routes/thumbnails.py",
+      "line": 44,
+      "name": "_NOSNIFF_HEADERS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_NOSNIFF_HEADERS = {\"X-Content-Type-Options\": \"nosniff\"}",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/lan/safe_open.py",
+      "line": 123,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/lan/zip_resources.py",
+      "line": 159,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/lan/zip_sources.py",
+      "line": 281,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/panels/_ai_tag_common.py",
+      "line": 17,
+      "name": "_KIND_TEXT_KEYS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_KIND_TEXT_KEYS: dict[str, str] = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/panels/file_list/__init__.py",
+      "line": 10,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [\"FileListPanel\"]",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/panels/file_list/_background.py",
+      "line": 17,
+      "name": "_orphan_ops",
+      "kind": "set",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_orphan_ops: set[QRunnable] = set()",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/panels/file_list/_batch_rename.py",
+      "line": 9,
+      "name": "_WINDOWS_RESERVED",
+      "kind": "set",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_WINDOWS_RESERVED = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/panels/file_list/_common.py",
+      "line": 17,
+      "name": "ZOOM_PRESETS",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "ZOOM_PRESETS = [48, 72, 96, 128]",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/panels/file_list/_common.py",
+      "line": 119,
+      "name": "_CATEGORY_TOKEN_BY_BADGE",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_CATEGORY_TOKEN_BY_BADGE: dict[str, str] = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/panels/file_list/_common.py",
+      "line": 130,
+      "name": "_EXT_BADGE_MAP",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_EXT_BADGE_MAP: dict[str, str] = {}",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/panels/file_list/_loader.py",
+      "line": 110,
+      "name": "QUALITY_PRESETS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "DEFAULT_MAX_ADMITTED_TASKS",
+        "_TOUCH_THROTTLE_SECONDS"
+      ],
+      "evidence": "QUALITY_PRESETS = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/panels/sidebar.py",
+      "line": 56,
+      "name": "ICONS",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "ICONS = [\"star\", \"folder\", \"folder_open\", \"tag\", \"home\", \"file\", \"image\",",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/panels/sidebar.py",
+      "line": 80,
+      "name": "_FAVORITE_ICON_MAP",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_FAVORITE_ICON_MAP = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/plugin_api/__init__.py",
+      "line": 24,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/repositories/_common.py",
+      "line": 471,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/repositories/asset_index_repository.py",
+      "line": 31,
+      "name": "_STRUCTURED_ORDER_COLUMNS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "ESCAPE"
+      ],
+      "evidence": "_STRUCTURED_ORDER_COLUMNS = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/repositories/favorite_repository.py",
+      "line": 167,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "ESCAPE"
+      ],
+      "evidence": "__all__ = [\"FavoriteRepository\"]",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/repositories/tag_repository.py",
+      "line": 25,
+      "name": "_SOURCE_TABLES",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "ESCAPE"
+      ],
+      "evidence": "_SOURCE_TABLES: dict[str, str] = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/widgets/elevation.py",
+      "line": 15,
+      "name": "_LEVELS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_LEVELS = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/widgets/empty_state.py",
+      "line": 23,
+      "name": "_STATE_SPECS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_STATE_SPECS: dict[str, tuple[str, str, str, str, str]] = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/widgets/micro_tab_bar.py",
+      "line": 566,
+      "name": "__all__",
+      "kind": "list",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "__all__ = [\"MicroTabBar\"]",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/widgets/sharing_contracts.py",
+      "line": 23,
+      "name": "HOT_SHARING_SETTINGS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "HOT_SHARING_SETTINGS = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/widgets/sharing_contracts.py",
+      "line": 34,
+      "name": "HOT_SHARING_DEFAULTS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "HOT_SHARING_DEFAULTS = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/widgets/sharing_contracts.py",
+      "line": 49,
+      "name": "_SECURITY_REASON_KEYS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_SECURITY_REASON_KEYS = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/widgets/stylekit.py",
+      "line": 63,
+      "name": "_STATES",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "_FONT_SIZE_FALLBACKS"
+      ],
+      "evidence": "_STATES = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/widgets/stylekit.py",
+      "line": 75,
+      "name": "_FONT_SIZE_FALLBACKS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [
+        "_FONT_SIZE_FALLBACKS"
+      ],
+      "evidence": "_FONT_SIZE_FALLBACKS = {",
+      "verdict": "cap-const-present"
+    },
+    {
+      "file": "AssetsManager/widgets/tag_chip.py",
+      "line": 14,
+      "name": "_synonyms_cache",
+      "kind": "dict",
+      "cache_like": true,
+      "eviction_calls": [
+        "clear"
+      ],
+      "cap_constants": [
+        "_SYNONYMS_CACHE_LIMIT"
+      ],
+      "evidence": "_synonyms_cache: dict[str, str] = {}",
+      "verdict": "eviction-in-module"
+    },
+    {
+      "file": "AssetsManager/widgets/theme_preview.py",
+      "line": 276,
+      "name": "_COLOR_LABELS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_COLOR_LABELS: dict[str, str] = {",
+      "verdict": "plain-state"
+    },
+    {
+      "file": "AssetsManager/widgets/toast.py",
+      "line": 32,
+      "name": "_LEVEL_COLORS",
+      "kind": "dict",
+      "cache_like": false,
+      "eviction_calls": [],
+      "cap_constants": [],
+      "evidence": "_LEVEL_COLORS = {",
+      "verdict": "plain-state"
+    }
+  ]
+}

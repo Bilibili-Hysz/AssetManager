@@ -40,7 +40,7 @@ def _write_fixture(root: Path, item_count: int) -> list[Path]:
     paths = []
     for index in range(item_count):
         path = root / f"thumbnail-{index:05d}.png"
-        if not image.save(str(path), b"PNG"):
+        if not image.save(str(path), "PNG"):
             raise RuntimeError(f"Could not write thumbnail fixture: {path}")
         paths.append(path)
     return paths

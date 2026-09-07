@@ -1,0 +1,130 @@
+{
+  "measurement": "sqlite-startup-cost",
+  "runs": 3,
+  "cold_fresh_db": {
+    "connect_pragma_ms": {
+      "median_ms": 0.667,
+      "min_ms": 0.616,
+      "max_ms": 0.983
+    },
+    "preflight_ms": {
+      "median_ms": 0.708,
+      "min_ms": 0.664,
+      "max_ms": 0.832
+    },
+    "schema_ms": {
+      "median_ms": 10.654,
+      "min_ms": 9.691,
+      "max_ms": 11.188
+    },
+    "migrate_ms": {
+      "median_ms": 48.711,
+      "min_ms": 48.209,
+      "max_ms": 49.934
+    },
+    "commit_ms": {
+      "median_ms": 0.0,
+      "min_ms": 0.0,
+      "max_ms": 0.0
+    },
+    "total_ms": {
+      "median_ms": 60.238,
+      "min_ms": 59.682,
+      "max_ms": 62.938
+    }
+  },
+  "warm_reopen_db": {
+    "connect_pragma_ms": {
+      "median_ms": 0.671,
+      "min_ms": 0.649,
+      "max_ms": 2.022
+    },
+    "preflight_ms": {
+      "median_ms": 3.374,
+      "min_ms": 3.369,
+      "max_ms": 3.548
+    },
+    "schema_ms": {
+      "median_ms": 0.123,
+      "min_ms": 0.118,
+      "max_ms": 0.159
+    },
+    "migrate_ms": {
+      "median_ms": 6.627,
+      "min_ms": 6.58,
+      "max_ms": 6.779
+    },
+    "commit_ms": {
+      "median_ms": 0.0,
+      "min_ms": 0.0,
+      "max_ms": 0.0
+    },
+    "total_ms": {
+      "median_ms": 10.946,
+      "min_ms": 10.785,
+      "max_ms": 12.288
+    }
+  },
+  "cold_rows_ms": [
+    {
+      "connect_pragma_ms": 0.983,
+      "preflight_ms": 0.832,
+      "schema_ms": 11.188,
+      "migrate_ms": 49.934,
+      "commit_ms": 0.0,
+      "total_ms": 62.938
+    },
+    {
+      "connect_pragma_ms": 0.616,
+      "preflight_ms": 0.664,
+      "schema_ms": 9.691,
+      "migrate_ms": 48.711,
+      "commit_ms": 0.0,
+      "total_ms": 59.682
+    },
+    {
+      "connect_pragma_ms": 0.667,
+      "preflight_ms": 0.708,
+      "schema_ms": 10.654,
+      "migrate_ms": 48.209,
+      "commit_ms": 0.0,
+      "total_ms": 60.238
+    }
+  ],
+  "warm_rows_ms": [
+    {
+      "connect_pragma_ms": 2.022,
+      "preflight_ms": 3.369,
+      "schema_ms": 0.118,
+      "migrate_ms": 6.779,
+      "commit_ms": 0.0,
+      "total_ms": 12.288
+    },
+    {
+      "connect_pragma_ms": 0.649,
+      "preflight_ms": 3.548,
+      "schema_ms": 0.123,
+      "migrate_ms": 6.627,
+      "commit_ms": 0.0,
+      "total_ms": 10.946
+    },
+    {
+      "connect_pragma_ms": 0.671,
+      "preflight_ms": 3.374,
+      "schema_ms": 0.159,
+      "migrate_ms": 6.58,
+      "commit_ms": 0.0,
+      "total_ms": 10.785
+    }
+  ],
+  "environment": {
+    "python": "3.14.3",
+    "platform": "Windows-11-10.0.26220-SP0",
+    "processor": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+    "qt_qpa_platform": "",
+    "pyside6": "6.11.0",
+    "psutil": "7.2.2",
+    "total_ram_gb": 31.9,
+    "cpu_max_ghz": 3.2
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "measurement": "p2-pipeline",
+  "image_generation_s": 2.03,
+  "thumbnail_process_image": {
+    "images": 200,
+    "total_s_median": 11.384,
+    "per_image_ms": 56.92,
+    "images_per_s": 17.6,
+    "webp_bytes_median": 5303.0,
+    "samples_s": [
+      11.676,
+      10.998,
+      11.384
+    ]
+  },
+  "db_write_gate": {
+    "writes": 100,
+    "serial_100_s_median": 0.114,
+    "concurrent_2x50_s_median": 0.078,
+    "amplification_ratio": 0.68,
+    "per_write_ms_serial": 1.14,
+    "per_write_ms_concurrent": 0.78,
+    "stray_txn_rollbacks": 0,
+    "raw": {
+      "serial_s": [
+        0.124,
+        0.108,
+        0.114
+      ],
+      "concurrent_s": [
+        0.078,
+        0.071,
+        0.078
+      ]
+    }
+  },
+  "tag_service_concurrent_failclose": {
+    "calls": 100,
+    "succeeded": 96,
+    "failed_clean_boundary": 4
+  }
+}

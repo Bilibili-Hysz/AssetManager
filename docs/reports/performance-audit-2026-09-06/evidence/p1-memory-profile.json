@@ -1,0 +1,209 @@
+{
+  "measurement": "memory-profile-rss",
+  "library_files": 1000,
+  "browse_dirs": 20,
+  "samples": [
+    {
+      "step": "1_bare_process",
+      "rss_mb": 24.1,
+      "t_ms": 43.6
+    },
+    {
+      "step": "2_after_import_app",
+      "rss_mb": 44.1,
+      "t_ms": 274.9
+    },
+    {
+      "step": "3_after_qapplication_theme",
+      "rss_mb": 48.1,
+      "t_ms": 359.6
+    },
+    {
+      "step": "4_after_bootstrap",
+      "rss_mb": 76.5,
+      "t_ms": 945.9
+    },
+    {
+      "step": "5_startup_window_shown",
+      "rss_mb": 86.9,
+      "t_ms": 1041.5
+    },
+    {
+      "step": "6_mainwindow_constructed",
+      "rss_mb": 99.1,
+      "t_ms": 1223.2
+    },
+    {
+      "step": "7_library_session_open",
+      "rss_mb": 103.8,
+      "t_ms": 1407.6
+    },
+    {
+      "step": "8_scan_complete_1k",
+      "rss_mb": 101.8,
+      "t_ms": 1420.5
+    },
+    {
+      "step": "9_grid_view_on",
+      "rss_mb": 121.6,
+      "t_ms": 1925.9
+    },
+    {
+      "step": "10_browse_after_5_dirs",
+      "rss_mb": 135.8,
+      "t_ms": 3526.3
+    },
+    {
+      "step": "10_browse_after_10_dirs",
+      "rss_mb": 138.9,
+      "t_ms": 5119.0
+    },
+    {
+      "step": "10_browse_after_15_dirs",
+      "rss_mb": 142.5,
+      "t_ms": 6721.7
+    },
+    {
+      "step": "10_browse_after_20_dirs",
+      "rss_mb": 144.6,
+      "t_ms": 8332.3
+    },
+    {
+      "step": "11_scroll_thumbnails_dir50",
+      "rss_mb": 146.0,
+      "t_ms": 11933.1
+    },
+    {
+      "step": "11b_settle_after_scroll",
+      "rss_mb": 146.0,
+      "t_ms": 12939.9
+    },
+    {
+      "step": "12_library_window_closed",
+      "rss_mb": 142.8,
+      "t_ms": 12974.0
+    },
+    {
+      "step": "13_after_gc_and_drain",
+      "rss_mb": 142.8,
+      "t_ms": 13502.9
+    },
+    {
+      "step": "14_second_open_scan_complete",
+      "rss_mb": 148.3,
+      "t_ms": 13827.8
+    },
+    {
+      "step": "15_second_close_after_gc",
+      "rss_mb": 148.2,
+      "t_ms": 14398.2
+    }
+  ],
+  "deltas": [
+    {
+      "step": "1_bare_process",
+      "delta_prev_mb": 0.0,
+      "delta_from_bare_mb": 0.0
+    },
+    {
+      "step": "2_after_import_app",
+      "delta_prev_mb": 20.0,
+      "delta_from_bare_mb": 20.0
+    },
+    {
+      "step": "3_after_qapplication_theme",
+      "delta_prev_mb": 4.0,
+      "delta_from_bare_mb": 24.0
+    },
+    {
+      "step": "4_after_bootstrap",
+      "delta_prev_mb": 28.4,
+      "delta_from_bare_mb": 52.4
+    },
+    {
+      "step": "5_startup_window_shown",
+      "delta_prev_mb": 10.4,
+      "delta_from_bare_mb": 62.8
+    },
+    {
+      "step": "6_mainwindow_constructed",
+      "delta_prev_mb": 12.2,
+      "delta_from_bare_mb": 75.0
+    },
+    {
+      "step": "7_library_session_open",
+      "delta_prev_mb": 4.7,
+      "delta_from_bare_mb": 79.7
+    },
+    {
+      "step": "8_scan_complete_1k",
+      "delta_prev_mb": -2.0,
+      "delta_from_bare_mb": 77.7
+    },
+    {
+      "step": "9_grid_view_on",
+      "delta_prev_mb": 19.8,
+      "delta_from_bare_mb": 97.5
+    },
+    {
+      "step": "10_browse_after_5_dirs",
+      "delta_prev_mb": 14.2,
+      "delta_from_bare_mb": 111.7
+    },
+    {
+      "step": "10_browse_after_10_dirs",
+      "delta_prev_mb": 3.1,
+      "delta_from_bare_mb": 114.8
+    },
+    {
+      "step": "10_browse_after_15_dirs",
+      "delta_prev_mb": 3.6,
+      "delta_from_bare_mb": 118.4
+    },
+    {
+      "step": "10_browse_after_20_dirs",
+      "delta_prev_mb": 2.1,
+      "delta_from_bare_mb": 120.5
+    },
+    {
+      "step": "11_scroll_thumbnails_dir50",
+      "delta_prev_mb": 1.4,
+      "delta_from_bare_mb": 121.9
+    },
+    {
+      "step": "11b_settle_after_scroll",
+      "delta_prev_mb": 0.0,
+      "delta_from_bare_mb": 121.9
+    },
+    {
+      "step": "12_library_window_closed",
+      "delta_prev_mb": -3.2,
+      "delta_from_bare_mb": 118.7
+    },
+    {
+      "step": "13_after_gc_and_drain",
+      "delta_prev_mb": 0.0,
+      "delta_from_bare_mb": 118.7
+    },
+    {
+      "step": "14_second_open_scan_complete",
+      "delta_prev_mb": 5.5,
+      "delta_from_bare_mb": 124.2
+    },
+    {
+      "step": "15_second_close_after_gc",
+      "delta_prev_mb": -0.1,
+      "delta_from_bare_mb": 124.1
+    }
+  ],
+  "environment": {
+    "python": "3.14.3",
+    "platform": "Windows-11-10.0.26220-SP0",
+    "processor": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+    "qt_qpa_platform": "offscreen",
+    "pyside6": "6.11.0",
+    "psutil": "7.2.2",
+    "total_ram_gb": 31.9,
+    "cpu_max_ghz": 3.2
+  }
+}
