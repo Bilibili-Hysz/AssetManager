@@ -136,6 +136,12 @@ def user_data_root() -> Path:
 
 def runtime_root() -> Path:
     """Return the application's runtime data root directory."""
+    configured = os.environ.get("AM_RUNTIME_ROOT")
+    if configured:
+        root = Path(configured).expanduser()
+        if not root.is_absolute():
+            raise ValueError("AM_RUNTIME_ROOT must be an absolute path")
+        return root
     return user_data_root() / "RuntimeData"
 
 

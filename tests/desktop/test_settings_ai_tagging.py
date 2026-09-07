@@ -13,8 +13,23 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from AssetsManager import i18n
 from AssetsManager.core.settings import AppSettings
 from AssetsManager.dialogs.settings_dialog import SettingsDialog
+
+
+@pytest.fixture(autouse=True)
+def _pin_english_ui():
+    """钉英文 UI（test_settings_health/maintenance/relink 同款纪律）。
+
+    本模块全部断言英文文案；不钉语言时，同 worker 前序测试残留的
+    i18n._current_lang（如 zh）会让 SettingsDialog 构造出中文标题，
+    且 show() 只重连信号不重翻译——英文断言连片红（2026-09-06 定性）。
+    """
+    original = i18n.current_language()
+    i18n.set_language("en")
+    yield
+    i18n.set_language(original)
 
 
 @pytest.fixture()

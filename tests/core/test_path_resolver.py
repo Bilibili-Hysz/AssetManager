@@ -1,4 +1,9 @@
 """Tests for runtime data path resolution."""
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 
 def test_same_basename_libraries_get_distinct_dirs(tmp_path, monkeypatch):
@@ -626,15 +631,84 @@ def test_user_data_root_frozen_onedir_is_bundle_dir(monkeypatch, tmp_path):
 
 
 def test_runtime_root_frozen_is_next_to_exe(monkeypatch, tmp_path):
-    import sys
-
     from AssetsManager.core import path_resolver
 
     exe = tmp_path / "install" / "AssetManager.exe"
+    monkeypatch.delenv("AM_RUNTIME_ROOT", raising=False)
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(exe))
 
     assert path_resolver.runtime_root() == exe.parent / "RuntimeData"
+
+
+def test_runtime_root_uses_absolute_environment_override(monkeypatch, tmp_path):
+    from AssetsManager.core import path_resolver
+
+    configured = tmp_path / "isolated-runtime"
+    monkeypatch.setenv("AM_RUNTIME_ROOT", str(configured))
+
+    assert path_resolver.runtime_root() == configured
+
+
+def test_runtime_root_rejects_relative_environment_override(monkeypatch):
+    import pytest
+
+    from AssetsManager.core import path_resolver
+
+    monkeypatch.setenv("AM_RUNTIME_ROOT", "relative-runtime")
+
+    with pytest.raises(ValueError, match="AM_RUNTIME_ROOT must be an absolute path"):
+        path_resolver.runtime_root()
+
+
+def test_runtime_root_override_is_consistent_at_import_and_inherited(tmp_path):
+    """Startup configuration must precede every module's derived constant."""
+    runtime = tmp_path / "isolated-runtime"
+    repo_import_root = Path(__file__).resolve().parents[2] / "AssetsManager"
+    environment = os.environ.copy()
+    environment["AM_RUNTIME_ROOT"] = str(runtime)
+    environment["PYTHONPATH"] = os.pathsep.join(
+        filter(None, (str(repo_import_root), environment.get("PYTHONPATH")))
+    )
+    script = """
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+from AssetsManager.core import crash_handler, database, path_resolver, tool_scheduler
+from AssetsManager.core.settings import AppSettings
+from AssetsManager.core.tag_library import TagLibrary
+
+root = path_resolver.runtime_root()
+shared = root / "Shared"
+assert path_resolver.SHARED_DIR == shared
+assert database.RUNTIME_ROOT == root
+assert database.SHARED_DIR == shared
+assert AppSettings()._path == shared / "settings.json"
+assert TagLibrary()._path == shared / "tag_library.json"
+assert tool_scheduler.TOOLS_PATH == shared / "tools.json"
+assert crash_handler.CRASH_LOG == shared / "crash.log"
+assert crash_handler.PENDING_CRASH_MARKER == shared / "crash.pending"
+
+inherited = subprocess.check_output(
+    [sys.executable, "-c", "from AssetsManager.core.path_resolver import runtime_root; print(runtime_root())"],
+    text=True,
+).strip()
+print(json.dumps({"root": str(root), "inherited": inherited}))
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+
+    observed = json.loads(result.stdout)
+    assert Path(observed["root"]) == runtime
+    assert Path(observed["inherited"]) == runtime
 
 
 # ── M2 plugin/theme two-layer (single-exe release) ──────────────────────

@@ -31,6 +31,24 @@ def enabled_settings():
     settings.set_ai_tagging_enabled(False)
 
 
+@pytest.fixture(autouse=True)
+def _pin_panel_layout():
+    """免疫同 worker 前序 InfoPanel 用例的分区可见性残留（2026-09-06 定性）。
+
+    InfoPanel.shutdown() 会把关闭瞬间的 micro-tab 分区可见性持久化到共享
+    settings（test_info_micro_tabs 的 tab 切换用例即一个污染源）；下一个
+    InfoPanel 构造时 restore_state 回放 ``info_panel_layout.sections``，
+    tags 分区被隐藏会把本模块 ``_ai_tag_btn.isVisibleTo(panel)`` 拖成
+    False（按钮在 tags 分区里，enabled 门根本没被执行到）。内存级清键，
+    用例后还原（磁盘复原归 tests/conftest 会话级快照）。
+    """
+    settings = AppSettings.instance()
+    saved_layout = settings.get("info_panel_layout")
+    settings.set("info_panel_layout", None)
+    yield
+    settings.set("info_panel_layout", saved_layout)
+
+
 @pytest.fixture()
 def library(tmp_path):
     bootstrap = ApplicationBootstrap()

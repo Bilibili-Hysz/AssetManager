@@ -236,10 +236,24 @@ class SearchResultSet:
         )
 
 
-def _contained_relative_path(library_root: Path, file_path: str) -> str | None:
-    """Return a safe relative asset path, or reject a contaminated index row."""
+def _contained_relative_path(
+    library_root: Path,
+    file_path: str,
+    resolved_root: Path | None = None,
+) -> str | None:
+    """Return a safe relative asset path, or reject a contaminated index row.
+
+    ``resolved_root`` accepts the caller's already-resolved ``library_root`` so
+    per-row loops do not pay a second ``Path.resolve()`` (a Windows final-path
+    syscall) for a loop-invariant value; when omitted the root is resolved here
+    exactly as before.
+    """
     try:
-        root = library_root.resolve(strict=False)
+        root = (
+            resolved_root
+            if resolved_root is not None
+            else library_root.resolve(strict=False)
+        )
         raw_path = os.fspath(file_path)
         candidate = Path(raw_path) if os.path.isabs(raw_path) else root / raw_path
         candidate = candidate.resolve(strict=False)
@@ -389,7 +403,7 @@ class SearchService:
                 continue
             for fp in paths:
                 try:
-                    rel = _contained_relative_path(root, fp)
+                    rel = _contained_relative_path(root, fp, resolved_root=root)
                     if rel is None:
                         dropped_count += 1
                         _append_error(errors, SearchError("search_result_rejected", "tags", recoverable=True))
@@ -756,7 +770,7 @@ class SearchService:
         errors: list[SearchError] = []
         dropped_count = 0
         for file_path in paths:
-            rel = _contained_relative_path(root, file_path)
+            rel = _contained_relative_path(root, file_path, resolved_root=root)
             if rel is None:
                 dropped_count += 1
                 _append_error(errors, SearchError("search_result_rejected", "fts", recoverable=True))
@@ -920,11 +934,16 @@ class SearchService:
         results: list[SearchResult] = []
         errors: list[SearchError] = []
         dropped_count = 0
+        # The root is loop-invariant; resolve it once so each row pays only the
+        # candidate resolve (one final-path syscall) instead of two.
+        resolved_root = root.resolve(strict=False)
         for entry in entries:
             try:
                 if entry.kind != "file":
                     continue
-                rel = _contained_relative_path(root, entry.file_path)
+                rel = _contained_relative_path(
+                    root, entry.file_path, resolved_root=resolved_root
+                )
                 if rel is None:
                     dropped_count += 1
                     _append_error(errors, SearchError("search_result_rejected", "indexed", recoverable=True))

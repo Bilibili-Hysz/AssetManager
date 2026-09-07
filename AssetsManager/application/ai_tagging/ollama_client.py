@@ -25,12 +25,33 @@ import io
 import json
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import requests
 from PIL import Image
 
 from AssetsManager.application.media.decoders import decoder_for
 from AssetsManager.core.constants import AI_TAGGING_IMAGE_MAX_DIM
+
+if TYPE_CHECKING:
+    import requests
+
+# `requests` (~370 ms import chain incl. charset_normalizer/urllib3) is
+# imported lazily inside probe()/_post_chat(): this module sits on the
+# MainWindow import path (panels.info -> ai_tagging) but the network is only
+# touched by a manual AI-tagging action, so startup must not pay for it.
+# PEP 562 module __getattr__ keeps the historical `ollama_client.requests`
+# seam alive for tests that monkeypatch the HTTP verbs (the local
+# `import requests` in each function resolves to the same singleton module,
+# so patched attributes are observed by the production call sites).
+
+
+def __getattr__(name: str):
+    if name == "requests":
+        import requests
+
+        return requests
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 _log = logging.getLogger(__name__)
 
@@ -128,6 +149,8 @@ def probe(endpoint: str, timeout: float = 5) -> bool:
     models are installed. Any 2xx counts as reachable; every transport
     failure means "not reachable" — probing must never raise.
     """
+    import requests
+
     try:
         response = requests.get(_native_models_url(endpoint), timeout=timeout)
     except requests.exceptions.RequestException:
@@ -210,6 +233,8 @@ def _raise_for_status(response: requests.Response) -> None:
 
 
 def _post_chat(url: str, payload: dict, timeout: float) -> requests.Response:
+    import requests
+
     try:
         return requests.post(url, json=payload, timeout=timeout)
     except requests.exceptions.Timeout as exc:

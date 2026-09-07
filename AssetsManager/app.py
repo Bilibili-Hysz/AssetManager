@@ -1,13 +1,18 @@
 """Application entry point with startup window -> main window flow."""
+from __future__ import annotations
+
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from PySide6.QtNetwork import QLocalServer
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QFont
 
 from AssetsManager.core import themes
 from AssetsManager.core.settings import AppSettings
+
+if TYPE_CHECKING:
+    from PySide6.QtNetwork import QLocalServer
 
 # Fixed per-user lock name: the first instance listens on this local socket;
 # a second launch probes it before doing any bootstrap work.
@@ -15,6 +20,10 @@ _SINGLE_INSTANCE_KEY = "AssetManager.SingleInstance"
 
 # Keep-alive for the bound QLocalServer: a parentless QObject owned by Python
 # would be garbage collected (and its socket closed) without this reference.
+# QLocalServer itself is imported lazily inside _bind_single_instance: pulling
+# PySide6.QtNetwork in here costs ~175 ms of the `import main` chain while its
+# only consumer is the single-instance lock (PF-1, performance audit
+# 2026-09-06).
 _single_instance_server: QLocalServer | None = None
 
 
@@ -28,7 +37,7 @@ def _bind_single_instance(app: QApplication) -> bool:
     """
     import logging
 
-    from PySide6.QtNetwork import QLocalSocket
+    from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
     global _single_instance_server
     _log = logging.getLogger(__name__)

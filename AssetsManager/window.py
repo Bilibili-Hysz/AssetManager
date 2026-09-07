@@ -29,10 +29,61 @@ from AssetsManager.core.database import clean_orphan_dirs
 from AssetsManager.widgets.workspace_bar import WorkspaceSection
 from AssetsManager.widgets.lan_sharing import LanSharingMixin
 from AssetsManager.widgets.stylekit import StyleKit
-from AssetsManager.lan.ports import LanDesktopAdapter, build_lan_server
 
 _log = logging.getLogger(__name__)
 tr = i18n.tr
+
+
+def _default_lan_server_factory(**options: Any):
+    """Resolve the production LAN server factory on first sharing use.
+
+    Deferred import: importing ``AssetsManager.lan.ports`` executes the
+    ``AssetsManager.lan`` package init, which tries ``from aiohttp import
+    web`` — ~0.7-1.0 s of import time that otherwise lands on every library
+    open even when sharing is never enabled (PF-2, performance audit
+    2026-09-06).  Callers inject their own factory via the ``lan_server_factory``
+    constructor argument; tests do exactly that.
+    """
+    from AssetsManager.lan.ports import build_lan_server
+
+    return build_lan_server(**options)
+
+
+class _LazyLanDesktopAdapter:
+    """Resolve ``LanDesktopAdapter`` on first attribute use (PF-2 deferral).
+
+    Transparent stand-in for the composition-root default sharing port: all
+    consumers duck-type the port (``getattr`` + method call), and the adapter
+    itself imports its LAN helpers lazily per call, so first use is the only
+    point where ``AssetsManager.lan`` (and aiohttp) gets loaded.
+    """
+
+    def __init__(self) -> None:
+        self._resolved: Any | None = None
+
+    def _resolve(self) -> Any:
+        if self._resolved is None:
+            from AssetsManager.lan.ports import LanDesktopAdapter
+
+            self._resolved = LanDesktopAdapter()
+        return self._resolved
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._resolve(), name)
+
+    # ── ShareSettingsPort surface (structural match for the attribute type
+    # declared by LanSharingMixin; each call resolves the real adapter once).
+    def tunnel_is_available(self) -> bool:
+        return self._resolve().tunnel_is_available()
+
+    def ensure_tunnel_available(self) -> str | None:
+        return self._resolve().ensure_tunnel_available()
+
+    def local_ip(self) -> str:
+        return self._resolve().local_ip()
+
+    def auth_headers(self, token_secret: str) -> dict[str, str]:
+        return self._resolve().auth_headers(token_secret)
 
 # D7: single source of truth lives in window_scoped_panels (Qt-free so test
 # stubs and the lifecycle coordinator import it without PySide6).
@@ -172,8 +223,11 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._coordinator = WindowCoordinator(self)
         self.setWindowTitle(tr("app.name"))
         self.resize(scaled_px(1200), scaled_px(800))
-        _restore_window_geometry(self)
-        self.setDockNestingEnabled(True)
+        # Background-render state must exist BEFORE _restore_window_geometry:
+        # a persisted maximized flag fires resizeEvent during the restore, and
+        # the handler touches the resize timer — an AttributeError raised
+        # inside that C++-dispatched event aborts the whole process (0xC0000409
+        # family, not a catchable Python exception; quality-round finding).
         self._bg_cache: tuple = ("", None, None)  # (path, processed_raw, scaled)
         self._bg_effects_cache_key: str = ""  # effect:intensity string
         self._bg_dirty = False
@@ -183,6 +237,12 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._bg_resize_timer.setSingleShot(True)
         self._bg_resize_timer.setInterval(150)
         self._bg_resize_timer.timeout.connect(self._on_bg_resize_done)
+        # showEvent reads these (V07 startup fade) — showMaximized inside the
+        # restore fires showEvent, so they must predate it too.
+        self._startup_anim_done = False
+        self._startup_anim: QPropertyAnimation | None = None
+        _restore_window_geometry(self)
+        self.setDockNestingEnabled(True)
         themes.apply_to(self)
         self._bootstrap = bootstrap
         self._lifecycle_coordinator = WindowLifecycleCoordinator(self, _alive)
@@ -199,16 +259,19 @@ class MainWindow(LanSharingMixin, QMainWindow):
         self._setup_ui()
         self._bind_plugin_host()
         self._connect_bus()
-        self._startup_anim_done = False
         self._force_quit = False
         self._lan_server = None
         # G2: the window is the composition root for presentation LAN ports.
         # Widgets/dialogs only see these injected boundaries, never lan.*.
+        # Defaults resolve AssetsManager.lan lazily (PF-2) — aiohttp must not
+        # be on the library-open path when sharing is never used.
         self._lan_server_factory = (
-            lan_server_factory if lan_server_factory is not None else build_lan_server
+            lan_server_factory
+            if lan_server_factory is not None
+            else _default_lan_server_factory
         )
         self._sharing_port = (
-            sharing_port if sharing_port is not None else LanDesktopAdapter()
+            sharing_port if sharing_port is not None else _LazyLanDesktopAdapter()
         )
 
     def _library_service(self):
@@ -498,8 +561,17 @@ class MainWindow(LanSharingMixin, QMainWindow):
 
         # LAN Sharing
         tools_menu.addSeparator()
-        from AssetsManager import lan
-        if lan.is_available():
+        # PF-2 (performance audit 2026-09-06): probe aiohttp install state
+        # without importing it.  ``lan.is_available()`` only reports whether
+        # aiohttp could be imported, but importing ``AssetsManager.lan``
+        # actually loads aiohttp (~0.7 s) — on the first MainWindow
+        # construction, i.e. every library open.  The only divergence is a
+        # present-but-broken aiohttp install: the menu then offers Share and
+        # the sharing dialog reports the import error instead of a
+        # permanently disabled item.
+        from importlib.util import find_spec
+
+        if find_spec("aiohttp") is not None:
             self._menu_act_share = tools_menu.addAction(tr('menu.share_system'), self._open_sharing_settings)
         else:
             self._menu_act_share_unavailable = tools_menu.addAction(tr("menu.sharing_unavailable"))
@@ -797,8 +869,8 @@ class MainWindow(LanSharingMixin, QMainWindow):
 
     def _on_switch_library(self, path):
         """Switch all panels to a different library root."""
-        workspace = getattr(self, "_workspace", None)
-        previous = workspace.current_library() if workspace is not None else None
+        previous_session = getattr(self, "_library_session", None)
+        previous = getattr(previous_session, "root_str", None)
         # The switch must wait for the LAN stop, session close and session
         # open in order, so it stays synchronous — keep the user informed
         # with a wait cursor for the duration instead.
@@ -810,7 +882,12 @@ class MainWindow(LanSharingMixin, QMainWindow):
             # re-point the workspace tab bar at the previous library so the
             # UI does not stay on a tab whose session failed to open.
             _log.exception("Library switch to %s failed", path)
-            self._reselect_workspace_tab(previous)
+            active_session = getattr(self, "_library_session", None)
+            active_root = getattr(active_session, "root_str", None)
+            if active_root and self._library_service().owns_live_session(active_session):
+                self._reselect_workspace_tab(active_root)
+            elif previous and previous_session is active_session:
+                self._reselect_workspace_tab(previous)
             from AssetsManager.window_lifecycle_coordinator import _notify_switch_failed
             _notify_switch_failed(self, f"The library switch failed: {exc}")
         finally:
@@ -825,7 +902,14 @@ class MainWindow(LanSharingMixin, QMainWindow):
             return
         idx = tabs.find_tab(path)
         if idx >= 0 and idx != tabs.currentIndex():
-            tabs.setCurrentIndex(idx)
+            workspace = getattr(self, "_workspace", None)
+            if workspace is None:
+                return
+            was_blocked = workspace.blockSignals(True)
+            try:
+                tabs.setCurrentIndex(idx)
+            finally:
+                workspace.blockSignals(was_blocked)
 
     def _open_library(self):
         startup = StartupWindow(self)

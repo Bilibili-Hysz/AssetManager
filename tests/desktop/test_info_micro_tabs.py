@@ -5,6 +5,34 @@ from PySide6.QtWidgets import QApplication
 from AssetsManager.panels.info import InfoPanel
 
 
+@pytest.fixture(autouse=True)
+def _pin_language_and_layout():
+    """免疫同 worker 前序测试的两类进程级残留（2026-09-06 审查定性）。
+
+    - 语言：``tr()`` 读 ``i18n._current_lang`` 模块全局，而
+      ``_refresh_language`` 的实参被忽略（签名 ``_code``），且本机
+      settings.json 持久化的 language 为 zh——任何"按 settings 值还原
+      语言"的前序测试（test_info_interactions 同款 finally）都会把 zh
+      留在进程里，使 ``assert _tabs[0] == "All"`` 在共享 worker 上必红。
+      按 test_visual_baseline_a._pin_language 同款模式直接钉内存值。
+    - info_panel_layout：InfoPanel.shutdown() 会把当前 micro-tab 的分区
+      可见性持久化到共享 settings（restore_state 在下一个 InfoPanel 构造
+      时回放），同 worker 后续的 InfoPanel 可见性用例（test_info_ai_tag
+      可见性门）会被隐藏的分区拖红。用例前后清内存值即可双向免疫。
+    """
+    from AssetsManager import i18n
+    from AssetsManager.core.settings import AppSettings
+
+    settings = AppSettings.instance()
+    saved_lang = i18n._current_lang
+    saved_layout = settings.get("info_panel_layout")
+    i18n._current_lang = "en"
+    settings.set("info_panel_layout", None)
+    yield
+    i18n._current_lang = saved_lang
+    settings.set("info_panel_layout", saved_layout)
+
+
 @pytest.fixture
 def qapp():
     """Ensure QApplication instance exists for offscreen desktop tests."""

@@ -33,6 +33,7 @@ tr = i18n.tr
 
 class WorkspaceBar(QTabBar):
     library_switched = Signal(str)
+    current_tab_reselected = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -50,6 +51,7 @@ class WorkspaceBar(QTabBar):
         self.customContextMenuRequested.connect(self._context_menu)
 
         self._rename_idx: int = -1
+        self._pressed_tab_index: int = -1
         self._indicator_pos = 0
         self._indicator_width = 0
         self._indicator_anim = QPropertyAnimation(self, b"indicator_pos")
@@ -210,7 +212,34 @@ class WorkspaceBar(QTabBar):
             self.library_switched.emit(str(data))
 
         # Animate indicator to new tab
-        self._animate_indicator(idx)
+        # A synchronous library switch can restore another tab from the
+        # signal handler. Animate the tab that remains selected afterwards,
+        # rather than the index captured before the handler ran.
+        self._animate_indicator(self.currentIndex())
+
+    def mousePressEvent(self, event):
+        idx = self.tabAt(event.position().toPoint())
+        self._pressed_tab_index = (
+            idx
+            if event.button() == Qt.MouseButton.LeftButton and idx == self.currentIndex()
+            else -1
+        )
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        """Retry the current tab when a failed switch left it selected."""
+        pressed_idx = self._pressed_tab_index
+        self._pressed_tab_index = -1
+        super().mouseReleaseEvent(event)
+        release_idx = self.tabAt(event.position().toPoint())
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and pressed_idx >= 0
+            and pressed_idx == release_idx == self.currentIndex()
+        ):
+            data = self.tabData(pressed_idx)
+            if data:
+                self.current_tab_reselected.emit(str(data))
 
     def _animate_indicator(self, idx):
         """Animate the indicator to the specified tab."""
@@ -366,6 +395,7 @@ class WorkspaceSection(QWidget):
         # Tab bar
         self._tabs = WorkspaceBar()
         self._tabs.library_switched.connect(self.library_switched.emit)
+        self._tabs.current_tab_reselected.connect(self.library_switched.emit)
         self._tabs.setMinimumWidth(0)
         layout.addWidget(self._tabs, 0)
 

@@ -26,7 +26,12 @@ def test_info_panel_buttons_disabled_on_empty_selection(qapp: QApplication):
         assert panel._copy_btn.toolTip() == i18n.tr("info.select_file_first")
 
         # Test in Chinese locale
-        orig_lang = AppSettings.instance().get("language") or "en"
+        # 还原值必须取**当前 UI 语言**（i18n.current_language()），不能取
+        # settings 持久值：本机 settings.json 的 language=zh 时，finally 的
+        # set_language(orig) 会把 zh 重新写进 i18n._current_lang 并在同
+        # worker 全部后续测试中残留（2026-09-06 审查定性：下游英文断言
+        # 用例 test_settings_ai_tagging / test_settings_dialog 因此连片红）。
+        orig_lang = i18n.current_language()
         try:
             i18n.set_language("zh")
             panel._refresh_language("zh")
