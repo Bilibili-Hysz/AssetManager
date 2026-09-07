@@ -24,7 +24,7 @@ jobs:
           python --version
           ruff --version
       - name: Ruff check production, test, and packaging paths
-        run: ruff check AssetsManager tests scripts run.py build.py main.py setup_cython.py
+        run: ruff check AssetsManager tests scripts run.py build.py main.py
       - name: Verify generated TS contracts have no drift
         run: python scripts/gen_ts_types.py --check
       - name: Verify front/back separation boundary gates

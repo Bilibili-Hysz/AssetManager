@@ -23,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt -r requirements-lan.txt -r requirements-dev.txt
       - name: Ruff check
-        run: ruff check AssetsManager tests scripts run.py build.py main.py setup_cython.py
+        run: ruff check AssetsManager tests scripts run.py build.py main.py
       - name: Byte-compile
         run: python -m compileall -q AssetsManager tests
       - name: Run test suite
