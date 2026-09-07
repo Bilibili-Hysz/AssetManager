@@ -1,0 +1,10 @@
+bundle: onedir (D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\f758725a\lifecycle\dist\AssetManager\AssetManager.exe)
+runtime: C:\Users\86177\AppData\Local\Temp\w6-func-8tjj0sij\runtime
+library: C:\Users\86177\AppData\Local\Temp\w6-func-8tjj0sij\library (12 files)
+lan: http://127.0.0.1:1719 (password auth)
+settings seeded: C:\Users\86177\AppData\Local\Temp\w6-func-8tjj0sij\runtime\Shared\settings.json
+AUTO-OPEN: will focus the sole seeded StartupWindow and press Enter once
+launched pid=42080
+exe sha256: 1c12de583a182e849582a53442d99963c3e22199f40fe0c5329aa3051e383af9
+close: {'status': 'not_attempted_after_prior_failure'}
+INVALID: no top-level package window found for PID tree 42080; process exited early with code 1; /api/info never returned 200 (last None) within 180.0s

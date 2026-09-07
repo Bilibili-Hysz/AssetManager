@@ -1,0 +1,14 @@
+Windows fatal exception: code 0xc0000139
+
+Thread 0x00009e3c (most recent call first):
+  File "<frozen importlib._bootstrap>", line 491 in _call_with_frames_removed
+  File "<frozen importlib._bootstrap_external>", line 1053 in create_module
+  File "<frozen importlib._bootstrap>", line 816 in module_from_spec
+  File "<frozen importlib._bootstrap>", line 924 in _load_unlocked
+  File "<frozen importlib._bootstrap>", line 1342 in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 1371 in _find_and_load
+  File "run.py", line 41 in _run_package_smoke
+  File "run.py", line 64 in <module>
+
+Current thread's C stack trace (most recent call first):
+  <cannot get C stack on this system>

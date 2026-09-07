@@ -382,6 +382,8 @@ def test_bound_metadata_writes_preserve_caller_outer_transaction(tmp_path):
         repo = MetadataRepository.for_session(session)
         asset = _asset(session.root)
         repo.set_notes(asset, "original")
+        repo.add_url(asset, "https://original.example")
+        repo.set_rating(asset, 1)
         conn = repo._conn
         conn.execute("CREATE TABLE caller_data (value TEXT NOT NULL)")
         conn.commit()
@@ -389,13 +391,24 @@ def test_bound_metadata_writes_preserve_caller_outer_transaction(tmp_path):
         conn.execute("BEGIN")
         conn.execute("INSERT INTO caller_data VALUES ('keep-me')")
         repo.set_notes(asset, "inside-outer")
+        assert repo.add_url(asset, "https://new.example") == [
+            "https://original.example", "https://new.example"
+        ]
+        assert repo.remove_url(asset, "https://original.example") == [
+            "https://new.example"
+        ]
+        repo.set_rating(asset, 4)
 
         assert conn.in_transaction is True
         assert repo.get_notes(asset) == "inside-outer"
+        assert repo.get_urls(asset) == ["https://new.example"]
+        assert repo.get_rating(asset) == 4
         assert conn.execute("SELECT * FROM caller_data").fetchall() == [("keep-me",)]
 
         conn.rollback()
         assert repo.get_notes(asset) == "original"
+        assert repo.get_urls(asset) == ["https://original.example"]
+        assert repo.get_rating(asset) == 1
         assert conn.execute("SELECT * FROM caller_data").fetchall() == []
     finally:
         bootstrap.library_service.close()

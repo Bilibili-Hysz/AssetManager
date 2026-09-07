@@ -1,0 +1,7 @@
+command: $env:AM_RUNTIME_ROOT = (Join-Path (Get-Location) 'artifacts\\metadata-guard-toctou-runtime'); $env:PYTHONPATH = (Get-Location).Path; python scripts/perf/observe_metadata_guard_toctou.py
+exit_code: 0
+guard_passed_before_outer_transaction=True
+mutation_completed=True
+events_published=1
+notes_before_rollback=ephemeral
+notes_after_rollback=<empty>

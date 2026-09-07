@@ -1,0 +1,1463 @@
+{
+  "head": "817419a2f23b1b60a0c3fc2783e31833b7d293e0",
+  "snapshot": "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\f758725a\\lifecycle",
+  "source": [
+    {
+      "snapshot_sha256": "7E3C645F8EF6BF58BD603B6BBB93FF7E8C8B598DB35F79098684EBD460BF823D",
+      "sha256": "7E3C645F8EF6BF58BD603B6BBB93FF7E8C8B598DB35F79098684EBD460BF823D",
+      "path": "AssetsManager/application/metadata_service.py",
+      "test_snapshot_sha256": "7E3C645F8EF6BF58BD603B6BBB93FF7E8C8B598DB35F79098684EBD460BF823D"
+    },
+    {
+      "snapshot_sha256": "34FDE9C5B8CEC76A47ED69A2F2F3960352AAA23B012B7E54986D37C18DF3C162",
+      "sha256": "34FDE9C5B8CEC76A47ED69A2F2F3960352AAA23B012B7E54986D37C18DF3C162",
+      "path": "AssetsManager/repositories/metadata_repository.py",
+      "test_snapshot_sha256": "34FDE9C5B8CEC76A47ED69A2F2F3960352AAA23B012B7E54986D37C18DF3C162"
+    },
+    {
+      "snapshot_sha256": "AB566F667A7638D4E123049B62A75A9C641930278109C631B90ED41B078DFEB3",
+      "sha256": "AB566F667A7638D4E123049B62A75A9C641930278109C631B90ED41B078DFEB3",
+      "path": "build.py",
+      "test_snapshot_sha256": "AB566F667A7638D4E123049B62A75A9C641930278109C631B90ED41B078DFEB3"
+    },
+    {
+      "snapshot_sha256": "F1D97501D7998AC3318DAD7D676AD544520091042978B7CEF08B062ECD146483",
+      "sha256": "F1D97501D7998AC3318DAD7D676AD544520091042978B7CEF08B062ECD146483",
+      "path": "AssetManager.spec",
+      "test_snapshot_sha256": "F1D97501D7998AC3318DAD7D676AD544520091042978B7CEF08B062ECD146483"
+    },
+    {
+      "snapshot_sha256": "5FB3F3A64C1D9A7A06860861873D041A722AB2B426006720BB7D93AF9F97A8E8",
+      "sha256": "682ACF9E19B7D706E1F7362A1718DFDC703CBAB358F70BFB715837E2378D5CE1",
+      "path": "tests/integration/test_metadata_repository_session_binding.py",
+      "test_snapshot_sha256": "682ACF9E19B7D706E1F7362A1718DFDC703CBAB358F70BFB715837E2378D5CE1"
+    },
+    {
+      "snapshot_sha256": "B19458ACA6B78862ABC021D924E462822F5D915DBF7B75ADEC8156D3F0ED1C3D",
+      "sha256": "F12D90E85EC9F73878F64C6E7E75250468E22323A92D116033DD2DD8356D96EA",
+      "path": "tests/integration/test_metadata_service_concurrent_boundary.py",
+      "test_snapshot_sha256": "F12D90E85EC9F73878F64C6E7E75250468E22323A92D116033DD2DD8356D96EA"
+    },
+    {
+      "snapshot_sha256": "FA250BEB1EC839D8C5B346EA2984B841816F713CAE80B93C4515EA98AEB16E94",
+      "sha256": "FA250BEB1EC839D8C5B346EA2984B841816F713CAE80B93C4515EA98AEB16E94",
+      "path": "tests/unit/test_lan_utils_enumeration.py",
+      "test_snapshot_sha256": "FA250BEB1EC839D8C5B346EA2984B841816F713CAE80B93C4515EA98AEB16E94"
+    }
+  ],
+  "artifacts": [
+    {
+      "bytes": 62467385,
+      "sha256": "D749A55DF6A63CDFAD5BB5C87202C471FAEB8F9DD0A4E7FF17E4759BA717541F",
+      "path": "artifacts\\dist-clean-process\\AssetManager.exe"
+    },
+    {
+      "bytes": 11951799,
+      "sha256": "932EDF12B6AA2E741BDAD4F7D7F654BCE275730D54DA95C7707F3641300AAE63",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\AssetManager.exe"
+    },
+    {
+      "bytes": 78168,
+      "sha256": "48FDD95938C43B8B3E1F6312DE651A53D459E8E2C754FBBDF48E99F5CAA1F55B",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\_asyncio.pyd"
+    },
+    {
+      "bytes": 856576,
+      "sha256": "44F02BCF2B15519A487CF653E16B5F9C65F26D0BE559592878988AD47148FC5E",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\_brotli.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 87384,
+      "sha256": "A4BE36FFFEEFA8B24C1234D548DA8F05558ABA53C2EA7D1D2614776EAAD8FBF4",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\_bz2.pyd"
+    },
+    {
+      "bytes": 181248,
+      "sha256": "58BBE1EB15F9AB8E9EA45715A8311E2366B360D910A4685448BDD728D5177A01",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\_cffi_backend.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 142680,
+      "sha256": "F8A9F7831E81B2BFBA12456E589F8198114F24986BD527AC231A844565AFCDDB",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\_ctypes.pyd"
+    },
+    {
+      "bytes": 290648,
+      "sha256": "04738EE6B96BCC6351446B011B523D831AA88EC3F11D4B64C33414C965B56B80",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\_decimal.pyd"
+    },
+    {
+      "bytes": 138584,
+      "sha256": "FBB615C3373825D4FFD61FEF4698AA5B2BCE474BC2C3F75DEA4B9A06FFF23800",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\_elementtree.pyd"
+    },
+    {
+      "bytes": 69464,
+      "sha256": "D4524B261F09806A828C62FC97E8517328B23D65AB87D20706A4BAFD86BBF345",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\_hashlib.pyd"
+    },
+    {
+      "bytes": 161112,
+      "sha256": "F7AD11FBBB7AEAF7B6566A532A3243E3AE5F92BAC480DBE5C2EF300FE2C1DABE",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\_lzma.pyd"
+    },
+    {
+      "bytes": 38744,
+      "sha256": "84A2E86428DDE756E6F3E56369DAF558180A30F1F7D4781CCE295304E19B6FB8",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\_multiprocessing.pyd"
+    },
+    {
+      "bytes": 58200,
+      "sha256": "80A2F8FEDA9255EF611AF0A28FD4DF311E3CD59C3DC4EABA9A2E97BD42DDBF54",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\_overlapped.pyd"
+    },
+    {
+      "bytes": 36696,
+      "sha256": "CB529F77BC4665DFA3B66FAE3D00AB84DE1E9618D0CB94900EFBF28527623C0F",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\_queue.pyd"
+    },
+    {
+      "bytes": 87384,
+      "sha256": "FF3E97CD11BDC68798E5B3DCD5295D1EFBA179B7344142D50D066BBF1C2D79CD",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\_socket.pyd"
+    },
+    {
+      "bytes": 132440,
+      "sha256": "C6D7BCEA0084BCFA3C487BD7040350EE7C77F4108CE74B964F760133B2A7A6B2",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\_sqlite3.pyd"
+    },
+    {
+      "bytes": 184664,
+      "sha256": "43E60BBDFF2FE41701F39FA25EA6A8251A2B7623FF18F980A209A451EB5E648F",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\_ssl.pyd"
+    },
+    {
+      "bytes": 28504,
+      "sha256": "FC7406772B43CAA3B6F41C690753792188B1C14C36A723D49E9276B7457696CE",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\_uuid.pyd"
+    },
+    {
+      "bytes": 40280,
+      "sha256": "5A7F3444F1C2F85FB5573BC330C1AEA2C583912BB6F948FF81F8FD89A30E67BE",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\_wmi.pyd"
+    },
+    {
+      "bytes": 51544,
+      "sha256": "A214CE4504B9A204196E2D2D9C5C1B3D317BB35F4EA3A1F469A334240564C81F",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\_zoneinfo.pyd"
+    },
+    {
+      "bytes": 503640,
+      "sha256": "536A3B521A3C42D2827ECE0CCFBE40B83A2FD96A0F5496CD60B943B10E1266D4",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\_zstd.pyd"
+    },
+    {
+      "bytes": 216576,
+      "sha256": "AB64835B63093C31975DF2692756C8008E7EC190E4AA86F15A713BCC62E1D432",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\81d243bd2c585b0f4821__mypyc.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 22072,
+      "sha256": "88ACE577A9C51061CB7D1A36BABBBEFA48212FADC838FFDE98FDFFF60DE18386",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-console-l1-1-0.dll"
+    },
+    {
+      "bytes": 22056,
+      "sha256": "1BD81DFD19204B44662510D9054852FB77C9F25C1088D647881C9B976CC16818",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-datetime-l1-1-0.dll"
+    },
+    {
+      "bytes": 21944,
+      "sha256": "591358EB4D1531E9563EE0813E4301C552CE364C912CE684D16576EABF195DC3",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-debug-l1-1-0.dll"
+    },
+    {
+      "bytes": 22096,
+      "sha256": "D56CE7B1CD76108AD6C137326EC694A14C99D48C3D7B0ACE8C3FF4D9BCEE3CE8",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-errorhandling-l1-1-0.dll"
+    },
+    {
+      "bytes": 22072,
+      "sha256": "91D249D7BC0E38EF6BCB17158B1FDC6DD8888DC086615C9B8B750B87E52A5FB3",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-fibers-l1-1-0.dll"
+    },
+    {
+      "bytes": 22072,
+      "sha256": "FC9D86CEC621383EAB636EBC87DDD3F5C19A3CB2A33D97BE112C051D0B275429",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-fibers-l1-1-1.dll"
+    },
+    {
+      "bytes": 26152,
+      "sha256": "1CA895ABA4E7435563A6B43E85EBA67A0F8C74AA6A6A94D0FC48FA35535E2585",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-file-l1-1-0.dll"
+    },
+    {
+      "bytes": 22056,
+      "sha256": "4CADBC0C39DA7C6722206FDCEBD670ABE5B8D261E7B041DD94F9397A89D1990D",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-file-l1-2-0.dll"
+    },
+    {
+      "bytes": 21960,
+      "sha256": "93C624B366BA16C643FC8933070A26F03B073AD0CF7F80173266D67536C61989",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-file-l2-1-0.dll"
+    },
+    {
+      "bytes": 21944,
+      "sha256": "39095F59C41D76EC81BB2723D646FDE4C148E7CC3402F4980D2ADE95CB9C84F9",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-handle-l1-1-0.dll"
+    },
+    {
+      "bytes": 22072,
+      "sha256": "8F105771B236DBCB859DE271F0A6822CE1CB79C36988DD42C9E3F6F55C5F7EB9",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-heap-l1-1-0.dll"
+    },
+    {
+      "bytes": 22072,
+      "sha256": "53B25E753CA785BF8B695D89DDE5818A318890211DC992A89146F16658F0B606",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-interlocked-l1-1-0.dll"
+    },
+    {
+      "bytes": 22080,
+      "sha256": "A9B13A1CD1B8C19B0C6B4AFCD5BB0DD29C0E2288231AC9E6DB8510094CE68BA6",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-kernel32-legacy-l1-1-1.dll"
+    },
+    {
+      "bytes": 22056,
+      "sha256": "7F39BA298B41E4963047341288CAB36B6A241835EE11BA4AD70F44DACD40906C",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-libraryloader-l1-1-0.dll"
+    },
+    {
+      "bytes": 22080,
+      "sha256": "6EE44DD0D8510DC024C9F7C79B1B9FA88C987B26B6BEB6653DDD11751C34E5DC",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-localization-l1-2-0.dll"
+    },
+    {
+      "bytes": 22056,
+      "sha256": "0512A35316EC9180437F86696A84C5C06A7E4E82E050055A656E5BF9FCA206F9",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-memory-l1-1-0.dll"
+    },
+    {
+      "bytes": 22096,
+      "sha256": "C05F1FFFE3B5A2738EA54CE9485CCA026FB9635F982626FBA1E1DCC531897273",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-namedpipe-l1-1-0.dll"
+    },
+    {
+      "bytes": 21968,
+      "sha256": "C4ECA98C3C67B6395D5B005B00AC1EB0318B86B23AA71035A44C2B1602BEFBA9",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-processenvironment-l1-1-0.dll"
+    },
+    {
+      "bytes": 22096,
+      "sha256": "5CCB89E93D67BC3288D4E84649C5346E66E15E3D7CD65D989DAF3F4CB584BE9A",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-processthreads-l1-1-0.dll"
+    },
+    {
+      "bytes": 22072,
+      "sha256": "4AD565A8BA3EF0EA8AB87221AD11F83EE0BC844CE236607958406663B407333E",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-processthreads-l1-1-1.dll"
+    },
+    {
+      "bytes": 22080,
+      "sha256": "7809160932F44E59B021699F5BC68799EB7293EE1FA926D6FCCA3C3445302E61",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-profile-l1-1-0.dll"
+    },
+    {
+      "bytes": 21960,
+      "sha256": "9DC1E91E71C7C054854BD1487CB4E6946D82C9F463430F1C4E8D1471005172B1",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-rtlsupport-l1-1-0.dll"
+    },
+    {
+      "bytes": 22056,
+      "sha256": "60FC31D2A0C634412F529DBA76AF3B9BF991352877C6DAE528186D3935704CFD",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-string-l1-1-0.dll"
+    },
+    {
+      "bytes": 22056,
+      "sha256": "3A72B4F29F39A265D32AD12F0CE15DBF60129C840E10D84D427829EDE45E78AD",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-synch-l1-1-0.dll"
+    },
+    {
+      "bytes": 22080,
+      "sha256": "EFC1E4460984A73CF47A3DEF033AF1C8F3B1DBC1A56CD27781D3AACF3E3330CB",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-synch-l1-2-0.dll"
+    },
+    {
+      "bytes": 22072,
+      "sha256": "B203D862DDEF1DD62BF623FC866C7F7A9C317C1C2AE30D1F52CB41F955B5698E",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-sysinfo-l1-1-0.dll"
+    },
+    {
+      "bytes": 22080,
+      "sha256": "2703635D835396AFD0F138D7C73751AFE7E33A24F4225D08C1690B0A371932C0",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-sysinfo-l1-2-0.dll"
+    },
+    {
+      "bytes": 22056,
+      "sha256": "33F4FDDC181066FCE06B2227BDED813F95E94ED1F3D785E982C6B6B56C510C57",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-timezone-l1-1-0.dll"
+    },
+    {
+      "bytes": 21944,
+      "sha256": "6EDA016742A6171205A387A14B3C0B331841567740376F56768F8C151724207D",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-core-util-l1-1-0.dll"
+    },
+    {
+      "bytes": 22056,
+      "sha256": "B762061B688AAE679AFE788904D2C9970F74A7DAC98F3B42463D08F25E483D3F",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-crt-conio-l1-1-0.dll"
+    },
+    {
+      "bytes": 26056,
+      "sha256": "EBB2AE5535A64F65DAEAB8235585114FC9DD2CF1A49F5852D446250B998B6AE4",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-crt-convert-l1-1-0.dll"
+    },
+    {
+      "bytes": 22080,
+      "sha256": "17D63275D00BDD8670422B95BD264C532998E0A1B041079E54FCE4B6B7A55819",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-crt-environment-l1-1-0.dll"
+    },
+    {
+      "bytes": 22056,
+      "sha256": "9A9E2A65A281644E368D0F272B95BA5F6B445D1C35910D06056C5EBEB77402DB",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-crt-filesystem-l1-1-0.dll"
+    },
+    {
+      "bytes": 22096,
+      "sha256": "BAB9AC3EC83E380AE51E4295EF3BF2C738627812D3A49D1E713661ABBC8DC57A",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-crt-heap-l1-1-0.dll"
+    },
+    {
+      "bytes": 22080,
+      "sha256": "BD14C67EA28E21D6257AD780A37122C9B5773F69E693F5DB6BFFAEE4D839526E",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-crt-locale-l1-1-0.dll"
+    },
+    {
+      "bytes": 30248,
+      "sha256": "606D66D82DB562EA7979179D06486A0F94D079941D26B80A1E2C49D29959DF6F",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-crt-math-l1-1-0.dll"
+    },
+    {
+      "bytes": 22096,
+      "sha256": "F6156B1020380EC4F0E48577EBEDAAEF5FB1AB1F337D8B4E72E6A33A7567A9CC",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-crt-process-l1-1-0.dll"
+    },
+    {
+      "bytes": 26152,
+      "sha256": "C5902934D026D7E15FBE9917D474F3322846A41A25E66F4B2B1F758801879F4B",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-crt-runtime-l1-1-0.dll"
+    },
+    {
+      "bytes": 26168,
+      "sha256": "A9C5A153D8C0286F9B41A2B1C65854AD9E6471B8755B7DE87BAE4470E60BCAB6",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-crt-stdio-l1-1-0.dll"
+    },
+    {
+      "bytes": 26176,
+      "sha256": "25B8F83A7767211B11132775A0E27A45AA4EC8AB4E6572599F9C172AE3606B40",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-crt-string-l1-1-0.dll"
+    },
+    {
+      "bytes": 22096,
+      "sha256": "7C7F6393F06DE11750ADB09CC5698AE55CD9FB27B2E51E207286FEB1B5B2B156",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-crt-time-l1-1-0.dll"
+    },
+    {
+      "bytes": 21952,
+      "sha256": "D8BA5F17B9FFCBF3AEAF3FA1DA226832D2FA90F81ACCE0CD669464E76CE434AC",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\api-ms-win-crt-utility-l1-1-0.dll"
+    },
+    {
+      "bytes": 1388164,
+      "sha256": "1CF6F7835046A648200FFC9CB82C198918C256358E8FDE3D0B90F44CBBF7B98D",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\base_library.zip"
+    },
+    {
+      "bytes": 5229424,
+      "sha256": "E03DD02FDCFB791981C9962827CFCF495F2A47A514C1526EFB57F847A9DF514A",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\libcrypto-3.dll"
+    },
+    {
+      "bytes": 39696,
+      "sha256": "EFF52743773EB550FCC6CE3EFC37C85724502233B6B002A35496D828BD7B280A",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\libffi-8.dll"
+    },
+    {
+      "bytes": 794992,
+      "sha256": "1E4BC0638682BFCBB36F4465D6A2E9944D917A60F05ECC8DDF9E96847E05E13F",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\libssl-3.dll"
+    },
+    {
+      "bytes": 218968,
+      "sha256": "B6D5142424D161039C25BEA00E6ACD8F7B1A5331D3994D9F3C28BD083EDE159F",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\pyexpat.pyd"
+    },
+    {
+      "bytes": 74072,
+      "sha256": "BE1017CA4CA8FF837EFBB343D5C8F739BD67BD1C43FB41068A539B19357C0213",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\python3.dll"
+    },
+    {
+      "bytes": 6753112,
+      "sha256": "1AC15E2224581FC678BBD17728B9AA538D47B891B72C76499EF07E54CD74F151",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\python314.dll"
+    },
+    {
+      "bytes": 33624,
+      "sha256": "05734BD352CE60C944D474AA62468CC5EEBF400097F1D9D0C453D37AED26FCCA",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\select.pyd"
+    },
+    {
+      "bytes": 1584984,
+      "sha256": "153883EDF04717624437CD092ADB2B72015BE3984E03D25CF5A1823B0F764AC7",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\sqlite3.dll"
+    },
+    {
+      "bytes": 1361448,
+      "sha256": "2E5FB14B7BF8540278F3614A12F0226E56A7CC9E64B81CBD976C6FCF2F71CBFB",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\ucrtbase.dll"
+    },
+    {
+      "bytes": 758104,
+      "sha256": "4445B894F836E89A8B9FDCC88B5E59FBC76ACA805BAAF40AEB69E869978D4E6D",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\unicodedata.pyd"
+    },
+    {
+      "bytes": 49776,
+      "sha256": "6A99BC0128E0C7D6CBBF615FCC26909565E17D4CA3451B97F8987F9C6ACBC6C8",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\VCRUNTIME140_1.dll"
+    },
+    {
+      "bytes": 120400,
+      "sha256": "052AD6A20D375957E82AA6A3C441EA548D89BE0981516CA7EB306E063D5027F4",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\VCRUNTIME140.dll"
+    },
+    {
+      "bytes": 259584,
+      "sha256": "361DBBA8C9ACE8EFB797F5EC1D40CFEDDAD29BD1624B25181C26EA4ED8C169BD",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\aiohttp\\_http_parser.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 46592,
+      "sha256": "3FA4D21394443EA71861063E8334AC19CE0CB616C6CC2882E404C8ECA85DCA57",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\aiohttp\\_http_writer.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 36864,
+      "sha256": "95B8C59A3BE1973E6DFB6A336695F7272114CDAAD0CE9FDB7975E0A716C49467",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\aiohttp\\_websocket\\mask.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 145408,
+      "sha256": "E9CF1D4903D00AF9EF0D10E86BC9344FCCB100E36A1965DD9D5E3CDF502229CE",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\aiohttp\\_websocket\\reader_c.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 68699,
+      "sha256": "FBBEB8E89DEF55CF45F778932E52D80902C50917901A67F66F6B31C644247F7A",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\icons\\AssetsManager_icon.png"
+    },
+    {
+      "bytes": 2934,
+      "sha256": "864FB263509C074BCCAC6315295F5FA8756B639EA17D2EADC7EEE809EEEEBDC6",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\icons\\AssetsManager_icon.svg"
+    },
+    {
+      "bytes": 157299,
+      "sha256": "7DFBF50EDBA761073FA5D732CBC6BBF28FD8389F3A0CDA3E0D05C71FD4E7DCA7",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\icons\\icon.ico"
+    },
+    {
+      "bytes": 1604,
+      "sha256": "358F4B9A02C1744DC78B21277B26B8C39DA0E7C67558BB703F6F9F3191B42B2A",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\D_Amber.json"
+    },
+    {
+      "bytes": 1429,
+      "sha256": "58E14E182BF571548AE8118E56AC46F6FEC36A1511DE237B4C48E2C526C18701",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\D_Charcoal.json"
+    },
+    {
+      "bytes": 1613,
+      "sha256": "BDB8D05B3BD66C5F5042BB7B8AEEEEE707EFB6D860E3D65D206653614E51A6ED",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\D_Default.json"
+    },
+    {
+      "bytes": 1611,
+      "sha256": "D2E88164E776207693312D2222D1184C917043104CD674754FD762F9D84228A9",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\D_Dracula.json"
+    },
+    {
+      "bytes": 1435,
+      "sha256": "D5C53874B06C776A0867B5998F96437FF128D215E1D47E5CD83E7B51B59F1297",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\D_Espresso.json"
+    },
+    {
+      "bytes": 1608,
+      "sha256": "B5DC4D6548C529543A2E60DEC61800B282BCDA2CACDA361C5E6CECABF6B8F9B1",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\D_Forest.json"
+    },
+    {
+      "bytes": 1601,
+      "sha256": "928BE0A068614526DF579A0B924E7EB94495D3F878701BF2CE095D2482D391EA",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\D_Gruvbox.json"
+    },
+    {
+      "bytes": 1445,
+      "sha256": "3E421BEBA7853B50C379DADF08DDF165204914171EDF0085FBFB0BC7E2C02F5D",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\D_Midnight.json"
+    },
+    {
+      "bytes": 1601,
+      "sha256": "00C92ADEEC2161429F32B817F8BAA83895A12AED2DAAEB274C03590413DAEE7C",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\D_Navy.json"
+    },
+    {
+      "bytes": 1595,
+      "sha256": "78FB4E2A90CD094DEC0AB8859415356A7968AF19A0E654D07328C59CFC24137D",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\D_Nord.json"
+    },
+    {
+      "bytes": 1603,
+      "sha256": "20ADB4E8A1F24F17D657FDE8DDFC217E2BA216F5C57CEFA824AD8A2CB1BADC84",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\D_Onyx.json"
+    },
+    {
+      "bytes": 1603,
+      "sha256": "F73CD09ADDA82C457910461D555BCE676F5331222DEC271A3F10E2D6D4B16DDB",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\D_Rosepine.json"
+    },
+    {
+      "bytes": 1599,
+      "sha256": "3B21723AA79E5A88DD8EA253A5DF0E2C56C36750B889E2E33019013B460E29DF",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\D_Slate.json"
+    },
+    {
+      "bytes": 1434,
+      "sha256": "DCD7B87F267F010E054544D03F3DD396EB8D914A3423A5439B473B51F70329C7",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\L_Coral.json"
+    },
+    {
+      "bytes": 1600,
+      "sha256": "73D9F0255308F73D7794604343622CC95E733EAB84733176A6C84FC6ADC4B95B",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\L_Dawn.json"
+    },
+    {
+      "bytes": 1603,
+      "sha256": "38EB5FFDC4CA6CE37E8A8E86D37D7CF95CA658FB7D60595286EDB17741A47CE5",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\L_Frost.json"
+    },
+    {
+      "bytes": 1445,
+      "sha256": "1117E18E5C4A5DB7829FA71776D92E47B8513EFB48834FD9BC2437C1719B776F",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\L_Lavender.json"
+    },
+    {
+      "bytes": 1434,
+      "sha256": "3D7A268F95AAF9581BBE604669AAFD47C50B55FAE9D9D6B17955ECB7BEA2F3A8",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\L_Lilac.json"
+    },
+    {
+      "bytes": 1607,
+      "sha256": "BD982053C8F2611ACDD6756AAC0CB93A05506DC2E0AC50E6B0F50E62F9176905",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\L_Mint.json"
+    },
+    {
+      "bytes": 1433,
+      "sha256": "D3AA46B364DBBF7A136DE66E158F75E19AF0BEF17E5DBB2359D1D40963517435",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\L_Peach.json"
+    },
+    {
+      "bytes": 1430,
+      "sha256": "2BC6C1F05A739373439C8BDFB2AA9850AB6DF8BB8CE1AE7069331D3C227841BA",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\L_Rose.json"
+    },
+    {
+      "bytes": 1431,
+      "sha256": "701F5B52C4344EC4777A3A5C49489B0FF422687B9C84E006F3088352DC63B421",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\L_Sage.json"
+    },
+    {
+      "bytes": 1604,
+      "sha256": "4A725A4698FE1AF9E768B87159CE650802A5E25B566F48E074761607F30E820B",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\L_Silver.json"
+    },
+    {
+      "bytes": 1434,
+      "sha256": "8CD2C77216B02621E08A01C1EA43B7C3E184E7BE2B80C90354A7B9464A5BF585",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Assets\\Themes\\L_Sky.json"
+    },
+    {
+      "bytes": 56861,
+      "sha256": "8FBC6DB980C7D417D7ADE35C99213DE671E2C7A98E05845202C9EF4715325D83",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\AssetsManager\\i18n\\en.json"
+    },
+    {
+      "bytes": 67858,
+      "sha256": "D2F441E687BF24CC64BE24795C7E9CEF4FD6DAB74D3AEA2563A512B8FCE136F4",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\AssetsManager\\i18n\\ja.json"
+    },
+    {
+      "bytes": 56610,
+      "sha256": "1ADCF675D22BE896C3F4B2B0AFCC06424E4F48E3D182926D5E5324D67F5CD239",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\AssetsManager\\i18n\\zh.json"
+    },
+    {
+      "bytes": 4,
+      "sha256": "CEEBAE7B8927A3227E5303CF5E0F1F7B34BB542AD7250AC03FBCDE36EC2F1508",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\attrs-26.1.0.dist-info\\INSTALLER"
+    },
+    {
+      "bytes": 8754,
+      "sha256": "4CD40E690F23BF37CBCAD34EFD6758E062DF1DF07C86833F7E3CE95BF1FA38CC",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\attrs-26.1.0.dist-info\\METADATA"
+    },
+    {
+      "bytes": 3643,
+      "sha256": "65B5537E6941067545675B31532859555CB4A4BAE7DD55F40848E97D2B5BEC67",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\attrs-26.1.0.dist-info\\RECORD"
+    },
+    {
+      "bytes": 0,
+      "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\attrs-26.1.0.dist-info\\REQUESTED"
+    },
+    {
+      "bytes": 87,
+      "sha256": "41C708C5ADBA6E097513AB8CCB9F1D7865A2FB469E22491A9E01DCC64DA459FC",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\attrs-26.1.0.dist-info\\WHEEL"
+    },
+    {
+      "bytes": 1109,
+      "sha256": "882115C95DFC2AF1EEB6714F8EC6D5CBCABF667CAFF8729F42420DA63F714E9F",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\attrs-26.1.0.dist-info\\licenses\\LICENSE"
+    },
+    {
+      "bytes": 272441,
+      "sha256": "FC9165A12403263E7EBFBDAD7BE7A3EAC0FA5D325D3C70465F28D3690072CA28",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\certifi\\cacert.pem"
+    },
+    {
+      "bytes": 0,
+      "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\certifi\\py.typed"
+    },
+    {
+      "bytes": 10752,
+      "sha256": "DA3CE780D6D58AE8C6920B99F806F64D58A1B33F4A01382861B01B50549199F8",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\charset_normalizer\\cd.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 10752,
+      "sha256": "8E3E0A719A4EC835FBD9B3128636A09692FE173F4E01C527653BFDB7BD723808",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\charset_normalizer\\md.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 9943040,
+      "sha256": "6A42262974F0E086C1F2DEFAFF4CCD9FB25046CF193422135E2DDA5B4B29B2A2",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\cryptography\\hazmat\\bindings\\_rust.pyd"
+    },
+    {
+      "bytes": 4,
+      "sha256": "CEEBAE7B8927A3227E5303CF5E0F1F7B34BB542AD7250AC03FBCDE36EC2F1508",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\cryptography-50.0.1.dist-info\\INSTALLER"
+    },
+    {
+      "bytes": 4343,
+      "sha256": "8E9B5570DA4686848EE5C6BB83FFFC224BCDDF9793136731DD050CE0C05FFFE2",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\cryptography-50.0.1.dist-info\\METADATA"
+    },
+    {
+      "bytes": 17865,
+      "sha256": "2CDDC16A7D01228387A054F0C3846D275BBD2D35DEB7026BDA282E2472365C50",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\cryptography-50.0.1.dist-info\\RECORD"
+    },
+    {
+      "bytes": 96,
+      "sha256": "9EFE56059DBB731C438C822AC4132A2B670E174DB90F09059AA246A8BDD2A575",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\cryptography-50.0.1.dist-info\\WHEEL"
+    },
+    {
+      "bytes": 197,
+      "sha256": "3E0C7C091A948B82533BA98FD7CBB40432D6F1A9ACBF85F5922D2F99A93AE6BB",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\cryptography-50.0.1.dist-info\\licenses\\LICENSE"
+    },
+    {
+      "bytes": 11360,
+      "sha256": "AAC73B3148F6D1D7111DBCA32099F68D26C644C6813AE1E4F05F6579AA2663FE",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\cryptography-50.0.1.dist-info\\licenses\\LICENSE.APACHE"
+    },
+    {
+      "bytes": 1532,
+      "sha256": "602C4C7482DE6479DD2E9793CDA275E5E63D773DACD1ECA689232AB7008FB4FB",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\cryptography-50.0.1.dist-info\\licenses\\LICENSE.BSD"
+    },
+    {
+      "bytes": 45629,
+      "sha256": "CA81FD6162FBB9C39D1C4530C4BEB49DD3F938A77CB867F82CE788DEF949E3CE",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\cryptography-50.0.1.dist-info\\sboms\\cryptography-rust.cyclonedx.json"
+    },
+    {
+      "bytes": 1223,
+      "sha256": "3375A1384A4782D4A871FFE6D00D22926C140AB2DB7C3671087E15A1FF239234",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\cryptography-50.0.1.dist-info\\sboms\\sbom.json"
+    },
+    {
+      "bytes": 55808,
+      "sha256": "D99E1A936DEC972CF8F48AFF1D7100B91354AABFF343F5CFEFE6C36F579D52C3",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Cython\\StringIOTree.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 199680,
+      "sha256": "39917E8B1DAC09C2D9EB2B96D67D28AAC65178194C7676A3C8FADCB0C17F9CC2",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Cython\\Utils.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 896000,
+      "sha256": "89C965DF8CD3F0088B295C1CFBE22BEC331934C911CD1BF7C30FFE06DD6C58BA",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Cython\\Compiler\\Code.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 380416,
+      "sha256": "7A5612EA9509E303FCC9F5F06D82971663E63DCD51EB4C0FD529F7F280B2F79B",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Cython\\Compiler\\FlowControl.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 256000,
+      "sha256": "18E1B09C3BD32496432425C1FB06464D33003C6150F9484D4675F1B8F6A80820",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Cython\\Compiler\\FusedNode.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 43008,
+      "sha256": "9D084B0E99FDFC952ADB6CA58042E0D6A75907603A647A5656FDA1F952F84FDE",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Cython\\Compiler\\LineTable.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 580096,
+      "sha256": "1FAC6A3FFCF885C7991F86C7FC6C39446EA6C75C7060FC6EAFC3C7427ABB428E",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Cython\\Compiler\\Parsing.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 206336,
+      "sha256": "6BEDE5DAFA403E40D59EF83F7A7808FB15658E71365541082B5C4BEFBEC97AB1",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Cython\\Compiler\\Scanning.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 201728,
+      "sha256": "7D8DA76561918ABEA183874CEFADC827F9564344A365321ED0EB3CE4C0C4F5FC",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Cython\\Compiler\\Visitor.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 55296,
+      "sha256": "142E479148BF1DD6009070D6D63B4C56EECBBBC0C3DC9CCAC673F51FD14AFDCF",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Cython\\Plex\\Actions.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 65024,
+      "sha256": "CD184D1C0E53426A5936BC60C8CDF093DE72FCCDE472B55AB8473E050FE7068D",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Cython\\Plex\\DFA.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 98304,
+      "sha256": "C022849EED57B3FF2E104560897A8FCA6E5D0C32107B0ECA8A36AA72DFDA89D1",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Cython\\Plex\\Machines.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 79872,
+      "sha256": "58491183CD4674904AA978B91D0B6B98D26A0E1FF1337D29915EF574ED2CB255",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Cython\\Plex\\Scanners.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 75776,
+      "sha256": "13733F27EBBE9435D01D8D4630A57FC147F84ADBA8FCEFD596DD407A043C2A6E",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Cython\\Plex\\Transitions.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 309760,
+      "sha256": "8546DC4DBADA7D3E993E5F3F6AAA72A28B128517CDBE0B50C41C4F5B6B491C76",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Cython\\Tempita\\_tempita.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 69632,
+      "sha256": "054E5D97884E8D833528AA3A98868204A3EC46CABB6A656E72432634D117880A",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\frozenlist\\_frozenlist.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 77312,
+      "sha256": "258D185776CF6B35C244CD134CDDA9405F74DE222C927D0BDBB9FD6D926AE5CE",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\multidict\\_multidict.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 2584576,
+      "sha256": "B4E06283C347910B5973BD5732159EA9EB26EDA48E3EED183BE2E3382DB26597",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PIL\\_imaging.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 269824,
+      "sha256": "68B85230AC4D44A2A377B69965936DFA7A5AFF04B7A9BA562AF3438D9A5A6550",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PIL\\_imagingcms.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 2162688,
+      "sha256": "7E6910E39FA06B4049F058A781A20BCAC40C4844D46037859C76DE76852DBB3E",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PIL\\_imagingft.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 25600,
+      "sha256": "A1C024D3E0E75802E3249A1A33335809B6CF032749ED2C4507D622D6610E36F2",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PIL\\_imagingmath.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 14848,
+      "sha256": "783D411905ECD94A341401C12B267F74E649627E046051E9813F8A8114851A60",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PIL\\_imagingtk.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 409600,
+      "sha256": "1F61A83C78F034F06F9229C80008E900EA7FD5422E1B5B8E1515FC6DF31820EB",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PIL\\_webp.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 1614,
+      "sha256": "4B990CC833FDFA7311597FC06761860FDBD06606F917710BBA8D9C9FD790F5C5",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Plugins\\Addons\\booth_link\\parser.py"
+    },
+    {
+      "bytes": 517,
+      "sha256": "14305DB72769D25535A6955B93F699C52E0141310ADC1A458376F6FF579BA299",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Plugins\\Addons\\booth_link\\plugin.json"
+    },
+    {
+      "bytes": 692,
+      "sha256": "032E9D7D09F1FAE481D7ECB37E97FC2C042CA91A5109508E502C8F3A228B15A9",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Plugins\\Addons\\download_tracker\\plugin.json"
+    },
+    {
+      "bytes": 10715,
+      "sha256": "E51119FDE6C532B03C92275032DCE967B801521E859AB9050BB70945634B94E7",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Plugins\\Addons\\download_tracker\\tracker.py"
+    },
+    {
+      "bytes": 3742,
+      "sha256": "07661D14DF3B824378ED02A8CD2D1938C6F636EC7F627DF32D1848947FFFA7BD",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Plugins\\Docs\\API.md"
+    },
+    {
+      "bytes": 2314,
+      "sha256": "96FE15D8F99CBE3B06BC1F20E67CD57A318AE30B132DEEA1FAD60CB8304087DC",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Plugins\\Docs\\MODULE_INTERFACES.md"
+    },
+    {
+      "bytes": 18048,
+      "sha256": "8AE0674E0355A9DE2F12ED7DB89683574AE8D0AB833452A3520ED1B44EC878C2",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\Plugins\\Docs\\PLUGIN_SYSTEM.md"
+    },
+    {
+      "bytes": 62976,
+      "sha256": "041D0DE31E32D1A248B93BA8B4B232A8562CEA142B59F2DA0FC8CBB5DE7698E3",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\propcache\\_helpers_c.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 4,
+      "sha256": "CEEBAE7B8927A3227E5303CF5E0F1F7B34BB542AD7250AC03FBCDE36EC2F1508",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\pydantic-2.13.5.dist-info\\INSTALLER"
+    },
+    {
+      "bytes": 110178,
+      "sha256": "0685830D13647BD6F3F05526043D32A8B2A221D86B53773053D6C52BB17A9C07",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\pydantic-2.13.5.dist-info\\METADATA"
+    },
+    {
+      "bytes": 15456,
+      "sha256": "B30464DC1ED2BF65325ACBF20ACEC1BA8EC168ACD08A7146C5B6B9661B0C4EEF",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\pydantic-2.13.5.dist-info\\RECORD"
+    },
+    {
+      "bytes": 87,
+      "sha256": "CCEC20E2307ACD7DA453DD7437E70C6B08E2BC3EAD3BC3445AF135DA37B56D59",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\pydantic-2.13.5.dist-info\\WHEEL"
+    },
+    {
+      "bytes": 1129,
+      "sha256": "A9E186F3CA16B5EEF84318E7A701721351A00CB7B8AE3A4394B67B49E3529EF3",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\pydantic-2.13.5.dist-info\\licenses\\LICENSE"
+    },
+    {
+      "bytes": 5164544,
+      "sha256": "4AED666AF55612C3836F1D8CCB632FD6C2E70BEE29A59EB191E2C02561EDA1BC",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\pydantic_core\\_pydantic_core.cp314-win_amd64.pyd"
+    },
+    {
+      "bytes": 27448,
+      "sha256": "3402E3B5D062F4959C9255C543C81EF6A8E836A13D55F887AB5C8DFEB7C904CC",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\MSVCP140_1.dll"
+    },
+    {
+      "bytes": 271672,
+      "sha256": "9AF161C91B5285562E0A0B637E802DA007E9B7FFCFBC5D35A846075B5446FA3E",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\MSVCP140_2.dll"
+    },
+    {
+      "bytes": 549176,
+      "sha256": "90A1B0709FAE970FE62072B7A322EBF713A956228F99BF5B46B3BDC980290B7E",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\MSVCP140.dll"
+    },
+    {
+      "bytes": 20639544,
+      "sha256": "F67385109E5E5F195034243AB57E6D162C0EE972A58C2BD528DA02D97C5AEA53",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\opengl32sw.dll"
+    },
+    {
+      "bytes": 267576,
+      "sha256": "1D737937C8335025D5A3CD44FECC70000A8FD2E46BB8E1F031F2BD16CBD9B5C0",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\pyside6.abi3.dll"
+    },
+    {
+      "bytes": 10486584,
+      "sha256": "89383CA8AA134BD228EAC80C879E4048D2F7982F646EDA53FEE35547C20D0C3C",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\Qt6Core.dll"
+    },
+    {
+      "bytes": 9544504,
+      "sha256": "5731A1D41F60AB686859943225848973726F4B00FD5E8E420453A12B1A2D1B95",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\Qt6Gui.dll"
+    },
+    {
+      "bytes": 1770808,
+      "sha256": "0E7DFC2C0495E87E5FA451499F9AF2105F8A5F09ED4A09123B86CA125263EED5",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\Qt6Network.dll"
+    },
+    {
+      "bytes": 1977656,
+      "sha256": "D9FE875307794CFC10145236428D0E49D429744C537B650034CC83C38113733E",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\Qt6OpenGL.dll"
+    },
+    {
+      "bytes": 64312,
+      "sha256": "307AFB9B5FA6BF105C668C21E0B69BDD68866E1B80A9E68A7C8940F5363DAE3F",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\Qt6OpenGLWidgets.dll"
+    },
+    {
+      "bytes": 640824,
+      "sha256": "8D38E9BDF7CE0B08EF0F9A7CE19B7817F76D34289845008A08D7743223EE7991",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\Qt6Svg.dll"
+    },
+    {
+      "bytes": 6588216,
+      "sha256": "0BC3F3D90E6090023210887EA5748D0B0800727CB407BEF5090AA338089EA22A",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\Qt6Widgets.dll"
+    },
+    {
+      "bytes": 3325752,
+      "sha256": "9D9EC6D5244EC8CC93156386394FE9D0FC96E749C2969FE013BF15F5C5A9784D",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\QtCore.pyd"
+    },
+    {
+      "bytes": 3888440,
+      "sha256": "F58A2F83833FF32BEB8729CBCF7D17A1A0386D7B535BA1EC60C20478F68BC2BF",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\QtGui.pyd"
+    },
+    {
+      "bytes": 1006904,
+      "sha256": "0C15FDF840B01621D52CB1E463D4853D0F0D873D87836BA0CC370D3425A522C3",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\QtNetwork.pyd"
+    },
+    {
+      "bytes": 8713016,
+      "sha256": "82EC1043012F27BDE8AC8E5DFCE33D0C495891D209D809B20A66CD0D01FA45EB",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\QtOpenGL.pyd"
+    },
+    {
+      "bytes": 121656,
+      "sha256": "8E00CC408B20D5AFF4A3D559DC8F140E93993D51109257A0E8322E67026F5507",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\QtOpenGLWidgets.pyd"
+    },
+    {
+      "bytes": 115000,
+      "sha256": "676400B8B862EC50B02310D4E6A5112ED47A7F0ABB5653EB6FAB3DE88DDBA9CE",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\QtSvg.pyd"
+    },
+    {
+      "bytes": 4855608,
+      "sha256": "F14F92C99618246EE9A08632B46FC2493FB82607EDB2F75318E44731DDCC7187",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\QtWidgets.pyd"
+    },
+    {
+      "bytes": 41272,
+      "sha256": "CCDA43D3B89F251253BBCDA9FDEA6A1844BBB39F0F44471B4FA77FEDAF56F8B8",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\VCRUNTIME140_1.dll"
+    },
+    {
+      "bytes": 116024,
+      "sha256": "90B16BD48994B1373CFA5FBEDED5996A4E999845958A3CD04992F50B6AAF71B3",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\VCRUNTIME140.dll"
+    },
+    {
+      "bytes": 102712,
+      "sha256": "2622444CB327FF788AC70A557E026029EC30230FC55D5D6D454177798215B615",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\generic\\qtuiotouchplugin.dll"
+    },
+    {
+      "bytes": 72504,
+      "sha256": "F73CE2BE52363E6B97A7E7F1F3DBF877542659963B452EE472E5BD34517D68CB",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\iconengines\\qsvgicon.dll"
+    },
+    {
+      "bytes": 47928,
+      "sha256": "1CFC07DBFF333DB31FA4DF426EED42F3E8C080CF315209F710DC92B48D0F63C0",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\imageformats\\qgif.dll"
+    },
+    {
+      "bytes": 55608,
+      "sha256": "DAA1EF48BDEAF5EA7F179B2F70B1626F1EEE7050228BE51241C21FC6FFB4C17A",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\imageformats\\qicns.dll"
+    },
+    {
+      "bytes": 45880,
+      "sha256": "740FB392EDE2F70EE1D0AC0F5EE56E1FA29DB8CF319E0EFC40466712048D6933",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\imageformats\\qico.dll"
+    },
+    {
+      "bytes": 577336,
+      "sha256": "A00273BBD70E9582989E09C11C15C92EA32402798A0980B1E00EF9D55FD87D1A",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\imageformats\\qjpeg.dll"
+    },
+    {
+      "bytes": 42296,
+      "sha256": "679908CAE8BB885E0EBDA06B1FC87942E25E5DAAE8A151CDCF1B0B8EF177A3C3",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\imageformats\\qpdf.dll"
+    },
+    {
+      "bytes": 39224,
+      "sha256": "4EB18DBFC255B9D180C01695C65C55A5830A25D676D9C86526FD205501844A68",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\imageformats\\qsvg.dll"
+    },
+    {
+      "bytes": 38200,
+      "sha256": "77A602E4A88F54DB804921F4051E0BD11B90A854D9B9FFDADA9793C2E2DE19B2",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\imageformats\\qtga.dll"
+    },
+    {
+      "bytes": 441656,
+      "sha256": "A3C9B982D9332F78FD131725D7A7CB43FD0728E1CE87278539819DEDA693FBC8",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\imageformats\\qtiff.dll"
+    },
+    {
+      "bytes": 36664,
+      "sha256": "4BD7B7F7BD890A570489F0E55261BCEE559E76D09A82A7CA4320C1B310082CB4",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\imageformats\\qwbmp.dll"
+    },
+    {
+      "bytes": 562488,
+      "sha256": "AB176A6B6DFCE8C9886B9A5FCC51877DAFFA3B49FE0F1480FAF332E74757CBB6",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\imageformats\\qwebp.dll"
+    },
+    {
+      "bytes": 70968,
+      "sha256": "F97CEAAA4BBB38BCB7D957372D859D2498B4B9D17EBAFC7A6A95DA4E7C8F79FD",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\networkinformation\\qnetworklistmanager.dll"
+    },
+    {
+      "bytes": 33592,
+      "sha256": "E88A0B1AF3A7BE1B9D152151EBBC8FE3C44B8993B1B3898164E493F6F365E916",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\platforminputcontexts\\qtvirtualkeyboardplugin.dll"
+    },
+    {
+      "bytes": 1082680,
+      "sha256": "79BC6AD89693F1806A5DF78DE90144EAB62A3C899A9BBA98C19AB5CC08A4280D",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\platforms\\qdirect2d.dll"
+    },
+    {
+      "bytes": 61752,
+      "sha256": "690DAFA73C039FFED32A71215C96A8C0E8DC3A14AB69CE1FA6753D15E7117502",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\platforms\\qminimal.dll"
+    },
+    {
+      "bytes": 113976,
+      "sha256": "53B6C5447C1055D75BE99E17B2E84BAE323EF6DA2954CF8F874EEB8009AA0159",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\platforms\\qoffscreen.dll"
+    },
+    {
+      "bytes": 1000248,
+      "sha256": "F857F6B5675BF70CE582FB166108285F31870A83D87B44BBC4B6DA98A10B687B",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\platforms\\qwindows.dll"
+    },
+    {
+      "bytes": 229176,
+      "sha256": "B6CEF67376D8FD43A73E7EBE8745634F3AB2BBF42790C699B3AA1A95D8C512B4",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\styles\\qmodernwindowsstyle.dll"
+    },
+    {
+      "bytes": 103224,
+      "sha256": "8293B522206BD47933D42316A7AF44A869744ED9D2A9D75881FFD0F914F5920E",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\tls\\qcertonlybackend.dll"
+    },
+    {
+      "bytes": 317752,
+      "sha256": "5DF405FE5D74EDFCBC2E8288182F1891EAB9FE56C7351558A915372E20B5E193",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\tls\\qopensslbackend.dll"
+    },
+    {
+      "bytes": 263480,
+      "sha256": "AD8D88A72ABD775A59A8A267094B517812342B4641CAFE80576E18571CEAAC03",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\plugins\\tls\\qschannelbackend.dll"
+    },
+    {
+      "bytes": 33,
+      "sha256": "494AC9A2B2CB2FDECED353F4A9F898ED8DCF616E9BC667438C62681E3F7F79CF",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\translations\\qt_en.qm"
+    },
+    {
+      "bytes": 33,
+      "sha256": "494AC9A2B2CB2FDECED353F4A9F898ED8DCF616E9BC667438C62681E3F7F79CF",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\translations\\qt_help_en.qm"
+    },
+    {
+      "bytes": 7917,
+      "sha256": "AE603B2C0D434D40CDE433FFCBA65F9EE27978A9E19316007BE7FE782A5B8B47",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\translations\\qt_help_ja.qm"
+    },
+    {
+      "bytes": 5115,
+      "sha256": "E256D1F6034A5A5521C62F129F91731216E474F71E1D9CAEA3D3DCB11B670DEB",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\translations\\qt_help_zh_CN.qm"
+    },
+    {
+      "bytes": 5160,
+      "sha256": "40112812ABB43853D678CC6D97729F21F21B3A7321C827FC9D18F6C936447D1E",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\translations\\qt_help_zh_TW.qm"
+    },
+    {
+      "bytes": 84,
+      "sha256": "0F5FE50452947D1EE9755249D860354BFF6977279B4C496A5BC77E5B89DD745E",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\translations\\qt_ja.qm"
+    },
+    {
+      "bytes": 99,
+      "sha256": "C0E29D32C9540A7E78643B74214E633C56F6AB11F018E516629F2C11B1FB09FC",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\translations\\qt_zh_CN.qm"
+    },
+    {
+      "bytes": 99,
+      "sha256": "24E226954491689549A1A1990DB3B8CB78888008D8163B2FD2442B772B6D1B5F",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\translations\\qt_zh_TW.qm"
+    },
+    {
+      "bytes": 33,
+      "sha256": "494AC9A2B2CB2FDECED353F4A9F898ED8DCF616E9BC667438C62681E3F7F79CF",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\translations\\qtbase_en.qm"
+    },
+    {
+      "bytes": 129913,
+      "sha256": "2B9581C69B975F59BE505B127CD3C19D403EF3D12E0E8386FB97238223E9C1DF",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\translations\\qtbase_ja.qm"
+    },
+    {
+      "bytes": 147222,
+      "sha256": "0481A9B92A6F0578400E960A7D5EE70217A6A450EAF7F98B7D32B8DBD0D58616",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\translations\\qtbase_zh_CN.qm"
+    },
+    {
+      "bytes": 126185,
+      "sha256": "21012B2B427F8D09D31CE9CAE582CA27955B478CA3DC2EC18A3068D808638C6A",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\PySide6\\translations\\qtbase_zh_TW.qm"
+    },
+    {
+      "bytes": 1027584,
+      "sha256": "ED5FB411098D900B359D77CE3543B366708BC23D167DF5D222D033A7C7BBE964",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\pythonwin\\win32ui.pyd"
+    },
+    {
+      "bytes": 694272,
+      "sha256": "4B22E2098EF244548F7D1B9723EB6D76D359D91EA52215BBEF08C0E763A59043",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\pywin32_system32\\pythoncom314.dll"
+    },
+    {
+      "bytes": 136704,
+      "sha256": "E62808F40462F8066C8D19811CEBD15467DE6992B1CB48BE5F5903910F5395F7",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\pywin32_system32\\pywintypes314.dll"
+    },
+    {
+      "bytes": 0,
+      "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\RuntimeData\\Shared\\faulthandler.log"
+    },
+    {
+      "bytes": 549176,
+      "sha256": "929357E3CA461248DAF7A68E2DD49D44D734F28EB8F76959A2CDBA3B42DDB1D6",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\shiboken6\\MSVCP140.dll"
+    },
+    {
+      "bytes": 33080,
+      "sha256": "5BFD3F7DAD7C9DD7AAF66C4893CF5E5F073613C03A5C35C0625721556CFC5C5C",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\shiboken6\\Shiboken.pyd"
+    },
+    {
+      "bytes": 383800,
+      "sha256": "7C94A10AC0B916FBF46EC7494AA578064D63636737E7081C6B969716C7DC7C9F",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\shiboken6\\shiboken6.abi3.dll"
+    },
+    {
+      "bytes": 41272,
+      "sha256": "92AA4B4FFFC5C3C7B7B52A85E665853259C25041CCF527016996622AA769B1F7",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\shiboken6\\VCRUNTIME140_1.dll"
+    },
+    {
+      "bytes": 116024,
+      "sha256": "9FABC4D1FD2FFBE1DBB7590D4C660FCBFC9F551A3E4233D2B70D8E6406C6A46D",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\shiboken6\\VCRUNTIME140.dll"
+    },
+    {
+      "bytes": 2775,
+      "sha256": "4247679ADBA2BCDD8434C8D136E5B1D8465B76523392A142246E575CFEE5FDFA",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\index.html"
+    },
+    {
+      "bytes": 9904,
+      "sha256": "FD0DB9DAFD0A93EEA688260E7F05023C903BBC7104C265BF832981431AAA1618",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\AdminPage-Cuqblv6A.js"
+    },
+    {
+      "bytes": 8040,
+      "sha256": "379C05ED731D4D79DF55E58A252130432D4871A8A946B40B865E7D4D58B95F56",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\AppHeader-CasczflF.js"
+    },
+    {
+      "bytes": 7043,
+      "sha256": "87DD37E154D3504E8FEDFD98F78BEC09CC9F5D4F425472B60BF40D24D2ACA264",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\AppHeader-CssPwG_h.css"
+    },
+    {
+      "bytes": 112536,
+      "sha256": "B9D28E0FBA0404CE7E222155FC0325F411DCB7B1C74E180754F367AD645B1761",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\BrowsePage-2jZamlSe.js"
+    },
+    {
+      "bytes": 3251,
+      "sha256": "E1BFD10A22E1BF222BD0A2160D0860E2F1481B770BCA81D0C1333EEE2B608122",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\BrowsePage-DEZXC-CT.css"
+    },
+    {
+      "bytes": 12126,
+      "sha256": "526E868300DFC1D618358169E11E6D38B33A8ABE524C4CBFE213F649A12A1A78",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\DetailPage-CByvVH2E.js"
+    },
+    {
+      "bytes": 5211,
+      "sha256": "41B17923C442EB75A686699A9E48BF96F3C158957D48A8A430AFE0A5E18F5F6C",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\DetailPage-DjTtBVF1.css"
+    },
+    {
+      "bytes": 259,
+      "sha256": "C2D1A517EADEADC363AF2C7C8936A8F9AC9D6610FA5321B6A2C540A9ACDF5B16",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\download-Bdnzifpr.js"
+    },
+    {
+      "bytes": 4052,
+      "sha256": "A4CC68DE2A88D84B521E39D6528560D5C639D5E800F47EF52803568A63A14C4E",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\EmptyState-BEyyRojG.css"
+    },
+    {
+      "bytes": 21871,
+      "sha256": "709713CC791069DDBBC2BE18969EC2C2C69DA8BFE5519BB2FD9F07DBB9AA2B4A",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\EmptyState-C3rA0dWo.js"
+    },
+    {
+      "bytes": 4790,
+      "sha256": "7A79CBD04B8A71C255BB84BDE09F9BCDEB135D208F082C3AB301B0FEBDFF5EB6",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\GalleryCollectionPage-CVrlAzwn.js"
+    },
+    {
+      "bytes": 2292,
+      "sha256": "58AA90E172EE8A42C22EC1EFD681BDABC3BB3CAC116C7BA919609DBB116AE49F",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\GalleryFavoritesPage-C-DnkdSI.js"
+    },
+    {
+      "bytes": 5778,
+      "sha256": "79CF966AA2DE5951BD2846975C12F5686CBDA3C0B8F890C84F9977DD2D014B20",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\GalleryHomePage-Dy_8pIxk.js"
+    },
+    {
+      "bytes": 12411,
+      "sha256": "47B109B934A9C7BF5FEBC9B00AF910103AE7E71C175083A7203B5BA62BE2830E",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\GalleryViewControls-DW6__qfT.css"
+    },
+    {
+      "bytes": 5729,
+      "sha256": "16BD3C43174CADFD331621A2E2578BCD06FBEB9401DC9BEA43EB4F29B4AB4CB6",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\GalleryViewControls-fNHLdAtZ.js"
+    },
+    {
+      "bytes": 307890,
+      "sha256": "D1309E8FA5F4951636F8E0892AC1BE6C6E25C0A3379A34CDC3A3B5B426D08FFB",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\index-CFFjZpIA.js"
+    },
+    {
+      "bytes": 91034,
+      "sha256": "7517A9E1B3D899030A7628094FE55C7806EB2F2B91D57E1CA373063902800D14",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\index-DBCtIyKm.css"
+    },
+    {
+      "bytes": 253,
+      "sha256": "F6FA04E72BA25A635A3C796C9ACCAB37542C4F9358333BDEE40B97FFE8163366",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\link-DwCpXsQC.js"
+    },
+    {
+      "bytes": 150,
+      "sha256": "080168E9070466F45526D466B403DA15A34A3D328AE46F6307B89817174DAD0B",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\plus-CcOKVbDY.js"
+    },
+    {
+      "bytes": 4382,
+      "sha256": "DECBF57660CDD116684EAAA55E51826FD1870B6BE97D7BA9A65E737667415097",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\ShareReceivePage-xoRaQZXr.js"
+    },
+    {
+      "bytes": 7196,
+      "sha256": "A1AB894BD07BA3FCFF7619F5C93F06AAC62B5FB5C34DEBE52C9C0B0F301C5FF3",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\assets\\Skeleton-cXzfk85e.js"
+    },
+    {
+      "bytes": 48256,
+      "sha256": "3100E775E8616CD2611BEECFA23A4263D7037586789B43F035236A2E6FBD4C62",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\webui\\dist\\fonts\\inter-var-latin.woff2"
+    },
+    {
+      "bytes": 15872,
+      "sha256": "6BECEE5E15C921C2B5457CD6AFF39E02B7540426FB3933B90801265AC60EF23B",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\win32\\_win32sysloader.pyd"
+    },
+    {
+      "bytes": 139264,
+      "sha256": "9004920E2C7863C34D0B3C4183AB3E1482475817CFB64F4F198E1FDD43F48F4E",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\win32\\win32api.pyd"
+    },
+    {
+      "bytes": 30208,
+      "sha256": "F16242B661C20F510EA13FA3DCAC5BD332BCCB4D135EF2AB497B3F3F3398C389",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\win32\\win32event.pyd"
+    },
+    {
+      "bytes": 25088,
+      "sha256": "9D7EB0F1B4F4041D86420FD0E44FE4B07B6D64C999E8F6B5B5CC3CE8648EABE1",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\win32\\win32trace.pyd"
+    },
+    {
+      "bytes": 545792,
+      "sha256": "B85E860E01E94B3ACA2E8E7033F8B31439EF670F4810ABC9BC4109B2E48F2B47",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\win32com\\shell\\shell.pyd"
+    },
+    {
+      "bytes": 84992,
+      "sha256": "D394097355610B57B243B4353FA73D5D888A82378D7AF9A608C41883BB719CB2",
+      "path": "artifacts\\dist-clean-process\\AssetManager\\_internal\\yarl\\_quoting_c.cp314-win_amd64.pyd"
+    }
+  ],
+  "webui_dist": [
+    {
+      "sha256": "4247679ADBA2BCDD8434C8D136E5B1D8465B76523392A142246E575CFEE5FDFA",
+      "path": "webui\\dist\\index.html"
+    },
+    {
+      "sha256": "FD0DB9DAFD0A93EEA688260E7F05023C903BBC7104C265BF832981431AAA1618",
+      "path": "webui\\dist\\assets\\AdminPage-Cuqblv6A.js"
+    },
+    {
+      "sha256": "379C05ED731D4D79DF55E58A252130432D4871A8A946B40B865E7D4D58B95F56",
+      "path": "webui\\dist\\assets\\AppHeader-CasczflF.js"
+    },
+    {
+      "sha256": "87DD37E154D3504E8FEDFD98F78BEC09CC9F5D4F425472B60BF40D24D2ACA264",
+      "path": "webui\\dist\\assets\\AppHeader-CssPwG_h.css"
+    },
+    {
+      "sha256": "B9D28E0FBA0404CE7E222155FC0325F411DCB7B1C74E180754F367AD645B1761",
+      "path": "webui\\dist\\assets\\BrowsePage-2jZamlSe.js"
+    },
+    {
+      "sha256": "E1BFD10A22E1BF222BD0A2160D0860E2F1481B770BCA81D0C1333EEE2B608122",
+      "path": "webui\\dist\\assets\\BrowsePage-DEZXC-CT.css"
+    },
+    {
+      "sha256": "526E868300DFC1D618358169E11E6D38B33A8ABE524C4CBFE213F649A12A1A78",
+      "path": "webui\\dist\\assets\\DetailPage-CByvVH2E.js"
+    },
+    {
+      "sha256": "41B17923C442EB75A686699A9E48BF96F3C158957D48A8A430AFE0A5E18F5F6C",
+      "path": "webui\\dist\\assets\\DetailPage-DjTtBVF1.css"
+    },
+    {
+      "sha256": "C2D1A517EADEADC363AF2C7C8936A8F9AC9D6610FA5321B6A2C540A9ACDF5B16",
+      "path": "webui\\dist\\assets\\download-Bdnzifpr.js"
+    },
+    {
+      "sha256": "A4CC68DE2A88D84B521E39D6528560D5C639D5E800F47EF52803568A63A14C4E",
+      "path": "webui\\dist\\assets\\EmptyState-BEyyRojG.css"
+    },
+    {
+      "sha256": "709713CC791069DDBBC2BE18969EC2C2C69DA8BFE5519BB2FD9F07DBB9AA2B4A",
+      "path": "webui\\dist\\assets\\EmptyState-C3rA0dWo.js"
+    },
+    {
+      "sha256": "7A79CBD04B8A71C255BB84BDE09F9BCDEB135D208F082C3AB301B0FEBDFF5EB6",
+      "path": "webui\\dist\\assets\\GalleryCollectionPage-CVrlAzwn.js"
+    },
+    {
+      "sha256": "58AA90E172EE8A42C22EC1EFD681BDABC3BB3CAC116C7BA919609DBB116AE49F",
+      "path": "webui\\dist\\assets\\GalleryFavoritesPage-C-DnkdSI.js"
+    },
+    {
+      "sha256": "79CF966AA2DE5951BD2846975C12F5686CBDA3C0B8F890C84F9977DD2D014B20",
+      "path": "webui\\dist\\assets\\GalleryHomePage-Dy_8pIxk.js"
+    },
+    {
+      "sha256": "47B109B934A9C7BF5FEBC9B00AF910103AE7E71C175083A7203B5BA62BE2830E",
+      "path": "webui\\dist\\assets\\GalleryViewControls-DW6__qfT.css"
+    },
+    {
+      "sha256": "16BD3C43174CADFD331621A2E2578BCD06FBEB9401DC9BEA43EB4F29B4AB4CB6",
+      "path": "webui\\dist\\assets\\GalleryViewControls-fNHLdAtZ.js"
+    },
+    {
+      "sha256": "D1309E8FA5F4951636F8E0892AC1BE6C6E25C0A3379A34CDC3A3B5B426D08FFB",
+      "path": "webui\\dist\\assets\\index-CFFjZpIA.js"
+    },
+    {
+      "sha256": "7517A9E1B3D899030A7628094FE55C7806EB2F2B91D57E1CA373063902800D14",
+      "path": "webui\\dist\\assets\\index-DBCtIyKm.css"
+    },
+    {
+      "sha256": "F6FA04E72BA25A635A3C796C9ACCAB37542C4F9358333BDEE40B97FFE8163366",
+      "path": "webui\\dist\\assets\\link-DwCpXsQC.js"
+    },
+    {
+      "sha256": "080168E9070466F45526D466B403DA15A34A3D328AE46F6307B89817174DAD0B",
+      "path": "webui\\dist\\assets\\plus-CcOKVbDY.js"
+    },
+    {
+      "sha256": "DECBF57660CDD116684EAAA55E51826FD1870B6BE97D7BA9A65E737667415097",
+      "path": "webui\\dist\\assets\\ShareReceivePage-xoRaQZXr.js"
+    },
+    {
+      "sha256": "A1AB894BD07BA3FCFF7619F5C93F06AAC62B5FB5C34DEBE52C9C0B0F301C5FF3",
+      "path": "webui\\dist\\assets\\Skeleton-cXzfk85e.js"
+    },
+    {
+      "sha256": "3100E775E8616CD2611BEECFA23A4263D7037586789B43F035236A2E6FBD4C62",
+      "path": "webui\\dist\\fonts\\inter-var-latin.woff2"
+    }
+  ],
+  "environment": {
+    "ruff": "0.15.16",
+    "pytest": "9.0.2",
+    "PyInstaller": "6.19.0",
+    "python": "3.14.3",
+    "pyright": "1.1.410",
+    "PySide6": "6.11.0",
+    "injected_runtime_references": 0
+  },
+  "verifier": {
+    "sha256": "3FC2BCD72091FB66FB71C9DF0DC4AE0C0D429776F2B43DE049513E6EDF108E85",
+    "path": "scripts/perf/w6_package_functional.py",
+    "snapshot_sha256": "3FC2BCD72091FB66FB71C9DF0DC4AE0C0D429776F2B43DE049513E6EDF108E85"
+  }
+}

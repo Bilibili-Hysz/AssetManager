@@ -1,0 +1,62 @@
+{
+ "mode": "onefile",
+ "exe_sha256": "d749a55df6a63cdfad5bb5c87202c471faeb8f9dd0a4e7ff17e4759ba717541f",
+ "pid": 3864,
+ "port": 1868,
+ "maximized": false,
+ "checks": {
+  "info": {
+   "share_name": "W6-Functional",
+   "auth_mode": "password",
+   "thumbnail_cache_namespace": true
+  },
+  "login": "ok",
+  "font": "48256 bytes, byte-identical",
+  "thumbnail_single": "178 bytes WEBP",
+  "thumbnail_batch": "12/12",
+  "notes_rating": "saved and read back (notes + rating=4)",
+  "live_change": "live_added.png listed",
+  "geometry_persisted": {
+   "window_maximized": false,
+   "has_geometry": true
+  }
+ },
+ "window_initial": {
+  "hwnd": 26675342,
+  "pid": 19204,
+  "title": "AssetManager — C:\\Users\\86177\\AppData\\Local\\Temp\\w6-func-o1fti8s0\\library",
+  "class": "Qt6110QWindowIcon",
+  "owner": 0,
+  "visible": true,
+  "maximized": false
+ },
+ "close": {
+  "normal_exit": {
+   "entry": "Ctrl+Q",
+   "exit_code": 0
+  },
+  "hide_observation": "not_run (use --observe-hide; diagnostic only)"
+ },
+ "restart": {
+  "pid": 12448,
+  "window": {
+   "hwnd": 11799444,
+   "pid": 16532,
+   "title": "AssetManager",
+   "class": "Qt6110QWindowIcon",
+   "owner": 0,
+   "visible": true,
+   "maximized": false
+  },
+  "notes_rating": {
+   "path": "pkg_000.png",
+   "tags": [],
+   "notes": "W6 functional note",
+   "urls": [],
+   "rating": 4
+  },
+  "normal_exit_code": 0
+ },
+ "valid": true,
+ "failures": []
+}

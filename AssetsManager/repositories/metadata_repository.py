@@ -121,10 +121,18 @@ class MetadataRepository(_SessionBoundRepository):
         ]
 
     @_repository_operation
-    def set_notes(self, file_path: str, notes: str) -> None:
+    def set_notes(
+        self,
+        file_path: str,
+        notes: str,
+        *,
+        require_clean_transaction: bool = False,
+    ) -> None:
         """Set notes for a file path."""
         file_path = self._path_key(file_path)
-        with self._write_scope("set_notes"):
+        with self._write_scope(
+            "set_notes", require_clean_transaction=require_clean_transaction
+        ):
             self._conn.execute(
                 "INSERT INTO file_meta (file_path, notes) VALUES (?, ?) "
                 "ON CONFLICT(file_path) DO UPDATE SET notes=excluded.notes",
@@ -171,7 +179,13 @@ class MetadataRepository(_SessionBoundRepository):
             )
 
     @_repository_operation
-    def add_url(self, file_path: str, url: str) -> list[str] | None:
+    def add_url(
+        self,
+        file_path: str,
+        url: str,
+        *,
+        require_clean_transaction: bool = False,
+    ) -> list[str] | None:
         """Add a URL atomically via a single JSON-append statement.
 
         The append happens inside one UPDATE, so concurrent writers on
@@ -181,7 +195,9 @@ class MetadataRepository(_SessionBoundRepository):
         inserted on first use.
         """
         file_path = self._path_key(file_path)
-        with self._write_scope("add_url"):
+        with self._write_scope(
+            "add_url", require_clean_transaction=require_clean_transaction
+        ):
             cur = self._conn.execute(
                 "UPDATE file_meta "
                 "SET urls = json_insert("
@@ -210,14 +226,22 @@ class MetadataRepository(_SessionBoundRepository):
             return None
 
     @_repository_operation
-    def remove_url(self, file_path: str, url: str) -> list[str] | None:
+    def remove_url(
+        self,
+        file_path: str,
+        url: str,
+        *,
+        require_clean_transaction: bool = False,
+    ) -> list[str] | None:
         """Remove a URL under the process write lock. Returns updated URLs if changed.
 
         Concurrency note: same non-atomic read-modify-write caveat as
         :meth:`add_url` — only atomic per connection, not across connections.
         """
         file_path = self._path_key(file_path)
-        with self._write_scope("remove_url"):
+        with self._write_scope(
+            "remove_url", require_clean_transaction=require_clean_transaction
+        ):
             urls = self.get_urls(file_path)
             if url not in urls:
                 return None
@@ -511,7 +535,13 @@ class MetadataRepository(_SessionBoundRepository):
         return int(row[0])
 
     @_repository_operation
-    def set_rating(self, file_path: str, rating: int | None) -> None:
+    def set_rating(
+        self,
+        file_path: str,
+        rating: int | None,
+        *,
+        require_clean_transaction: bool = False,
+    ) -> None:
         """Set (or clear) the 0-5 rating for a file path.
 
         ``rating=None`` clears the rating back to unrated (NULL); a missing
@@ -527,7 +557,9 @@ class MetadataRepository(_SessionBoundRepository):
                 f"rating must be an integer 0-5 or None, got {rating!r}"
             )
         file_path = self._path_key(file_path)
-        with self._write_scope("set_rating"):
+        with self._write_scope(
+            "set_rating", require_clean_transaction=require_clean_transaction
+        ):
             if rating is None:
                 self._conn.execute(
                     "UPDATE file_meta SET rating=NULL WHERE file_path=?",

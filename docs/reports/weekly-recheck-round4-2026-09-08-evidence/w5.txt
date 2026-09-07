@@ -1,0 +1,28 @@
+library: C:\Users\86177\AppData\Local\Temp\w5-lan-4c0s6yvz\library (100 files)
+RSS at start: 33 MB
+{"name": "baseline_after_boot", "rss_mb": 101.1}
+{"name": "server_started", "rss_mb": 101.3, "port": 11602}
+{"name": "health_ok", "rss_mb": 102.5, "share_name": "AssetManager", "auth_mode": "password"}
+{"name": "login_ok", "rss_mb": 102.6}
+{"name": "browse_ok", "rss_mb": 103.0, "items": 50, "count": 1, "total_s": 0.227, "p50_ms": 226.7, "max_ms": 226.7}
+{"name": "thumbnails_c1_100", "rss_mb": 103.5, "count": 100, "total_s": 13.213, "p50_ms": 125.5, "max_ms": 380.7}
+{"name": "after_thumbnails_c1", "rss_mb": 103.5}
+{"name": "thumbnails_batch_50", "rss_mb": 133.4, "delivered": 50, "verified": 50, "total_s": 9.91}
+{"name": "after_thumbnails_batch", "rss_mb": 133.4}
+{"name": "downloads_100", "rss_mb": 133.5, "count": 100, "total_s": 3.263, "p50_ms": 30.7, "max_ms": 228.2}
+{"name": "after_downloads", "rss_mb": 133.5}
+{"name": "zip_20_files", "rss_mb": 133.6, "bytes": 4336, "members": 20, "total_s": 0.628}
+{"name": "after_zip", "rss_mb": 133.6}
+{"name": "mixed_c8_48", "rss_mb": 135.3, "wall_s": 1.443, "count": 48, "total_s": 10.901, "p50_ms": 250.0, "max_ms": 486.2}
+{"name": "after_mixed_c8", "rss_mb": 135.3}
+{"name": "cancel_reclaim_ok", "rss_mb": 135.3, "big_file_mb": 192, "aborted_after_bytes": 1102848, "abort_window_s": 0.151, "rss_after_cancel_mb": 135.3}
+{"name": "post_cancel_same_object_retry_ok", "rss_mb": 135.3, "bytes": 201326592, "sha256": "e40c4a7643b40c39"}
+{"name": "repeat_thumbnails_1", "rss_mb": 135.8}
+{"name": "repeat_thumbnails_2", "rss_mb": 135.9}
+{"name": "repeat_thumbnails_3", "rss_mb": 135.9}
+{"name": "rss_peak_during_run", "rss_mb": 135.9, "peak_mb": 139.3, "client_loop_max_lag_ms": 664.3, "server_loop_max_lag_ms": 347.7}
+{"name": "server_stopped", "rss_mb": 132.9}
+
+evidence: artifacts\perf\w5-lan-resources\results.json
+RSS: start=101.1MB spot_peak=135.9MB during_request_peak=139.3MB final=132.9MB | repeat batch growth: 0.1MB | loop max lag: 347.7ms
+VERDICT: bounded

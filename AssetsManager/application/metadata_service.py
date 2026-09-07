@@ -246,6 +246,9 @@ class MetadataService:
         ``in_transaction`` peek can observe the worker's short transaction on
         the shared connection and reject a mutation that owns no outer
         transaction (deterministically reproduced by the round-3 recheck).
+        The event-publishing write methods also pass
+        ``require_clean_transaction`` to the repository, which repeats this
+        check atomically with the write and closes any later TOCTOU window.
         """
         if self._session is None:
             return
@@ -289,7 +292,7 @@ class MetadataService:
         key = str(target)
         repo = self._repo(root)
         self._require_event_safe_transaction(repo)
-        repo.set_notes(key, text)
+        repo.set_notes(key, text, require_clean_transaction=True)
         self._reindex_search_document(key)
         self._publish_notes_changed(key)
 
@@ -305,7 +308,7 @@ class MetadataService:
         key = str(target)
         repo = self._repo(root)
         self._require_event_safe_transaction(repo)
-        urls = repo.add_url(key, url)
+        urls = repo.add_url(key, url, require_clean_transaction=True)
         if urls is not None:
             result = tuple(urls)
             self._publish_urls_changed(key, result)
@@ -318,7 +321,7 @@ class MetadataService:
         key = str(target)
         repo = self._repo(root)
         self._require_event_safe_transaction(repo)
-        urls = repo.remove_url(key, url)
+        urls = repo.remove_url(key, url, require_clean_transaction=True)
         if urls is not None:
             result = tuple(urls)
             self._publish_urls_changed(key, result)
@@ -353,7 +356,7 @@ class MetadataService:
         key = str(target)
         repo = self._repo(root)
         self._require_event_safe_transaction(repo)
-        repo.set_rating(key, rating)
+        repo.set_rating(key, rating, require_clean_transaction=True)
         self._publish_rating_changed(key, rating)
 
     @session_operation

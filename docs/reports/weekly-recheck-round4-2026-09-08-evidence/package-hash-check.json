@@ -1,0 +1,1146 @@
+[
+  {
+    "path": "dist/AssetManager.exe",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\81d243bd2c585b0f4821__mypyc.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\_asyncio.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\_brotli.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\_bz2.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\_cffi_backend.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\_ctypes.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\_decimal.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\_elementtree.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\_hashlib.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\_lzma.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\_multiprocessing.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\_overlapped.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\_queue.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\_socket.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\_sqlite3.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\_ssl.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\_uuid.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\_wmi.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\_zoneinfo.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\_zstd.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\aiohttp\\_http_parser.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\aiohttp\\_http_writer.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\aiohttp\\_websocket\\mask.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\aiohttp\\_websocket\\reader_c.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-console-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-datetime-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-debug-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-errorhandling-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-fibers-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-fibers-l1-1-1.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-file-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-file-l1-2-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-file-l2-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-handle-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-heap-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-interlocked-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-kernel32-legacy-l1-1-1.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-libraryloader-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-localization-l1-2-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-memory-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-namedpipe-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-processenvironment-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-processthreads-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-processthreads-l1-1-1.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-profile-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-rtlsupport-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-string-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-synch-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-synch-l1-2-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-sysinfo-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-sysinfo-l1-2-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-timezone-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-core-util-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-crt-conio-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-crt-convert-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-crt-environment-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-crt-filesystem-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-crt-heap-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-crt-locale-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-crt-math-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-crt-process-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-crt-runtime-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-crt-stdio-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-crt-string-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-crt-time-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\api-ms-win-crt-utility-l1-1-0.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\icons\\AssetsManager_icon.png",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\icons\\AssetsManager_icon.svg",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\icons\\icon.ico",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\D_Amber.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\D_Charcoal.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\D_Default.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\D_Dracula.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\D_Espresso.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\D_Forest.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\D_Gruvbox.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\D_Midnight.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\D_Navy.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\D_Nord.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\D_Onyx.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\D_Rosepine.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\D_Slate.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\L_Coral.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\L_Dawn.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\L_Frost.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\L_Lavender.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\L_Lilac.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\L_Mint.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\L_Peach.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\L_Rose.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\L_Sage.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\L_Silver.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Assets\\Themes\\L_Sky.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\AssetsManager\\i18n\\en.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\AssetsManager\\i18n\\ja.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\AssetsManager\\i18n\\zh.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\attrs-26.1.0.dist-info\\INSTALLER",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\attrs-26.1.0.dist-info\\licenses\\LICENSE",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\attrs-26.1.0.dist-info\\METADATA",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\attrs-26.1.0.dist-info\\RECORD",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\attrs-26.1.0.dist-info\\REQUESTED",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\attrs-26.1.0.dist-info\\WHEEL",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\base_library.zip",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\certifi\\cacert.pem",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\certifi\\py.typed",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\charset_normalizer\\cd.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\charset_normalizer\\md.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\cryptography\\hazmat\\bindings\\_rust.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\cryptography-50.0.1.dist-info\\INSTALLER",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\cryptography-50.0.1.dist-info\\licenses\\LICENSE",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\cryptography-50.0.1.dist-info\\licenses\\LICENSE.APACHE",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\cryptography-50.0.1.dist-info\\licenses\\LICENSE.BSD",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\cryptography-50.0.1.dist-info\\METADATA",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\cryptography-50.0.1.dist-info\\RECORD",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\cryptography-50.0.1.dist-info\\sboms\\cryptography-rust.cyclonedx.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\cryptography-50.0.1.dist-info\\sboms\\sbom.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\cryptography-50.0.1.dist-info\\WHEEL",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Cython\\Compiler\\Code.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Cython\\Compiler\\FlowControl.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Cython\\Compiler\\FusedNode.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Cython\\Compiler\\LineTable.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Cython\\Compiler\\Parsing.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Cython\\Compiler\\Scanning.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Cython\\Compiler\\Visitor.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Cython\\Plex\\Actions.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Cython\\Plex\\DFA.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Cython\\Plex\\Machines.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Cython\\Plex\\Scanners.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Cython\\Plex\\Transitions.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Cython\\StringIOTree.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Cython\\Tempita\\_tempita.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Cython\\Utils.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\frozenlist\\_frozenlist.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\libcrypto-3.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\libffi-8.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\libssl-3.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\multidict\\_multidict.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PIL\\_imaging.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PIL\\_imagingcms.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PIL\\_imagingft.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PIL\\_imagingmath.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PIL\\_imagingtk.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PIL\\_webp.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Plugins\\Addons\\booth_link\\__pycache__\\parser.cpython-314.pyc",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Plugins\\Addons\\booth_link\\parser.py",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Plugins\\Addons\\booth_link\\plugin.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Plugins\\Addons\\download_tracker\\__pycache__\\tracker.cpython-314.pyc",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Plugins\\Addons\\download_tracker\\plugin.json",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Plugins\\Addons\\download_tracker\\tracker.py",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Plugins\\Docs\\API.md",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Plugins\\Docs\\MODULE_INTERFACES.md",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\Plugins\\Docs\\PLUGIN_SYSTEM.md",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\propcache\\_helpers_c.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\pydantic-2.13.5.dist-info\\INSTALLER",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\pydantic-2.13.5.dist-info\\licenses\\LICENSE",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\pydantic-2.13.5.dist-info\\METADATA",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\pydantic-2.13.5.dist-info\\RECORD",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\pydantic-2.13.5.dist-info\\WHEEL",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\pydantic_core\\_pydantic_core.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\pyexpat.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\MSVCP140.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\MSVCP140_1.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\MSVCP140_2.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\opengl32sw.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\generic\\qtuiotouchplugin.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\iconengines\\qsvgicon.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\imageformats\\qgif.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\imageformats\\qicns.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\imageformats\\qico.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\imageformats\\qjpeg.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\imageformats\\qpdf.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\imageformats\\qsvg.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\imageformats\\qtga.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\imageformats\\qtiff.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\imageformats\\qwbmp.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\imageformats\\qwebp.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\networkinformation\\qnetworklistmanager.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\platforminputcontexts\\qtvirtualkeyboardplugin.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\platforms\\qdirect2d.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\platforms\\qminimal.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\platforms\\qoffscreen.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\platforms\\qwindows.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\styles\\qmodernwindowsstyle.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\tls\\qcertonlybackend.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\tls\\qopensslbackend.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\plugins\\tls\\qschannelbackend.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\pyside6.abi3.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\Qt6Core.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\Qt6Gui.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\Qt6Network.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\Qt6OpenGL.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\Qt6OpenGLWidgets.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\Qt6Svg.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\Qt6Widgets.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\QtCore.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\QtGui.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\QtNetwork.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\QtOpenGL.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\QtOpenGLWidgets.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\QtSvg.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\QtWidgets.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\translations\\qt_en.qm",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\translations\\qt_help_en.qm",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\translations\\qt_help_ja.qm",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\translations\\qt_help_zh_CN.qm",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\translations\\qt_help_zh_TW.qm",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\translations\\qt_ja.qm",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\translations\\qt_zh_CN.qm",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\translations\\qt_zh_TW.qm",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\translations\\qtbase_en.qm",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\translations\\qtbase_ja.qm",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\translations\\qtbase_zh_CN.qm",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\translations\\qtbase_zh_TW.qm",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\VCRUNTIME140.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\PySide6\\VCRUNTIME140_1.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\python3.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\python314.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\pythonwin\\win32ui.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\pywin32_system32\\pythoncom314.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\pywin32_system32\\pywintypes314.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\RuntimeData\\Shared\\faulthandler.log",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\select.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\shiboken6\\MSVCP140.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\shiboken6\\Shiboken.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\shiboken6\\shiboken6.abi3.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\shiboken6\\VCRUNTIME140.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\shiboken6\\VCRUNTIME140_1.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\sqlite3.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\ucrtbase.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\unicodedata.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\VCRUNTIME140.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\VCRUNTIME140_1.dll",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\AdminPage-Cuqblv6A.js",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\AppHeader-CasczflF.js",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\AppHeader-CssPwG_h.css",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\BrowsePage-2jZamlSe.js",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\BrowsePage-DEZXC-CT.css",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\DetailPage-CByvVH2E.js",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\DetailPage-DjTtBVF1.css",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\download-Bdnzifpr.js",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\EmptyState-BEyyRojG.css",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\EmptyState-C3rA0dWo.js",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\GalleryCollectionPage-CVrlAzwn.js",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\GalleryFavoritesPage-C-DnkdSI.js",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\GalleryHomePage-Dy_8pIxk.js",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\GalleryViewControls-DW6__qfT.css",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\GalleryViewControls-fNHLdAtZ.js",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\index-CFFjZpIA.js",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\index-DBCtIyKm.css",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\link-DwCpXsQC.js",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\plus-CcOKVbDY.js",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\ShareReceivePage-xoRaQZXr.js",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\assets\\Skeleton-cXzfk85e.js",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\fonts\\inter-var-latin.woff2",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\webui\\dist\\index.html",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\win32\\_win32sysloader.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\win32\\win32api.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\win32\\win32event.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\win32\\win32trace.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\win32com\\shell\\shell.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\_internal\\yarl\\_quoting_c.cp314-win_amd64.pyd",
+    "ok": true
+  },
+  {
+    "path": "dist\\AssetManager\\AssetManager.exe",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\AdminPage-Cuqblv6A.js",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\AppHeader-CasczflF.js",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\AppHeader-CssPwG_h.css",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\BrowsePage-2jZamlSe.js",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\BrowsePage-DEZXC-CT.css",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\DetailPage-CByvVH2E.js",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\DetailPage-DjTtBVF1.css",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\download-Bdnzifpr.js",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\EmptyState-BEyyRojG.css",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\EmptyState-C3rA0dWo.js",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\GalleryCollectionPage-CVrlAzwn.js",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\GalleryFavoritesPage-C-DnkdSI.js",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\GalleryHomePage-Dy_8pIxk.js",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\GalleryViewControls-DW6__qfT.css",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\GalleryViewControls-fNHLdAtZ.js",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\index-CFFjZpIA.js",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\index-DBCtIyKm.css",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\link-DwCpXsQC.js",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\plus-CcOKVbDY.js",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\ShareReceivePage-xoRaQZXr.js",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\assets\\Skeleton-cXzfk85e.js",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\fonts\\inter-var-latin.woff2",
+    "ok": true
+  },
+  {
+    "path": "webui\\dist\\index.html",
+    "ok": true
+  }
+]

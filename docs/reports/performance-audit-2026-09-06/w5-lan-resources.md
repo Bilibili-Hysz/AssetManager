@@ -1,5 +1,7 @@
 # 性能审查 W5 · LAN 资源测量（2026-09-07）
 
+> 历史记录说明（2026-09-08）：下文保留早期执行事实；后续第四轮已补 HTTP、实际取消及同对象重试小样本证据。以 [本周收口及证据](../week-closeout-2026-09-08.md) 为当前入口，完整容量与资源归还仍归 N3，不以早期 RSS 数字推断完成。
+
 > 状态：**PARTIAL — offscreen 探针 RSS 有界性实证完成；HTTP 功能吞吐需真机或 LAN 测试基建**
 > 依据：[一周计划 §W5](../plans/weekly-priorities-2026-09-07.md)。探针：`scripts/perf/w5_lan_resource_probe.py`；证据：`artifacts/perf/w5-lan-resources/results.json`。
 

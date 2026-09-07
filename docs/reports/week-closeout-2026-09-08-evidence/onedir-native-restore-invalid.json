@@ -1,0 +1,53 @@
+{
+ "mode": "onedir",
+ "exe_sha256": "932edf12b6aa2e741bdad4f7d7f654bce275730d54da95c7707f3641300aae63",
+ "pid": 20756,
+ "port": 13188,
+ "maximized": false,
+ "checks": {
+  "info": {
+   "share_name": "W6-Functional",
+   "auth_mode": "password",
+   "thumbnail_cache_namespace": true
+  },
+  "login": "ok",
+  "font": "48256 bytes, byte-identical",
+  "thumbnail_single": "178 bytes WEBP",
+  "thumbnail_batch": "12/12",
+  "notes_rating": "saved and read back (notes + rating=4)",
+  "live_change": "live_added.png listed"
+ },
+ "window_initial": {
+  "hwnd": 23007490,
+  "pid": 20756,
+  "title": "AssetManager — C:\\Users\\86177\\AppData\\Local\\Temp\\w6-func-hvgcqoj_\\library",
+  "class": "Qt6110QWindowIcon",
+  "owner": 0,
+  "visible": true,
+  "maximized": false
+ },
+ "close": {
+  "wm_close_hidden": true,
+  "process_alive": true,
+  "window_restored_by": "Win32 ShowWindow(SW_SHOW)",
+  "window_visible_after_restore": true,
+  "normal_exit_timeout_observation": {
+   "process_poll": null,
+   "window_visible": true,
+   "window_maximized": false,
+   "foreground_is_target": true,
+   "api_info_status": 200
+  }
+ },
+ "invalid_run_cleanup": [
+  {
+   "process": "initial",
+   "pid": 20756,
+   "returncode": 0
+  }
+ ],
+ "valid": false,
+ "failures": [
+  "normal Ctrl+Q exit did not complete within 30.0s"
+ ]
+}

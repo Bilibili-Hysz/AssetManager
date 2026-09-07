@@ -43,16 +43,38 @@ def fake_resolver(monkeypatch):
 _BOTH = [("eth0", "192.168.1.10"), ("eth1", "10.0.0.5")]
 
 
-def test_follower_waits_and_reads_shared_results(fake_resolver):
-    calls, gate = fake_resolver
+def test_follower_waits_and_reads_shared_results(fake_resolver, monkeypatch):
+    _calls, gate = fake_resolver
     first = lan_utils._enumerate_private_ips(timeout=0.2)
     assert first == [], "gated resolver must yield an empty snapshot, not a hang"
     flight = lan_utils._current_flight
     assert flight.worker is not None and flight.worker.is_alive()
 
+    outcome: dict[str, list[tuple[str, str]]] = {}
+    follower_joined, follower_done = threading.Event(), threading.Event()
+    original_join = flight.worker.join
+
+    def mark_follower_join(timeout=None) -> None:
+        follower_joined.set()
+        original_join(timeout)
+
+    monkeypatch.setattr(flight.worker, "join", mark_follower_join)
+
+    def follow() -> None:
+        outcome["result"] = lan_utils._enumerate_private_ips(timeout=5.0)
+        follower_done.set()
+
+    follower = threading.Thread(target=follow, daemon=True)
+    follower.start()
+    # The marked join occurs after the follower has acquired the current
+    # flight. Releasing first permits a legitimate fresh flight to begin.
+    assert follower_joined.wait(timeout=5), "follower did not join the flight"
+    assert lan_utils._current_flight is flight
+    assert lan_utils._current_flight.worker is flight.worker
     gate.set()
-    second = lan_utils._enumerate_private_ips(timeout=5.0)
-    assert second == _BOTH, "follower must observe the shared worker's results"
+    assert follower_done.wait(timeout=5), "follower did not finish"
+    follower.join(timeout=5)
+    assert outcome["result"] == _BOTH, "follower must observe shared results"
     assert lan_utils._current_flight is flight
     assert lan_utils._current_flight.worker is flight.worker
 

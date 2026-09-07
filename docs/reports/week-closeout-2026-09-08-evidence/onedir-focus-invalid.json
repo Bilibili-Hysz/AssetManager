@@ -1,0 +1,23 @@
+{
+ "mode": "onedir",
+ "exe_sha256": "932edf12b6aa2e741bdad4f7d7f654bce275730d54da95c7707f3641300aae63",
+ "pid": 43740,
+ "port": 8311,
+ "maximized": false,
+ "checks": {},
+ "close": {
+  "status": "not_attempted_after_prior_failure"
+ },
+ "invalid_run_cleanup": [
+  {
+   "process": "initial",
+   "pid": 43740,
+   "returncode": 0
+  }
+ ],
+ "valid": false,
+ "failures": [
+  "could not focus StartupWindow for Enter; open was not sent",
+  "/api/info never returned 200 (last None) within 180.0s"
+ ]
+}

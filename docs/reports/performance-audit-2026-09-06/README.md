@@ -1,5 +1,7 @@
 # 性能审查总览（2026-09-06/07，主线程执行）
 
+> 历史记录说明（2026-09-08）：本页数值仅对应当时桌面性能快照，不代表当前修后候选或 LAN 完整容量验收。当前结论见 [本周收口](../week-closeout-2026-09-08.md)，后续资源测量见 [下周任务](../../plans/weekly-priorities-2026-09-14.md)。
+
 > 状态：**AUDIT COMPLETE** · 范围：桌面应用基础性能（启动/内存/吞吐/UI 帧预算）。LAN 服务端性能归并行线范围，未覆盖。
 > 方法：既有基础设施复用（`-m perf` 门禁基线 / tests/perf 遥测 runner / PerformanceRecorder）+ 新增探针（`scripts/perf/startup_probe.py`、`scan_scale_probe.py`、`write_lock_probe.py`）。
 

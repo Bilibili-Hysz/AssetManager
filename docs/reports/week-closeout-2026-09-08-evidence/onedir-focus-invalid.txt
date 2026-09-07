@@ -1,0 +1,10 @@
+bundle: onedir (D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\f758725a\lifecycle\artifacts\dist-clean-process\AssetManager\AssetManager.exe)
+runtime: C:\Users\86177\AppData\Local\Temp\w6-func-lj3fhp4h\runtime
+library: C:\Users\86177\AppData\Local\Temp\w6-func-lj3fhp4h\library (12 files)
+lan: http://127.0.0.1:8311 (password auth)
+settings seeded: C:\Users\86177\AppData\Local\Temp\w6-func-lj3fhp4h\runtime\Shared\settings.json
+AUTO-OPEN: will focus the sole seeded StartupWindow and press Enter once
+launched pid=43740
+exe sha256: 932edf12b6aa2e741bdad4f7d7f654bce275730d54da95c7707f3641300aae63
+close: {'status': 'not_attempted_after_prior_failure'}
+INVALID: could not focus StartupWindow for Enter; open was not sent; /api/info never returned 200 (last None) within 180.0s

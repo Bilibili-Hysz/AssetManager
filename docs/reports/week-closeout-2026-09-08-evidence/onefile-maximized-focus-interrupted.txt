@@ -1,0 +1,18 @@
+bundle: onefile (D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\f758725a\lifecycle\artifacts\dist-clean-process\AssetManager.exe)
+runtime: C:\Users\86177\AppData\Local\Temp\w6-func-kvwkcxqk\runtime
+library: C:\Users\86177\AppData\Local\Temp\w6-func-kvwkcxqk\library (12 files)
+lan: http://127.0.0.1:7906 (password auth)
+settings seeded: C:\Users\86177\AppData\Local\Temp\w6-func-kvwkcxqk\runtime\Shared\settings.json
+AUTO-OPEN: will focus the sole seeded StartupWindow and press Enter once
+launched pid=6520
+exe sha256: d749a55df6a63cdfad5bb5c87202c471faeb8f9dd0a4e7ff17e4759ba717541f
+info OK: share_name='W6-Functional' auth='password'
+window OK: hwnd=37885432 pid=4252 class='Qt6110QWindowIcon' maximized=True
+login OK (lan_token cookie issued)
+font OK (48256 bytes, byte-identical to webui/dist)
+thumbnail single OK (178 bytes WEBP)
+thumbnail batch OK (12/12)
+notes/rating OK (saved via LAN, read back identical)
+live change OK (live_added.png listed in /api/files)
+close: {'normal_exit_timeout_observation': {'process_poll': None, 'window_visible': True, 'window_maximized': False, 'foreground_is_target': False, 'api_info_status': 200}}
+INVALID: normal Ctrl+Q exit did not complete within 30.0s

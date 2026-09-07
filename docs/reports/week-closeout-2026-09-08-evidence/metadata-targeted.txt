@@ -1,0 +1,8 @@
+Snapshot: .pytest-tmp-lead-snapshots/20dbf937/ops
+Command: $env:QT_QPA_PLATFORM='offscreen'; python -m pytest -q -o addopts='' -p no:cacheprovider --junitxml=artifacts/metadata-boundary-targeted.xml tests/integration/test_metadata_service_concurrent_boundary.py tests/integration/test_metadata_service.py tests/integration/test_metadata_repository_session_binding.py tests/unit/test_lan_utils_enumeration.py
+Result: 51 passed in 10.21s (exit 0)
+
+Coverage includes the metadata guard/write TOCTOU regression, a foreground
+write-lock-attempt barrier, event publication after committed independent
+visibility, raw outer-transaction compatibility for
+set_notes/add_url/remove_url/set_rating, and LAN single-flight follower scheduling.
