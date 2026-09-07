@@ -6,33 +6,43 @@ then measures the real routes registered in ``AssetsManager/lan/api.py``:
 
   - GET  /api/files                      (browse listing, items verified)
   - GET  /api/thumbnails/{path}          (single thumbnail delivery, image/* verified)
-  - POST /api/thumbnails/batch           (50-item thumbnail batch)
-  - GET  /api/download/{path}            (single-file download, byte length verified)
-  - POST /api/download/batch             (20-item ZIP download, PK signature verified)
+  - POST /api/thumbnails/batch           (50-item batch: full membership + every
+                                          payload decoded as a real ≤256px PNG)
+  - GET  /api/download/{path}            (single-file download, full byte equality)
+  - POST /api/download/batch             (20-item ZIP: CRC pass + membership +
+                                          per-member byte equality vs sources)
   - true concurrency (asyncio.gather + semaphore) over mixed routes
-  - mid-download cancellation → server health re-check (resource reclaim)
-  - RSS peak tracking sampled after every phase and every repeat batch
+  - mid-download cancellation: a 192MB target aborted after 1MB (genuinely
+    still-sending slow client) → health re-check + byte-verified re-download
+  - RSS: post-phase spot samples AND a 100ms daemon sampler capturing
+    request-phase peaks; event-loop heartbeat records max scheduling lag
 
 Every request must answer HTTP 200 with the expected body contract; anything
 else counts as a failed request and invalidates the run. Any failure, missing
 health, or measurement defect makes the probe print ``INVALID`` and exit
 non-zero — it can never reach the "budget satisfied" branch on failed traffic.
 RSS growth over the repeat batches above the budget exits non-zero with
-``unbounded-growth``.
+``unbounded-growth``. results.json carries ``valid`` AND a separate ``rss``
+block with ``budget_mb`` plus a top-level ``verdict`` (invalid /
+unbounded-growth / bounded) so consumers never infer budget approval from
+``valid`` alone (weekly-recheck 2026-09-08 R4).
 
 Usage: python scripts/perf/w5_lan_resource_probe.py
 """
 from __future__ import annotations
 
 import asyncio
+import base64
 import gc
 import io
 import json
 import os
+import shutil
 import socket
 import statistics
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -48,6 +58,7 @@ HEALTH_CHECK_INTERVAL_S = 0.25
 REQUEST_TIMEOUT_S = 30.0
 RSS_GROWTH_BUDGET_MB = 50.0
 CONCURRENCY = 8
+BIG_BLOB_MB = 192  # slow-client cancel target: abort must land mid-transfer
 
 
 class ProbeInvalid(RuntimeError):
@@ -82,6 +93,51 @@ def _build_images(root: Path, count: int) -> None:
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         (root / f"img_{i:04d}.png").write_bytes(buf.getvalue())
+
+
+def _build_slow_download_blob(root: Path, size_mb: int = 192) -> Path:
+    """One large download target so a mid-transfer abort is genuinely
+    still-sending: a few-kilobyte file can be fully transmitted before the
+    client closes, which made the old cancel probe vacuous (weekly-recheck
+    2026-09-08 R4). PNG magic keeps the extension-consistent serving path."""
+    import secrets
+    path = root / "big_blob.png"
+    chunk = secrets.token_bytes(4 * 1024 * 1024)
+    with path.open("wb") as stream:
+        stream.write(b"\x89PNG\r\n\x1a\n")
+        written = 8
+        target = size_mb * 1024 * 1024
+        while written < target:
+            stream.write(chunk[: min(4 * 1024 * 1024, target - written)])
+            written = min(target, written + 4 * 1024 * 1024)
+    return path
+
+
+class _RssPeakSampler:
+    """Sample RSS from a daemon thread so request-phase peaks (not just the
+    post-phase spot checks) are captured, weekly-recheck 2026-09-08 R4."""
+
+    def __init__(self, interval_s: float = 0.1):
+        self._interval_s = interval_s
+        self._stop = threading.Event()
+        self.peak_mb = 0.0
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        def _run():
+            while not self._stop.is_set():
+                self.peak_mb = max(self.peak_mb, _rss_mb())
+                self._stop.wait(self._interval_s)
+
+        self._thread = threading.Thread(
+            target=_run, name="w5-rss-peak-sampler", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> float:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+        return self.peak_mb
 
 
 def _free_port() -> int:
@@ -144,6 +200,27 @@ async def run_measurements(lib: Path) -> list[dict]:
         raise ProbeInvalid(f"server did not start on port {port}: {start_result!r}")
     record("server_started", port=port)
     base_url = f"http://127.0.0.1:{port}"
+
+    sampler = _RssPeakSampler()
+    sampler.start()
+    lag_state: dict = {"max_lag_ms": 0.0}
+    stop_lag = asyncio.Event()
+
+    async def _lag_monitor() -> None:
+        """Event-loop heartbeat: a 50ms tick that reports how far behind the
+        loop actually ran, so request-phase stalls are visible in evidence."""
+        last = time.perf_counter()
+        while not stop_lag.is_set():
+            try:
+                await asyncio.wait_for(stop_lag.wait(), timeout=0.05)
+            except asyncio.TimeoutError:
+                pass
+            now = time.perf_counter()
+            lag_ms = max(0.0, (now - last - 0.05) * 1000)
+            lag_state["max_lag_ms"] = max(lag_state["max_lag_ms"], round(lag_ms, 1))
+            last = now
+
+    lag_task = asyncio.get_running_loop().create_task(_lag_monitor())
 
     try:
         timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT_S)
@@ -223,10 +300,32 @@ async def run_measurements(lib: Path) -> list[dict]:
                 json={"paths": names[:50], "size": 256})
             batch = json.loads(body)
             dt = time.perf_counter() - t0
-            delivered = len(batch.get("thumbnails", {}))
-            if delivered <= 0:
-                raise ProbeInvalid("thumbnail batch: response contains no thumbnails")
-            record("thumbnails_batch_50", delivered=delivered, total_s=round(dt, 3))
+            thumbs = batch.get("thumbnails", {})
+            # Full membership: every requested path must come back, and every
+            # payload must decode to a real ≤256px PNG (weekly-recheck R4:
+            # ">0 delivered" let a 1/50 response pass).
+            missing = sorted(set(names[:50]) - set(thumbs))
+            if missing:
+                raise ProbeInvalid(
+                    f"thumbnail batch: {len(missing)}/{len(names[:50])} paths "
+                    f"missing from response (first: {missing[:3]})")
+            from PIL import Image
+            decoded = 0
+            for path, encoded in thumbs.items():
+                try:
+                    img = Image.open(io.BytesIO(base64.b64decode(encoded)))
+                    img.load()
+                except Exception as exc:
+                    raise ProbeInvalid(
+                        f"thumbnail batch: {path} payload is not a decodable "
+                        f"image ({type(exc).__name__}: {exc})") from exc
+                if max(img.size) > 256 or min(img.size) <= 0:
+                    raise ProbeInvalid(
+                        f"thumbnail batch: {path} rendered {img.size}, "
+                        f"expected within 256px")
+                decoded += 1
+            record("thumbnails_batch_50", delivered=len(thumbs), verified=decoded,
+                   total_s=round(dt, 3))
             gc.collect()
             record("after_thumbnails_batch")
 
@@ -236,27 +335,49 @@ async def run_measurements(lib: Path) -> list[dict]:
                 t0 = time.perf_counter()
                 body, _ = await expect_200(
                     "GET", f"{base_url}/api/download/{name}", ctx=f"download {name}")
-                expected = (lib / name).stat().st_size
-                if len(body) != expected:
+                expected = (lib / name).read_bytes()
+                if body != expected:
                     raise ProbeInvalid(
-                        f"download {name}: byte length {len(body)} != source {expected}")
+                        f"download {name}: content mismatch "
+                        f"({len(body)} bytes != source {len(expected)})")
                 download_times.append(time.perf_counter() - t0)
             record("downloads_100", **_summary(download_times))
             gc.collect()
             record("after_downloads")
 
-            # ── ZIP batch download (POST /api/download/batch), signature verified ──
+            # ── ZIP batch download (POST /api/download/batch) — every member's
+            # bytes must match the source files (weekly-recheck R4: a PK
+            # prefix proves nothing about membership or content) ──
             t0 = time.perf_counter()
             body, _ = await expect_200(
                 "POST", f"{base_url}/api/download/batch",
                 ctx="zip batch",
                 json={"paths": names[:20]})
             dt = time.perf_counter() - t0
-            if not body.startswith(b"PK"):
+            import zipfile
+            from pathlib import PurePosixPath
+            try:
+                with zipfile.ZipFile(io.BytesIO(body)) as zf:
+                    corrupt = zf.testzip()
+                    if corrupt is not None:
+                        raise ProbeInvalid(f"zip batch: member {corrupt!r} fails CRC")
+                    by_basename = {PurePosixPath(n).name: n for n in zf.namelist()}
+                    expected_members = set(names[:20])
+                    absent = sorted(expected_members - set(by_basename))
+                    if absent:
+                        raise ProbeInvalid(
+                            f"zip batch: {len(absent)}/20 members missing "
+                            f"(first: {absent[:3]})")
+                    for member in expected_members:
+                        if zf.read(by_basename[member]) != (lib / member).read_bytes():
+                            raise ProbeInvalid(
+                                f"zip batch: member {member!r} bytes differ from source")
+            except zipfile.BadZipFile as exc:
                 raise ProbeInvalid(
-                    f"zip batch: body does not start with ZIP signature "
-                    f"(first bytes: {body[:4]!r})")
-            record("zip_20_files", bytes=len(body), total_s=round(dt, 3))
+                    f"zip batch: not a readable ZIP archive ({exc}); "
+                    f"first bytes: {body[:4]!r}") from exc
+            record("zip_20_files", bytes=len(body), members=len(expected_members),
+                   total_s=round(dt, 3))
             gc.collect()
             record("after_zip")
 
@@ -277,11 +398,11 @@ async def run_measurements(lib: Path) -> list[dict]:
                         resp_body, _ = await expect_200(
                             "GET", f"{base_url}/api/download/{name}",
                             ctx=f"concurrent download {name}")
-                        expected = (lib / name).stat().st_size
-                        if len(resp_body) != expected:
+                        expected = (lib / name).read_bytes()
+                        if resp_body != expected:
                             raise ProbeInvalid(
-                                f"concurrent download {name}: byte length "
-                                f"{len(resp_body)} != source {expected}")
+                                f"concurrent download {name}: content mismatch "
+                                f"({len(resp_body)} bytes != source {len(expected)})")
                     return time.perf_counter() - t0
 
             t0 = time.perf_counter()
@@ -296,16 +417,35 @@ async def run_measurements(lib: Path) -> list[dict]:
             record(f"after_mixed_c{CONCURRENCY}")
 
             # ── Mid-download cancellation → reclaim → health re-check ──
-            async with http.get(f"{base_url}/api/download/{names[0]}") as resp:
-                await resp.content.read(256)
-                resp.close()  # abort the connection mid-transfer
-            await asyncio.sleep(0.5)
+            # A 192MB target is genuinely still being sent when the client
+            # aborts after 1MB (a few-KB file could finish transmitting before
+            # the close, making the old probe vacuous — weekly-recheck R4).
+            # Evidence recorded: abort window, post-cancel health, RSS after
+            # the aborted transfer, and a full byte-verified re-download.
+            big_blob = _build_slow_download_blob(lib, size_mb=BIG_BLOB_MB)
+            t0 = time.perf_counter()
+            async with http.get(f"{base_url}/api/download/{big_blob.name}") as resp:
+                if resp.status != 200:
+                    raise ProbeInvalid(
+                        f"slow-client cancel: big download returned {resp.status}")
+                await resp.content.read(1024 * 1024)
+                resp.close()  # abort while ~191MB remain unsent
+            abort_s = time.perf_counter() - t0
+            await asyncio.sleep(1.0)
             async with http.get(f"{base_url}/api/info") as resp:
                 if resp.status != 200:
                     raise ProbeInvalid(
                         f"server unhealthy after mid-download cancel: HTTP {resp.status}")
                 await resp.read()
-            record("cancel_reclaim_ok")
+            record("cancel_reclaim_ok", big_file_mb=BIG_BLOB_MB,
+                   aborted_after_mb=1, abort_window_s=round(abort_s, 3),
+                   rss_after_cancel_mb=round(_rss_mb(), 1))
+            body, _ = await expect_200(
+                "GET", f"{base_url}/api/download/{names[0]}",
+                ctx="post-cancel re-download")
+            if body != (lib / names[0]).read_bytes():
+                raise ProbeInvalid("post-cancel re-download: content mismatch")
+            record("post_cancel_redownload_ok")
 
             # ── Repeat batches: RSS must stay bounded across re-requests ──
             for batch_no in range(3):
@@ -315,6 +455,15 @@ async def run_measurements(lib: Path) -> list[dict]:
 
         return results
     finally:
+        stop_lag.set()
+        lag_task.cancel()
+        try:
+            await lag_task
+        except (asyncio.CancelledError, Exception):
+            pass
+        peak_mb = sampler.stop()
+        record("rss_peak_during_run", peak_mb=round(peak_mb, 1),
+               event_loop_max_lag_ms=lag_state["max_lag_ms"])
         try:
             server.stop()
         except Exception as exc:
@@ -355,24 +504,50 @@ def main() -> int:
     payload: dict = {"valid": invalid_reason is None, "measurements": results}
     if invalid_reason:
         payload["invalid_reason"] = invalid_reason
+
+    # Budget verdict is recorded separately from validity (weekly-recheck R4):
+    # a run can be a valid measurement while FAILING its RSS budget, and JSON
+    # consumers must not have to infer that from exit codes or valid alone.
+    rss_values = [r["rss_mb"] for r in results if "rss_mb" in r]
+    repeats = [r["rss_mb"] for r in results if r["name"].startswith("repeat_thumbnails")]
+    growth = round((max(repeats) - min(repeats)) if len(repeats) >= 2 else 0.0, 1)
+    peak_sample = next(
+        (r for r in results if r["name"] == "rss_peak_during_run"), {})
+    payload["rss"] = {
+        "start_mb": rss_values[0] if rss_values else None,
+        "final_mb": rss_values[-1] if rss_values else None,
+        "spot_peak_mb": max(rss_values) if rss_values else None,
+        "peak_during_request_mb": peak_sample.get("peak_mb"),
+        "event_loop_max_lag_ms": peak_sample.get("event_loop_max_lag_ms"),
+        "repeat_growth_mb": growth,
+        "budget_mb": RSS_GROWTH_BUDGET_MB,
+    }
+    payload["verdict"] = (
+        "invalid" if invalid_reason
+        else "unbounded-growth" if growth >= RSS_GROWTH_BUDGET_MB
+        else "bounded"
+    )
     (out / "results.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"\nevidence: {out / 'results.json'}")
 
     if invalid_reason:
         print(f"INVALID: {invalid_reason}")
+        shutil.rmtree(tmp, ignore_errors=True)
         return 1
 
-    rss_values = [r["rss_mb"] for r in results if "rss_mb" in r]
     first, last = rss_values[0], rss_values[-1]
     peak = max(rss_values)
-    repeats = [r["rss_mb"] for r in results if r["name"].startswith("repeat_thumbnails")]
-    growth = (max(repeats) - min(repeats)) if len(repeats) >= 2 else 0.0
-    print(f"RSS: start={first}MB peak={peak}MB final={last}MB | repeat batch growth: {growth:.1f}MB")
+    print(f"RSS: start={first}MB spot_peak={peak}MB "
+          f"during_request_peak={peak_sample.get('peak_mb')}MB final={last}MB "
+          f"| repeat batch growth: {growth}MB | loop max lag: "
+          f"{peak_sample.get('event_loop_max_lag_ms')}ms")
     if growth >= RSS_GROWTH_BUDGET_MB:
         print("VERDICT: unbounded-growth (repeat batch RSS growth above budget)")
+        shutil.rmtree(tmp, ignore_errors=True)
         return 1
     print("VERDICT: bounded")
+    shutil.rmtree(tmp, ignore_errors=True)
     return 0
 
 

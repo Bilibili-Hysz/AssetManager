@@ -71,7 +71,13 @@ def _enumerate_private_ips(timeout: float = 2.0) -> list[tuple[str, str]]:
     name, which can block indefinitely on some systems; run it in a
     daemon thread and return whatever completed before the timeout so
     callers (including async route handlers) never hang.
+
+    Single-flight: a stuck lookup can outlive the join by minutes (Windows
+    resolver on adapter-name GUIDs), so a new worker per call leaked one
+    daemon thread per server start. While a worker is still resolving,
+    later callers wait on it instead of spawning another one.
     """
+    global _enum_worker
     interfaces: list[tuple[str, str]] = []
 
     def _run() -> None:
@@ -86,10 +92,18 @@ def _enumerate_private_ips(timeout: float = 2.0) -> list[tuple[str, str]]:
         except Exception:
             pass
 
-    worker = threading.Thread(target=_run, daemon=True)
-    worker.start()
+    with _enum_worker_guard:
+        worker = _enum_worker if (_enum_worker is not None and _enum_worker.is_alive()) else None
+        if worker is None:
+            worker = threading.Thread(target=_run, daemon=True)
+            worker.start()
+            _enum_worker = worker
     worker.join(timeout)
     return interfaces
+
+
+_enum_worker: threading.Thread | None = None
+_enum_worker_guard = threading.Lock()
 
 
 _local_ip_cache: str | None = None

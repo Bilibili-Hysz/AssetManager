@@ -219,8 +219,20 @@ class TagService:
         return _get_repo(db_conn, library_root, self._connection_provider)
 
     def _require_event_safe_transaction(self, repo: TagRepository) -> None:
-        """Reject outer transactions before publishing unscoped/scoped tag events."""
-        if isinstance(self._session, LibrarySession) and repo._conn.in_transaction:
+        """Reject outer transactions before publishing unscoped/scoped tag events.
+
+        Sampled under the connection-owned write gate — same reconciliation-
+        worker race as CollectionService: an unlocked ``in_transaction`` peek
+        can observe the worker's short claim/read transaction on the shared
+        connection and reject a mutation that owns no outer transaction.
+        """
+        if not isinstance(self._session, LibrarySession):
+            return
+        from AssetsManager.core.database import db_write_lock
+
+        with db_write_lock(repo._conn):
+            in_transaction = repo._conn.in_transaction
+        if in_transaction:
             raise RuntimeError(
                 "TagService tag mutations require a clean transaction boundary"
             )

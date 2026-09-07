@@ -1,0 +1,110 @@
+{
+ "valid": true,
+ "measurements": [
+  {
+   "name": "baseline_after_boot",
+   "rss_mb": 100.2
+  },
+  {
+   "name": "server_started",
+   "rss_mb": 100.4,
+   "port": 10688
+  },
+  {
+   "name": "health_ok",
+   "rss_mb": 101.5,
+   "share_name": "AssetManager",
+   "auth_mode": "password"
+  },
+  {
+   "name": "login_ok",
+   "rss_mb": 101.5
+  },
+  {
+   "name": "browse_ok",
+   "rss_mb": 101.8,
+   "items": 50,
+   "count": 1,
+   "total_s": 0.206,
+   "p50_ms": 206.4,
+   "max_ms": 206.4
+  },
+  {
+   "name": "thumbnails_c1_100",
+   "rss_mb": 102.2,
+   "count": 100,
+   "total_s": 12.754,
+   "p50_ms": 127.2,
+   "max_ms": 146.7
+  },
+  {
+   "name": "after_thumbnails_c1",
+   "rss_mb": 102.2
+  },
+  {
+   "name": "thumbnails_batch_50",
+   "rss_mb": 131.0,
+   "delivered": 50,
+   "total_s": 9.029
+  },
+  {
+   "name": "after_thumbnails_batch",
+   "rss_mb": 131.0
+  },
+  {
+   "name": "downloads_100",
+   "rss_mb": 131.1,
+   "count": 100,
+   "total_s": 3.18,
+   "p50_ms": 31.6,
+   "max_ms": 44.1
+  },
+  {
+   "name": "after_downloads",
+   "rss_mb": 131.1
+  },
+  {
+   "name": "zip_20_files",
+   "rss_mb": 131.1,
+   "bytes": 4336,
+   "total_s": 0.586
+  },
+  {
+   "name": "after_zip",
+   "rss_mb": 131.1
+  },
+  {
+   "name": "mixed_c8_48",
+   "rss_mb": 132.3,
+   "wall_s": 1.645,
+   "count": 48,
+   "total_s": 12.311,
+   "p50_ms": 240.8,
+   "max_ms": 611.5
+  },
+  {
+   "name": "after_mixed_c8",
+   "rss_mb": 132.3
+  },
+  {
+   "name": "cancel_reclaim_ok",
+   "rss_mb": 132.3
+  },
+  {
+   "name": "repeat_thumbnails_1",
+   "rss_mb": 132.6
+  },
+  {
+   "name": "repeat_thumbnails_2",
+   "rss_mb": 132.7
+  },
+  {
+   "name": "repeat_thumbnails_3",
+   "rss_mb": 132.7
+  },
+  {
+   "name": "server_stopped",
+   "rss_mb": 130.1
+  }
+ ]
+}

@@ -201,7 +201,14 @@ def test_real_browser_namespace_and_private_thumbnail_headers(browser_thumbnail_
             context.add_cookies([_cookie(server, base_url=proxy.base_url)])
             page.goto(f"{proxy.base_url}/browse", wait_until="domcontentloaded")
             page.get_by_test_id("browse-workspace").wait_for(timeout=10_000)
-            page.wait_for_timeout(500)
+            # The cold first thumbnail batch (source read + render + base64)
+            # routinely exceeds a fixed short sleep; wait for the sessionStorage
+            # persist itself so the assertion below is deterministic.
+            page.wait_for_function(
+                "() => Object.keys(sessionStorage).some("
+                "(k) => k.startsWith('lan_thumb_cache:'))",
+                timeout=15_000,
+            )
             info = page.request.get(f"{proxy.base_url}/api/info")
             assert info.ok
             namespace = info.json()["thumbnail_cache_namespace"]
@@ -279,7 +286,10 @@ def test_intermediary_does_not_cache_private_batch_responses(browser_thumbnail_r
             request.dispose()
 
 
-def test_intermediary_only_caches_explicit_public_thumbnail_responses(browser_thumbnail_runtime):
+def test_intermediary_does_not_cache_any_single_thumbnail_responses(browser_thumbnail_runtime):
+    """Blur policy is re-checked on every delivery, so NO thumbnail response —
+    including non-private-marked covers — may authorize shared caches: every
+    single GET must revalidate and the intermediary must forward it."""
     _bootstrap, _session, _runtime, server, proxy = browser_thumbnail_runtime
     with sync_playwright() as pw:
         cookie = _cookie(server)
@@ -298,10 +308,10 @@ def test_intermediary_only_caches_explicit_public_thumbnail_responses(browser_th
             first = request.get(f"{proxy.base_url}{path}")
             second = request.get(f"{proxy.base_url}{path}")
             assert first.ok and second.ok
-            assert first.headers["cache-control"] == "public, max-age=3600"
-            assert second.headers["cache-control"] == "public, max-age=3600"
+            assert first.headers["cache-control"] == "private, no-cache"
+            assert second.headers["cache-control"] == "private, no-cache"
             counts = proxy.counts_for("GET", path)
-            assert counts["upstream"] == 1
-            assert counts["hit"] == 1
+            assert counts["upstream"] == 2
+            assert counts["hit"] == 0
         finally:
             request.dispose()

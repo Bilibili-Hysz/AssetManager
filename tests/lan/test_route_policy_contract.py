@@ -39,7 +39,7 @@ _OLD_SKIP = frozenset({
     "/ws", "/api/image", "/api/stats", "/api/revision",
 })
 _OLD_SKIP_PREFIX = (
-    "/assets", "/api/thumbnails",
+    "/assets", "/api/thumbnails", "/fonts",
 )
 _OLD_AUTH_ENDPOINTS = frozenset({
     "/api/auth/login", "/api/auth/register", "/api/auth/verify_key",
@@ -55,7 +55,7 @@ _OLD_PUBLIC = frozenset({
     "/gallery", "/gallery/collection", "/gallery/favorites",
     "/mcp",
 })
-_OLD_PUBLIC_PREFIXES = ("/assets", "/s", "/storefront", "/store", "/seller", "/app", "/api/shop")
+_OLD_PUBLIC_PREFIXES = ("/assets", "/s", "/storefront", "/store", "/seller", "/app", "/api/shop", "/fonts")
 
 
 def _matches_prefix(path: str, prefix: str) -> bool:

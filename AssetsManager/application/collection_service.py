@@ -261,8 +261,23 @@ class CollectionService:
         return _get_repo(db_conn, library_root, self._connection_provider)
 
     def _require_event_safe_transaction(self, repo: CollectionRepository) -> None:
-        """Reject outer transactions before publishing collection events."""
-        if isinstance(self._session, LibrarySession) and repo._conn.in_transaction:
+        """Reject outer transactions before publishing collection events.
+
+        The flag must be sampled under the connection-owned write gate: the
+        reconciliation worker runs short claim/read transactions on this same
+        shared connection from its own thread, and an unlocked peek mistakes
+        one of those windows for a caller-owned outer transaction (race that
+        made the collection-event test fail intermittently). A transaction
+        opened after this sample is still caught by the repository's own
+        ``require_clean_transaction`` check inside its write scope.
+        """
+        if not isinstance(self._session, LibrarySession):
+            return
+        from AssetsManager.core.database import db_write_lock
+
+        with db_write_lock(repo._conn):
+            in_transaction = repo._conn.in_transaction
+        if in_transaction:
             raise RuntimeError(
                 "CollectionService mutations require a clean transaction boundary"
             )

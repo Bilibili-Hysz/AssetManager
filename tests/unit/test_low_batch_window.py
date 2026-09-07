@@ -127,7 +127,25 @@ def test_restore_window_geometry_reapplies_maximized(monkeypatch):
 
     win = QMainWindow()
     window_module._restore_window_geometry(win)
-    assert win.isMaximized()
+    # PF-5: the restore no longer calls showMaximized() directly — during
+    # MainWindow.__init__ the widget tree does not exist yet and the C-level
+    # resize/show dispatch can abort the process. The flag is deferred;
+    # the constructor applies it after _setup_ui().
+    assert getattr(win, "_pending_maximized", False) is True
+    assert not win.isMaximized()
+    win.deleteLater()
+    _app().processEvents()
+
+
+def test_restore_window_geometry_unmaximized_sets_no_pending_flag(monkeypatch):
+    _app()
+    fake = _FakeSettings()
+    fake.set("window_maximized", False)
+    _patch_settings(monkeypatch, fake)
+
+    win = QMainWindow()
+    window_module._restore_window_geometry(win)
+    assert not getattr(win, "_pending_maximized", False)
     win.deleteLater()
     _app().processEvents()
 

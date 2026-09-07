@@ -300,6 +300,16 @@ def _dump_child(proc: subprocess.Popen) -> None:
 
 
 def main() -> int:
+    # Encoding contract (weekly-recheck 2026-09-08 R3): on a default-GBK
+    # Windows console this drill prints child output that may contain
+    # U+FFFD/Chinese, and a GBK-redirected stdout raises UnicodeEncodeError
+    # mid-verdict.  Force UTF-8 on the parent's own streams and on every
+    # child process so both ends of the pipe agree regardless of codepage.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="replace")
+
     tmp = Path(tempfile.mkdtemp(prefix="w4-restore-"))
     try:
         return _run(tmp)
@@ -329,6 +339,9 @@ def _run(tmp: Path) -> int:
         "AM_LIB": str(lib),
         "AM_BACKUP_NEW": str(tmp / "backup_new.zip"),
         "AM_BACKUP_OLD": str(tmp / "backup_old.zip"),
+        # Children must emit UTF-8 even when the parent console is GBK; the
+        # parent decodes with encoding="utf-8" below.
+        "PYTHONIOENCODING": "utf-8",
         **{k: str(v) for k, v in markers.items()},
     })
 
