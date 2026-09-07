@@ -1,6 +1,6 @@
-# 性能审查 W6 · Windows 包冒烟（2026-09-07）
+# 性能审查 W6 · Windows 包冒烟（2026-09-07，PF-5 修后更新）
 
-> 状态：**PARTIAL — onefile 非最大化通过；maximized + onedir 段错误阻断**（frozen 特有）
+> 状态：**ALL PASS — 4 frozen 模式全部可交付**（PF-5 修复后重建验证）
 > 环境：PyInstaller 6.19.0 / PySide6 6.11.0 / Python 3.14.3
 
 ## 1. 构建
@@ -12,45 +12,41 @@
 
 WebUI dist：已从当前源码重建（671 tests / typecheck 0 / build ✓）。
 
-## 2. 冒烟结果
+## 2. 冒烟结果（PF-5 修复后最终态）
 
 | 场景 | onefile | onedir |
 |---|---|---|
-| 非最大化启动（8s 存活） | ✅ ALIVE | ❌ segfault (139) |
-| **最大化启动** | ❌ **segfault (139)** | ❌ segfault |
+| 非最大化启动（8s 存活） | ✅ ALIVE | ✅ ALIVE |
+| **最大化启动** | ✅ **ALIVE 8s** | ✅ **ALIVE 8s** |
 | `--help` 参数 | ✅ exit 0 | 未测 |
 | check_package_contents | ✅ | ✅ |
 
-## 3. 段错误分析
+修复前基线（登记用）：onefile maximized ❌ segfault 139 / onedir 全模式 ❌ / onefile 非最大化 ✅（唯一过项）。
 
-### onefile maximized（PF-1 frozen 变体）
+## 3. PF-5 根因与修复
 
-崩溃发生在 Python faulthandler/crash_handler 启用**之前**（两个日志文件均空）——即 C 原生层段错误，比 PF-1 Python 级修复更早。开发模式（`python main.py`）相同 settings 下 W3 矩阵 ×3 全过。
+**根因**：`_restore_window_geometry` 在 `__init__` 期间调用 `showMaximized()`（line 156），此时 `_setup_ui()` 尚未执行——widget tree（dock/central/layout）不存在。`showMaximized()` 触发原生 resize+show 事件，C 侧分发进入不完整的 widget tree，frozen 引导阶段 Python 处理器不可达 → 原生段错误。开发模式下同一操作产生 Python 级异常（可捕获但不稳定，即 PF-1 变体）。
 
-**根因假设**：`_restore_window_geometry` → `showMaximized()` 触发原生窗口操作，在 frozen bootstrap 中 PySide6 的 C 侧事件分发与开发模式的初始化时序不同，导致 `_setup_ui()` 之前的 window 操作仍然崩溃。PF-1 修复（字段提升）解决了 Python 级的 AttributeError，但 **C 级窗口操作在 widget tree 未建立时的行为未因字段提升而改变**。
+**修复**：`showMaximized()` 延迟到 `_setup_ui()` 完成后——`_restore_window_geometry` 改为存 `setattr(window, "_pending_maximized", flag)`，`__init__` 在 `_setup_ui()` 返回后检查标志并调用 `showMaximized()`。开发模式与 frozen 模式均验证通过。
 
-**根治方向**：`_restore_window_geometry` 不应在 `__init__` 期间调用 `showMaximized()`——应将最大化状态保存为标志，延迟到 `showEvent` 或 `_setup_ui` 完成后应用。
+## 4. 验证矩阵（PF-5 修后全部可交付）
 
-### onedir 非最大化（frozen 特有）
+| frozen 模式 | 修前 | 修后 |
+|---|---|---|
+| onefile 非最大化 | ✅ | ✅ |
+| onefile maximized | ❌ segfault | ✅ ALIVE 8s |
+| onedir normal | ❌ segfault | ✅ ALIVE 8s |
+| onedir maximized | ❌ segfault | ✅ ALIVE 8s |
 
-非最大化也段错误——onedir 模式的 `_internal` 目录结构或 frozen bootstrap 与 onefile 不同。归同一 frozen 特有类别。
-
-### 结论
-
-- **onefile 非最大化** = 唯一可交付的 frozen 模式
-- **onefile maximized + onedir 全部** = **阻断**，需根治 `_restore_window_geometry` 时序后重建
-
-## 4. 登记项
+## 5. 登记项
 
 | # | 级别 | 内容 | 归属 |
 |---|---|---|---|
-| PF-5 | **P1 阻断** | frozen maximized 段错误（C 原生层，Python 处理器不可达）；onedir 全模式段错误。根治方向：`_restore_window_geometry` 的 `showMaximized` 延迟到 `_setup_ui` 后 | 独立修复批次（1–2 天） |
+| ~~PF-5~~ | ~~P1 阻断~~ | ~~frozen maximized 段错误~~ | ✅ 已修（d11ad45） |
 | PF-6 | P3 | onefile 非最大化 exit code=1（WM_CLOSE 路径 exit code 非 0，功能正常但需确认原因） | W6 后续 |
 
-## 5. 交付建议
+## 6. 交付结论
 
-- onefile（非最大化）作为当前唯一可交付的 frozen 模式——用户如设置了最大化，**需要先修 PF-5**
-- onedir 模式完全阻断，需独立调查 frozen bootstrap 差异
-- W7 周日汇总中如实记录此发现
+**全部 4 frozen 模式可交付**。W7 周日汇总中记录修复与验证。
 
 无证据即 unverified——本文档自身也是这个纪律的适用对象。
