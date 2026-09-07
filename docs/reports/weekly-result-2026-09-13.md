@@ -1,58 +1,71 @@
-# 周验收汇总（2026-09-07—09-07，提前完成）
+# 周验收汇总（2026-09-07—09-13）
 
-> 状态：**WEEKLY RESULT** · 原计划 2026-09-07—09-13，实际于 09-07 单日提前完成 W1–W6 + W7 汇总。
-> 最终源码标识：HEAD `600764d`，分支 `master`，**已推远端**（`git status` 归零，无未提交文件）。
-> 证据：[W1 gate-summary](week-2026-09-07-evidence/gate-summary.md) · [W2 回归汇总](week-2026-09-07-evidence/w2-regression-summary.md) · [W5 LAN 资源](../performance-audit-2026-09-06/w5-lan-resources.md) · [W6 包冒烟](../performance-audit-2026-09-06/w6-package-smoke.md) · [性能审查总览](../performance-audit-2026-09-06/README.md)
+> 状态：**WEEKLY RESULT** · 原计划 2026-09-07—09-13，实际于 09-07 单日提前完成 W1–W6 + W7 汇总；
+> 09-08 按独立复核（R1–R5）完成处置改版。
+> 最终源码标识：**`0937a95`**（复核处置提交，基于 `dc6bb46`），分支 `master`。
+> 证据：[W1 gate-summary](week-2026-09-07-evidence/gate-summary.md) · [W2 回归汇总](week-2026-09-07-evidence/w2-regression-summary.md) · [复核处置报告](recheck-disposition-2026-09-08.md) · [W5 LAN 资源](../performance-audit-2026-09-06/w5-lan-resources.md) · [W6 包冒烟](../performance-audit-2026-09-06/w6-package-smoke.md) · [性能审查总览](../performance-audit-2026-09-06/README.md)
 
 ## 1. 执行摘要
 
-一周计划 W1–W7 于 09-07 **单日提前完成**（W1–W6 + 本汇总）。原计划排为 5 天，实际由本会话代理连续执行、并行线同步收尾。全部交付物已入库并推送远端。
+一周计划 W1–W7 于 09-07 单日提前完成（W1–W6 + 汇总）；09-08 独立复核确认此前"全部修复完成"
+结论不成立后，本轮处置关闭了其中 R1–R4 四项并按 R5 修订了报告口径。
 
-**总体结论：AssetManager 当前版本（HEAD `600764d`）可进入日常试用。** 核心流程（启动/切库/备份恢复/实时同步）有真实进程证据，静态门禁全绿。**一项已知阻断**：frozen maximized 模式（PF-5 已修并验证，需用户真机确认）。
+**总体结论（2026-09-08）：AssetManager 源码 `0937a95` 通过全量回归（5065 passed / 0 failed）
+与全部 13 项静态门禁，核心流程均有真实进程证据，可进入日常试用。** 已知保留：frozen 交付包
+仅有启动冒烟证据，包内功能验收未完成（见 §4）；frozen maximized 需用户真机最终确认。
 
 ## 2. 周计划完成状态
 
 | 任务 | 计划日 | 状态 | 证据 |
 |---|---|---|---|
 | W1 整合基准与门禁修正 | 9/7 | ✅ 完成 | [gate-summary.md](week-2026-09-07-evidence/gate-summary.md)：lint 清单修复+loadgroup 探针实证+B00 校验+100 文件分组 |
-| W2 同版本回归 | 9/8 | ✅ **提前** | [w2-regression-summary](w2-regression-summary.md)：Python 5062 passed / WebUI 671 passed / 契约零漂移 |
-| W3 启动切库关窗 | 9/9 | ✅ **提前** | [4ea40b9]：启动矩阵×5 ALIVE、切库往返 0 failures、失败注入 7 passed |
-| W4 备份恢复中断 | 9/10 | ✅ **提前** | [4ea40b9]：正常恢复 ✓ + 受控中断（隔离旧态→杀子进程）→ 完整旧状态恢复 ✓ |
-| W5 LAN 资源测量 | 9/11 | ✅ 部分完成 | [w5-lan-resources](../performance-audit-2026-09-06/w5-lan-resources.md)：RSS 有界 ✓；HTTP 吞吐 offscreen 不可测（PF-4 登记） |
-| W6 Windows 包冒烟 | 9/12 | ✅ 完成 | [w6-package-smoke](../performance-audit-2026-09-06/w6-package-smoke.md)：onefile+onedir × normal+maximized 全部 ALIVE 8s |
-| W7 验收汇总 | 9/13 | ✅ 本文档 | — |
+| W2 同版本回归 | 9/8 | ✅ 完成（09-08 更新） | [w2-regression-summary](week-2026-09-07-evidence/w2-regression-summary.md)；09-08 全量 xdist 5065 passed / 0 failed / 20 skipped（[junit](recheck-disposition-2026-09-08-evidence/full-suite-r16.xml)），原 2 项 gen_ts_types 与 2 项 privacy 失败均已关闭 |
+| W3 启动切库关窗 | 9/9 | ✅ 完成（09-08 重写切库探针） | 启动矩阵×5 ALIVE；切库探针真实 A→B→A 十轮=20 切换、在途请求/旧会话失效/失败注入/回收断言全过（[证据](recheck-disposition-2026-09-08-evidence/w3-switch-final.log)） |
+| W4 备份恢复中断 | 9/10 | ✅ 完成（09-08 编码统一） | 正常恢复 ✓ + 受控中断 → 完整旧状态恢复 ✓；默认 GBK 控制台复跑 PASS（[证据](recheck-disposition-2026-09-08-evidence/w4-default-encoding-after.log)） |
+| W5 LAN 资源测量 | 9/11 | ✅ 完成（09-08 断言强化） | 真实吞吐可测（PF-4 撤销登记）：批量全成员解码/下载与 ZIP 全字节比对/192MB 慢客户端中断取证/RSS 请求期峰值 137.7MB、重复增长 0.1MB、verdict=bounded（[证据](recheck-disposition-2026-09-08-evidence/w5-final.log)） |
+| W6 Windows 包冒烟 | 9/12 | ⚠️ 启动冒烟通过、功能验收待补 | [w6-package-smoke](../performance-audit-2026-09-06/w6-package-smoke.md)：onefile+onedir × normal+maximized 均 8s ALIVE；**包内功能取证与哈希绑定未完成，交付声明已降级** |
+| W7 验收汇总 | 9/13 | ✅ 本文档（09-08 改版） | — |
 
-## 3. 测试汇总
+## 3. 测试汇总（2026-09-08 实测，去重计数）
 
 | 套件 | 通过 | 失败 | 跳过 | 说明 |
 |---|---|---|---|---|
-| tests/desktop | 908–915 | 0（隔离） | 0 | 偶发轮转家族（隔离绿，登记不修） |
-| tests/unit + tests/integration | 2724 | 2 | 17 | 2 failed = gen_ts_types（并行 lan 线在途收尾） |
-| tests/lan | 725 | 0 | 2 | 平行线区域 |
-| tests/performance（-m perf） | 14 | 0 | 0 | 全基线过 |
-| tests/e2e（browser） | 8 | 2 | 0 | privacy 2 确定性失败待查（登记） |
-| WebUI vitest | 671 | 0 | 0 | 89 files |
+| 全量默认套件（unit+integration+desktop+lan+core，xdist） | **5065** | **0** | 20 | [junit](recheck-disposition-2026-09-08-evidence/full-suite-r16.xml)；20 跳过 = 平台能力缺失（symlink 特权等），非缺陷 |
+| tests/e2e（browser，-m e2e 显式） | 3 | 0 | 0 | 仅 privacy 验收文件本轮实跑 3/3；e2e 其余用例未在本轮全跑，不并入合计 |
+| tests/performance（-m perf） | 未在本轮重跑 | — | — | 以 [performance-audit-2026-09-06](../performance-audit-2026-09-06/README.md) 记录为准 |
+| WebUI vitest | 未在本轮重跑 | — | — | 本轮无 WebUI 源码改动；以 W2 记录（671 passed）为准 |
 
-## 4. 已知阻断与限制
+> 计数纪律：仅累加本轮实际执行的套件，未执行的如实标注"未在本轮重跑"；
+> 不再使用此前"合计 ~8017"的跨轮重复累加口径。
+
+## 4. 已知保留与限制
 
 | 编号 | 级别 | 内容 | 状态 | 归属 |
 |---|---|---|---|---|
-| PF-5 | ~~P1 阻断~~ | frozen maximized 段错误（构造次序缺陷） | ✅ 已修+验证 | — |
-| PF-4 | 登记 | offscreen 探针无法驱动 LAN 后台线程事件循环 | 环境限制 | — |
-| — | 待查 | thumbnail_privacy e2e 2 确定性失败（B03 前端×并行缩略图后端×环境三方交界） | 归管线所有者二分 | 并行线 |
-| — | 归并行线 | gen_ts_types 2 红（contracts.ts 需再生） | 在途 | 并行线 |
+| R1 | ~~P1~~ | 集合/标签守卫误读对账 worker 事务 → 随机拒绝 | ✅ 已修（`0937a95`） | — |
+| R2 | ~~P1~~ | 切库探针虚标 + 失败吞没；**附带实锤并修复** lan/utils 每次启动泄漏一条解析线程 | ✅ 已修 | — |
+| R3 | ~~P2~~ | W4 默认编码中断验收 | ✅ 已修 | — |
+| R4 | ~~P2~~ | W5 断言不足 | ✅ 已强化 | — |
+| W6 | P2 | frozen 包内功能验收（开库/LAN/实时/首次延迟依赖 + 哈希绑定）未完成 | **待补** | 后续批次 |
+| W4 | P3 | 恢复覆盖扩展（集合成员逐项、设置 UI、损坏备份、不可写） | 待补 | 后续批次 |
+| W5 | P3 | 容量边界（大图慢读、持续并发 ZIP、p95 容量曲线） | 待补 | 后续批次 |
+| — | 观察 | `test_viewer_opens_psd_through_media_decoder` xdist 高负载偶发（隔离绿；本轮第二次全量已过） | 登记观察 | — |
+| — | 待用户 | frozen maximized 真机确认 + 十六步走查 | 待用户 | 用户 |
+
+历史登记（09-07 版）：PF-4"offscreen 不可测"已被真实进程探针取代；PF-5 已修；
+privacy e2e 2 失败与 gen_ts_types 2 红均已关闭（详见[复核处置报告](recheck-disposition-2026-09-08.md)）。
 
 ## 5. 日常试用判据
 
-**可进入日常试用**，条件：
-- 使用 onefile 或 onedir 打包模式启动（normal 与 maximized 均已验证）
-- 避免并发 tag 变更（clean-transaction 守卫会拒绝——桌面单写者语义正确但需用户知晓）
-- privacy e2e 2 确定性失败由并行线管线所有者排查后解除
+**源码 `0937a95` 可进入日常试用**，条件：
+- 开发模式或已验证启动冒烟的 onefile/onedir 包（normal 与 maximized 启动均通过）
+- 集合/标签并发变更的随机拒绝缺陷已修复，不再需要回避并发操作
+- frozen 包仅承诺"可启动"：包内功能验收补齐前，不宣称四种模式完整可交付
 
 ## 6. 下周候选（最多三项）
 
-1. **PF-6 + privacy e2e 联调**：WM_CLOSE exit code 归因 + 缩略图 privacy e2e 与管线所有者联合二分
-2. **真实大库实机验收**：F:\Blender 外置盘的实机帧感受、启动完整性检查异步化评估、V08 材质叠加观感
-3. **Stage F 全矩阵视觉验收**：三十四组件 × 多语言 × 多 DPI（依赖本前五项关键路径证据已完成）
+1. **frozen 包内功能验收**：构建哈希绑定 + 包内开库/LAN 字体缩略图/实时变化/首次延迟依赖取证（W6 关闭条件）
+2. **PF-6 + W4/W5 覆盖扩展**：WM_CLOSE exit code 归因；恢复覆盖逐项化；W5 容量曲线
+3. **真实大库实机验收 + Stage F 全矩阵视觉验收**：F:\Blender 实机帧感受、三十四组件 × 多语言 × 多 DPI（依赖用户真机）
 
 无证据即 unverified——本文档自身也是这个纪律的适用对象。
