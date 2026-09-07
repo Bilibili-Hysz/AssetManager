@@ -488,7 +488,7 @@ class UndoService:
                     (old, descendant_pattern),
                 ).fetchall()
                 meta_rows = conn.execute(
-                    "SELECT file_path, notes, cached_size, cached_mtime, cached_file_count, urls "
+                    "SELECT file_path, notes, cached_size, cached_mtime, cached_file_count, urls, rating "
                     "FROM file_meta WHERE file_path=? OR file_path LIKE ? ESCAPE '\\'",
                     (old, descendant_pattern),
                 ).fetchall()

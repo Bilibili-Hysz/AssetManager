@@ -1,4 +1,5 @@
 """Tests for UndoService."""
+import json
 import os
 from pathlib import Path
 
@@ -373,6 +374,129 @@ def test_delete_undo_and_redo_reconcile_file_projections(tmp_path):
         assert deleted[-1].paths == (str(source),)
     finally:
         undo.cleanup()
+
+
+@pytest.mark.parametrize("rating", [*range(6), None])
+def test_delete_undo_redo_restores_each_rating(tmp_path, rating):
+    from AssetsManager.application import ApplicationBootstrap
+
+    library = tmp_path / "library"
+    library.mkdir()
+    source = library / "rated.txt"
+    source.write_text("data", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
+    metadata = scoped.metadata_service
+    undo = scoped.undo_service
+
+    try:
+        metadata.set_rating(library, source, rating)
+        undo.record_delete(str(source))
+        assert scoped.file_operation_service.delete_to_trash([source]).ok
+        assert undo.perform_undo(scoped.file_operation_service)
+        assert metadata.get_rating(library, source) == rating
+        assert undo.perform_redo(scoped.file_operation_service)
+        assert metadata.get_rating(library, source) is None
+        assert undo.perform_undo(scoped.file_operation_service)
+        assert metadata.get_rating(library, source) == rating
+    finally:
+        undo.cleanup()
+        bootstrap.library_service.close()
+
+
+def test_directory_delete_undo_restores_child_ratings(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+
+    library = tmp_path / "library"
+    directory = library / "folder"
+    directory.mkdir(parents=True)
+    first = directory / "first.txt"
+    second = directory / "second.txt"
+    first.write_text("first", encoding="utf-8")
+    second.write_text("second", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
+    metadata = scoped.metadata_service
+    undo = scoped.undo_service
+
+    try:
+        metadata.set_rating(library, first, 0)
+        metadata.set_rating(library, second, 5)
+        undo.record_delete(str(directory))
+        assert scoped.file_operation_service.delete_to_trash([directory]).ok
+        assert undo.perform_undo(scoped.file_operation_service)
+        assert metadata.get_rating(library, first) == 0
+        assert metadata.get_rating(library, second) == 5
+    finally:
+        undo.cleanup()
+        bootstrap.library_service.close()
+
+
+@pytest.mark.parametrize("existing_rating", [None, 3])
+def test_restore_legacy_snapshot_without_rating_preserves_compatibility(
+    tmp_path, existing_rating
+):
+    from AssetsManager.application import ApplicationBootstrap
+
+    library = tmp_path / "library"
+    library.mkdir()
+    target = library / "restored.txt"
+    target.write_text("data", encoding="utf-8")
+    backup = tmp_path / "legacy-backup.txt"
+    backup.write_text("data", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
+    metadata = scoped.metadata_service
+
+    try:
+        if existing_rating is not None:
+            metadata.set_rating(library, target, existing_rating)
+        payload = {
+            "format": "assetsmanager.undo-projection",
+            "version": 1,
+            "base": str(target.resolve()),
+            "file_tags": [],
+            "file_meta": [[str(target.resolve()), "legacy note", None, None, None, "[]"]],
+            "library_favorites": [],
+        }
+        Path(f"{backup}.projection.json").write_text(json.dumps(payload), encoding="utf-8")
+        assert scoped.file_operation_service._restore_projection_snapshot(backup, target)
+        assert metadata.get_notes(library, target) == "legacy note"
+        assert metadata.get_rating(library, target) == existing_rating
+    finally:
+        scoped.undo_service.cleanup()
+        bootstrap.library_service.close()
+
+
+def test_restore_new_unrated_snapshot_clears_existing_rating(tmp_path):
+    from AssetsManager.application import ApplicationBootstrap
+
+    library = tmp_path / "library"
+    library.mkdir()
+    target = library / "restored.txt"
+    target.write_text("data", encoding="utf-8")
+    backup = tmp_path / "new-backup.txt"
+    backup.write_text("data", encoding="utf-8")
+    bootstrap = ApplicationBootstrap()
+    scoped = bootstrap.runtime_for(bootstrap.library_service.open_session(library)).services
+    metadata = scoped.metadata_service
+
+    try:
+        metadata.set_rating(library, target, 3)
+        payload = {
+            "format": "assetsmanager.undo-projection",
+            "version": 1,
+            "base": str(target.resolve()),
+            "file_tags": [],
+            "file_meta": [[str(target.resolve()), "", None, None, None, "[]", None]],
+            "library_favorites": [],
+        }
+        Path(f"{backup}.projection.json").write_text(json.dumps(payload), encoding="utf-8")
+        assert scoped.file_operation_service._restore_projection_snapshot(backup, target)
+        assert metadata.get_rating(library, target) is None
+    finally:
+        scoped.undo_service.cleanup()
+        bootstrap.library_service.close()
 
 
 def test_snapshot_projection_failure_leaves_marker_for_restore(tmp_path, monkeypatch):

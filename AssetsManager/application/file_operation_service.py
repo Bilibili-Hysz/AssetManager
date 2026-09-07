@@ -1373,19 +1373,38 @@ class FileOperationService:
                         "INSERT OR IGNORE INTO file_tags (file_path, tag) VALUES (?,?)",
                         (map_path(file_path), tag),
                     )
-                for file_path, notes, cached_size, cached_mtime, cached_file_count, urls in payload.get(
-                    "file_meta", []
-                ):
+                for meta_row in payload.get("file_meta", []):
+                    if len(meta_row) == 6:
+                        # Snapshots written before ratings were captured carry
+                        # no rating intent, so preserve a concurrent value.
+                        (
+                            file_path, notes, cached_size, cached_mtime,
+                            cached_file_count, urls,
+                        ) = meta_row
+                        rating = None
+                        rating_was_captured = False
+                    else:
+                        (
+                            file_path, notes, cached_size, cached_mtime,
+                            cached_file_count, urls, rating,
+                        ) = meta_row
+                        rating_was_captured = True
+                    rating_update = (
+                        "rating=excluded.rating"
+                        if rating_was_captured
+                        else "rating=file_meta.rating"
+                    )
                     conn.execute(
                         "INSERT INTO file_meta "
-                        "(file_path, notes, cached_size, cached_mtime, cached_file_count, urls) "
-                        "VALUES (?,?,?,?,?,?) "
+                        "(file_path, notes, cached_size, cached_mtime, cached_file_count, urls, rating) "
+                        "VALUES (?,?,?,?,?,?,?) "
                         "ON CONFLICT(file_path) DO UPDATE SET "
                         "notes=CASE WHEN excluded.notes!='' THEN excluded.notes ELSE file_meta.notes END, "
                         "cached_size=COALESCE(excluded.cached_size, file_meta.cached_size), "
                         "cached_mtime=COALESCE(excluded.cached_mtime, file_meta.cached_mtime), "
                         "cached_file_count=COALESCE(excluded.cached_file_count, file_meta.cached_file_count), "
-                        "urls=CASE WHEN excluded.urls!='[]' THEN excluded.urls ELSE file_meta.urls END",
+                        "urls=CASE WHEN excluded.urls!='[]' THEN excluded.urls ELSE file_meta.urls END, "
+                        + rating_update,
                         (
                             map_path(file_path),
                             notes,
@@ -1393,6 +1412,7 @@ class FileOperationService:
                             cached_mtime,
                             cached_file_count,
                             urls,
+                            rating,
                         ),
                     )
                 for owner_key, file_path, created_at in payload.get(

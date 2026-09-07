@@ -59,6 +59,8 @@ CLASS_NAME_MAP: dict[str, str] = {
     "TagResponse": "Tag",
     "TreeItemResponse": "TreeItem",
     "StatsResponse": "StatsResponse",
+    "ZipCleanupDiagnosticsResponse": "ZipCleanupDiagnosticsResponse",
+    "ZipResourcesResponse": "ZipResourcesResponse",
     "RuntimeCursorResponse": "RuntimeCursor",
     "ProjectionInvalidationResponse": "InvalidationEvent",
     "CollectionResponse": "Collection",
@@ -85,6 +87,9 @@ LITERAL_OVERRIDE: dict[tuple[str, str], str] = {
 # as a ``?`` suffix on the field name; all other keys keep the field required.
 FIELD_TYPE_OVERRIDE: dict[tuple[str, str], str] = {
     ("SessionPrincipalResponse", "user_profile?"): "UserResponse",
+    # StatsResponse.to_dict() omits ZIP diagnostics until the server supplies
+    # them, so an emitted value is always a complete diagnostics object.
+    ("StatsResponse", "zip_resources?"): "ZipResourcesResponse",
     ("TreeItemResponse", "children"): "TreeItem[]",
     ("ProjectionInvalidationResponse", "domains"): "ProjectionDomain[]",
     ("ProjectionInvalidationResponse", "paths"): "string[]",

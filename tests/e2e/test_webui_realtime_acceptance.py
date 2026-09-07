@@ -204,6 +204,78 @@ def test_browser_realtime_refreshes_after_desktop_mutation(browser_page, lan_run
     _wait_for_name(page, "desktop-created")
 
 
+def test_browser_realtime_refreshes_expanded_smart_collection_after_rating_changes(
+    browser_page, lan_runtime
+):
+    _bootstrap, _session, runtime, server = lan_runtime
+    page = browser_page
+    target = runtime.session.root / "rating-target.txt"
+    target.write_text("rating target", encoding="utf-8")
+    runtime.services.asset_index_service.index_directory_tree(runtime.session.root)
+    collection = runtime.services.collection_service.create_smart(
+        runtime.session.root, "High rated", {"rating_min": 4}
+    )
+    console_errors: list[str] = []
+    page.on(
+        "console",
+        lambda message: console_errors.append(message.text)
+        if message.type == "error"
+        else None,
+    )
+    page_errors: list[str] = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    failed_resources: list[tuple[int, str]] = []
+    page.on(
+        "response",
+        lambda response: failed_resources.append((response.status, response.url))
+        if response.status >= 400
+        else None,
+    )
+
+    _open_browse(page, server)
+    _wait_for_connection_count(server, 1)
+    collection_row = page.get_by_test_id(f"sidebar-collection-{collection['id']}")
+    collection_row.get_by_role("button").first.click()
+    collection_row.get_by_text("No members", exact=True).wait_for()
+    assert collection_row.get_by_test_id(
+        f"sidebar-collection-count-{collection['id']}"
+    ).text_content() == "0"
+
+    runtime.services.metadata_service.set_rating(runtime.session.root, target, 4)
+    member = collection_row.get_by_role("button", name="Open rating-target.txt")
+    member.wait_for()
+    assert collection_row.get_by_test_id(
+        f"sidebar-collection-count-{collection['id']}"
+    ).text_content() == "1"
+
+    evidence = Path("artifacts") / "b03-e2e-screenshots"
+    evidence.mkdir(parents=True, exist_ok=True)
+    page.screenshot(path=str(evidence / "desktop-rating-member.png"), full_page=True)
+    toggle_box = collection_row.get_by_role("button").first.bounding_box()
+    member_box = member.bounding_box()
+    assert toggle_box is not None and member_box is not None
+    assert member_box["y"] >= toggle_box["y"] + toggle_box["height"]
+
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.screenshot(path=str(evidence / "mobile-main-after-rating.png"), full_page=True)
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+    page.set_viewport_size({"width": 1280, "height": 720})
+    collection_row.wait_for()
+    toggle = collection_row.get_by_role("button").first
+    if toggle.get_attribute("aria-expanded") != "true":
+        toggle.click()
+    member.wait_for()
+    runtime.services.metadata_service.set_rating(runtime.session.root, target, None)
+    collection_row.get_by_text("No members", exact=True).wait_for()
+    assert collection_row.get_by_test_id(
+        f"sidebar-collection-count-{collection['id']}"
+    ).text_content() == "0"
+    assert page_errors == []
+    assert console_errors == []
+    assert failed_resources == []
+
+
 def test_browser_logout_redirects_and_closes_realtime(browser_page, lan_runtime):
     _bootstrap, _session, _runtime, server = lan_runtime
     page = browser_page

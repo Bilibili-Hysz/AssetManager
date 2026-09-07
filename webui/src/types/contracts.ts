@@ -82,6 +82,7 @@ export interface StatsResponse {
   bytes_transferred: number | null;
   bytes_transferred_fmt: string | null;
   uptime: number;
+  zip_resources?: ZipResourcesResponse;
 }
 
 export interface Tag {
@@ -104,6 +105,22 @@ export interface UserResponse {
   role: 'admin' | 'user';
   active: boolean;
   created_at: number;
+}
+
+export interface ZipCleanupDiagnosticsResponse {
+  pending_count: number;
+  retry_attempts: number;
+  completed_count: number;
+  oldest_pending_seconds: number;
+  last_error_type: string | null;
+}
+
+export interface ZipResourcesResponse {
+  active_jobs: number;
+  reserved_bytes: number;
+  max_jobs: number;
+  max_reserved_bytes: number;
+  cleanup: ZipCleanupDiagnosticsResponse;
 }
 
 export type ProjectionDomain =

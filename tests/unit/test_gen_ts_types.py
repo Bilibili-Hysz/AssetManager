@@ -13,6 +13,11 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import gen_ts_types  # noqa: E402
+from AssetsManager.lan.dto import (  # noqa: E402
+    StatsResponse,
+    ZipCleanupDiagnosticsResponse,
+    ZipResourcesResponse,
+)
 
 CONTRACTS_PATH = gen_ts_types.CONTRACTS_PATH
 
@@ -67,3 +72,36 @@ def test_generated_contains_expected_interfaces_and_fields() -> None:
     assert "export type ProjectionDomain =" in text
     assert "'quota'" in text
     assert "'collections';" in text  # last enum member terminates the union
+
+
+def test_generated_preserves_optional_zip_resource_diagnostics() -> None:
+    """ZIP diagnostics are omitted from stats unless the server has them."""
+    text = gen_ts_types.generate_contracts_ts()
+    stats = StatsResponse(1, 2, None, None, 3.0)
+    resources = ZipResourcesResponse(
+        4,
+        5,
+        6,
+        7,
+        ZipCleanupDiagnosticsResponse(8, 9, 10, 11.5, "OSError"),
+    )
+
+    assert "zip_resources?: ZipResourcesResponse;" in text
+    assert "zip_resources?: ZipResourcesResponse | null;" not in text
+    assert "export interface ZipResourcesResponse " in text
+    assert "cleanup: ZipCleanupDiagnosticsResponse;" in text
+    assert "export interface ZipCleanupDiagnosticsResponse " in text
+    assert "zip_resources" not in stats.to_dict()
+    assert StatsResponse(1, 2, None, None, 3.0, resources).to_dict()["zip_resources"] == {
+        "active_jobs": 4,
+        "reserved_bytes": 5,
+        "max_jobs": 6,
+        "max_reserved_bytes": 7,
+        "cleanup": {
+            "pending_count": 8,
+            "retry_attempts": 9,
+            "completed_count": 10,
+            "oldest_pending_seconds": 11.5,
+            "last_error_type": "OSError",
+        },
+    }

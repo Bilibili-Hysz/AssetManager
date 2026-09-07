@@ -340,10 +340,10 @@ class TagService:
             return False
         repo.add_tag(key, canonical, source=source, require_clean_transaction=True)
         tags = tuple(repo.get_tags(key, source=source))
+        self._reindex_search_documents((key,))
         self._publish_asset_tags_changed(
             key, tags, publish_catalog=(source == "human")
         )
-        self._reindex_search_documents((key,))
         return True
 
     @session_operation
@@ -393,10 +393,10 @@ class TagService:
             return False
         repo.remove_tag(key, match, source=source, require_clean_transaction=True)
         tags = tuple(repo.get_tags(key, source=source))
+        self._reindex_search_documents((key,))
         self._publish_asset_tags_changed(
             key, tags, publish_catalog=(source == "human")
         )
-        self._reindex_search_documents((key,))
         return True
 
     @session_operation
@@ -433,9 +433,9 @@ class TagService:
         repo = self._repo(db_conn, library_root)
         self._require_event_safe_transaction(repo)
         removed = repo.remove_file(key, require_clean_transaction=True)
+        self._reindex_search_documents((key,))
         if removed:
             self._publish_asset_tags_changed(key, (), publish_catalog=True)
-        self._reindex_search_documents((key,))
 
     @session_operation
     def rename_tag(self, library_root: str | Path, old_name: str, new_name: str,
@@ -446,9 +446,9 @@ class TagService:
         self._require_event_safe_transaction(repo)
         paths = repo.get_files_by_tag(old_name)
         repo.rename_tag(old_name, new_name, require_clean_transaction=True)
+        self._reindex_search_documents(paths)
         self._publish_asset_tags_batch_changed(tuple(paths))
         self._publish_tag_catalog_changed()
-        self._reindex_search_documents(paths)
 
     @session_operation
     def delete_tag(self, library_root: str | Path, tag_name: str,
@@ -458,9 +458,9 @@ class TagService:
         self._require_event_safe_transaction(repo)
         paths = repo.get_files_by_tag(tag_name)
         repo.delete_tag(tag_name, require_clean_transaction=True)
+        self._reindex_search_documents(paths)
         self._publish_asset_tags_batch_changed(tuple(paths))
         self._publish_tag_catalog_changed()
-        self._reindex_search_documents(paths)
 
     @session_operation
     def get_tags_for_tree(self, library_root: str | Path, dir_path: str | Path,

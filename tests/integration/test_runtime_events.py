@@ -15,6 +15,7 @@ from AssetsManager.domain.event_bus import EventBus
 from AssetsManager.domain.events import (
     ActivityChanged,
     AssetNotesChanged,
+    AssetRatingChanged,
     CollectionChanged,
     AssetTagsChanged,
     AssetUrlsChanged,
@@ -56,19 +57,26 @@ def test_model_is_frozen_and_mapping_is_exact(tmp_path):
     assert RuntimeEventRouter.domains_for(FileSystemChanged) == (
         ProjectionDomain.FILES, ProjectionDomain.TREE, ProjectionDomain.HOME,
         ProjectionDomain.PROJECT_DETAIL, ProjectionDomain.FAVORITES,
+        ProjectionDomain.COLLECTIONS,
     )
     assert RuntimeEventRouter.domains_for(FavoritesChanged) == (
-        ProjectionDomain.FAVORITES,
+        ProjectionDomain.FAVORITES, ProjectionDomain.COLLECTIONS,
     )
     assert RuntimeEventRouter.domains_for(AssetTagsChanged) == (
         ProjectionDomain.METADATA, ProjectionDomain.TAGS,
         ProjectionDomain.PROJECT_DETAIL, ProjectionDomain.HOME,
+        ProjectionDomain.COLLECTIONS,
     )
     assert RuntimeEventRouter.domains_for(TagCatalogChanged) == (
         ProjectionDomain.TAGS, ProjectionDomain.HOME,
     )
     assert RuntimeEventRouter.domains_for(AssetNotesChanged) == (
         ProjectionDomain.METADATA, ProjectionDomain.PROJECT_DETAIL,
+        ProjectionDomain.COLLECTIONS,
+    )
+    assert RuntimeEventRouter.domains_for(AssetRatingChanged) == (
+        ProjectionDomain.METADATA, ProjectionDomain.PROJECT_DETAIL,
+        ProjectionDomain.COLLECTIONS,
     )
     assert RuntimeEventRouter.domains_for(AssetUrlsChanged) == (
         ProjectionDomain.METADATA, ProjectionDomain.PROJECT_DETAIL,
@@ -86,18 +94,18 @@ def test_model_is_frozen_and_mapping_is_exact(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("event_type", "expected_domain"),
+    ("event_type", "expected_domains"),
     [
-        (FavoritesChanged, _projection_domain("favorites")),
-        (ShareChanged, _projection_domain("shares")),
-        (UserChanged, _projection_domain("users")),
-        (InviteChanged, _projection_domain("users")),
-        (ActivityChanged, _projection_domain("activity")),
-        (PresenceChanged, _projection_domain("online_users")),
+        (FavoritesChanged, (_projection_domain("favorites"), _projection_domain("collections"))),
+        (ShareChanged, (_projection_domain("shares"),)),
+        (UserChanged, (_projection_domain("users"),)),
+        (InviteChanged, (_projection_domain("users"),)),
+        (ActivityChanged, (_projection_domain("activity"),)),
+        (PresenceChanged, (_projection_domain("online_users"),)),
     ],
 )
 def test_router_maps_share_and_identity_events_only_for_current_session(
-    tmp_path, event_type, expected_domain,
+    tmp_path, event_type, expected_domains,
 ):
     bus = EventBus()
     bootstrap, session, runtime = _runtime(tmp_path, bus)
@@ -107,7 +115,7 @@ def test_router_maps_share_and_identity_events_only_for_current_session(
         event = event_type(**_identity(session))
         bus.publish(event)
         assert len(received) == 1
-        assert received[0].domains == (expected_domain,)
+        assert received[0].domains == expected_domains
         assert received[0].paths == ()
 
         bus.publish(event_type(**_identity(session, session_token="wrong-token")))
@@ -134,6 +142,7 @@ def test_router_maps_paths_deterministically_and_filters_invalid_events(tmp_path
         assert received[-1].domains == (
             ProjectionDomain.FILES, ProjectionDomain.TREE, ProjectionDomain.HOME,
             ProjectionDomain.PROJECT_DETAIL, ProjectionDomain.FAVORITES,
+            ProjectionDomain.COLLECTIONS,
         )
 
         bus.publish(AssetTagsChanged(**_identity(session, file_path="nested\\asset.png")))
@@ -144,20 +153,108 @@ def test_router_maps_paths_deterministically_and_filters_invalid_events(tmp_path
         )))
         assert received[-1].paths == ("a.txt", "b.txt")
         assert received[-1].revision == 3
+        bus.publish(AssetRatingChanged(**_identity(
+            session, file_path="nested\\rated.png", rating=5,
+        )))
+        assert received[-1].paths == ("nested/rated.png",)
+        assert received[-1].revision == 4
+        assert received[-1].domains == (
+            ProjectionDomain.METADATA, ProjectionDomain.PROJECT_DETAIL,
+            ProjectionDomain.COLLECTIONS,
+        )
         bus.publish(TagCatalogChanged(**_identity(session)))
         assert received[-1].paths == ()
-        assert received[-1].revision == 4
+        assert received[-1].revision == 5
 
         for event in (
             FileSystemChanged(**_identity(session, session_token="wrong", paths=("x",))),
             AssetNotesChanged(**_identity(session, library_root=str(tmp_path / "other"), file_path="x")),
             AssetTagsChanged(file_path="x"),
+            AssetRatingChanged(**_identity(session, session_token="wrong", file_path="x", rating=3)),
+            AssetRatingChanged(**_identity(session, file_path="../escape", rating=3)),
+            AssetRatingChanged(**_identity(session, file_path="", rating=3)),
             DomainEvent(),
             FileSystemChanged(**_identity(session, paths=("../escape",), old_paths=())),
         ):
             bus.publish(event)
-        assert runtime.revision == 4
-        assert len(received) == 4
+        assert runtime.revision == 5
+        assert len(received) == 5
+    finally:
+        runtime.close()
+        bootstrap.library_service.close()
+
+
+def test_rating_service_mutation_routes_normalized_collection_invalidation(tmp_path):
+    """A real rating write invalidates the smart-collection query view."""
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    target = session.root / "nested" / "rated.txt"
+    target.parent.mkdir(parents=True)
+    target.write_text("rating", encoding="utf-8")
+    received = []
+    runtime.event_router.subscribe(received.append)
+    try:
+        runtime.services.metadata_service.set_rating(session.root_str, target, 4)
+
+        assert len(received) == 1
+        assert received[0].revision == 1
+        assert received[0].paths == ("nested/rated.txt",)
+        assert received[0].domains == (
+            ProjectionDomain.METADATA, ProjectionDomain.PROJECT_DETAIL,
+            ProjectionDomain.COLLECTIONS,
+        )
+    finally:
+        runtime.close()
+        bootstrap.library_service.close()
+
+
+def test_smart_collection_fts_is_current_inside_notes_and_tag_invalidation(tmp_path):
+    """The synchronous router callback can query FTS after each mutation."""
+    bootstrap = ApplicationBootstrap()
+    session = bootstrap.library_service.open_session(tmp_path / "library")
+    runtime = bootstrap.runtime_for(session)
+    target = session.root / "indexed.txt"
+    target.parent.mkdir(parents=True)
+    target.write_text("indexed", encoding="utf-8")
+    runtime.services.asset_index_service.index_directory(session.root)
+    collections = runtime.services.collection_service
+    assert collections is not None
+    notes_view = collections.create_smart(session.root_str, "notes", {"fts": "notes:signalnote"})
+    tags_view = collections.create_smart(session.root_str, "tags", {"fts": "tags:signaltag"})
+    renamed_view = collections.create_smart(session.root_str, "renamed", {"fts": "tags:renamedtag"})
+    cleared_view = collections.create_smart(session.root_str, "cleared", {"fts": "tags:clearme"})
+    views = (notes_view, tags_view, renamed_view, cleared_view)
+    observed = []
+
+    def observe(event):
+        if ProjectionDomain.COLLECTIONS in event.domains and event.paths == ("indexed.txt",):
+            observed.append(tuple(
+                bool(collections.evaluate(session.root_str, view["id"]))
+                for view in views
+            ))
+
+    runtime.event_router.subscribe(observe)
+    try:
+        runtime.services.metadata_service.set_notes(session.root_str, target, "signalnote")
+        runtime.services.tag_service.add_tag(session.root_str, target, "signaltag")
+        runtime.services.tag_service.remove_tag(session.root_str, target, "signaltag")
+        runtime.services.tag_service.add_tag(session.root_str, target, "signaltag")
+        runtime.services.tag_service.rename_tag(session.root_str, "signaltag", "renamedtag")
+        runtime.services.tag_service.delete_tag(session.root_str, "renamedtag")
+        runtime.services.tag_service.add_tag(session.root_str, target, "clearme")
+        runtime.services.tag_service.remove_file(session.root_str, target)
+
+        assert observed == [
+            (True, False, False, False),
+            (True, True, False, False),
+            (True, False, False, False),
+            (True, True, False, False),
+            (True, False, True, False),
+            (True, False, False, False),
+            (True, False, False, True),
+            (True, False, False, False),
+        ]
     finally:
         runtime.close()
         bootstrap.library_service.close()

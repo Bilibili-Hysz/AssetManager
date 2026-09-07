@@ -429,11 +429,13 @@ def test_switch_library_open_failure_rolls_back_to_previous_library():
         "session.open:new-root",
         f"session.open:{_Session.root}",
         "scoped.apply",
+        "sidebar.navigate",
+        "file-list.navigate",
     ]
     assert window._workspace.selected == [str(_Session.root)]
 
 
-def test_switch_library_open_failure_with_failed_restore_removes_tab(monkeypatch):
+def test_switch_library_open_failure_with_failed_restore_keeps_retryable_tab(monkeypatch):
     global events
     events = []
     notified = []
@@ -468,8 +470,9 @@ def test_switch_library_open_failure_with_failed_restore_removes_tab(monkeypatch
             "new-root"
         )
 
-    # H3: when the rollback re-open also fails, the new tab is dropped and
-    # the user is notified instead of leaving a dead session behind.
+    # H3: when the rollback re-open also fails, no closed session is left on
+    # the window. The selected target tab remains available for its explicit
+    # retry signal; deleting it would leave no user action to reopen it.
     assert events == [
         "lan.stop",
         "notes.flush",
@@ -482,8 +485,10 @@ def test_switch_library_open_failure_with_failed_restore_removes_tab(monkeypatch
         "session.open:new-root",
         f"session.open:{_Session.root}",
     ]
-    assert window._workspace._tabs.removed == ["new-root"]
-    assert len(notified) == 1
+    assert window._workspace._tabs.removed == []
+    assert window._library_session is None
+    assert window._switch_recovery_pending is True
+    assert notified == []
 
 
 def test_switch_library_is_noop_for_active_canonical_root(tmp_path):

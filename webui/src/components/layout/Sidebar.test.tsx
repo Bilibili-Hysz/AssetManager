@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
@@ -7,6 +7,7 @@ import { Sidebar } from './Sidebar';
 import { setLang } from '../../i18n';
 
 let api: object = {};
+let identityGeneration = 0;
 const getTree = vi.fn();
 const listTags = vi.fn();
 const navigateMock = vi.fn();
@@ -68,7 +69,7 @@ vi.mock('../../api/collections', () => ({
 }));
 
 vi.mock('../../hooks/useAuth', () => ({
-  useAuth: () => ({ api }),
+  useAuth: () => ({ api, identityGeneration }),
 }));
 
 vi.mock('../../api/metadata', () => ({
@@ -93,6 +94,7 @@ describe('Sidebar', () => {
     navigateMock.mockReset();
     favoriteItems = [];
     api = {};
+    identityGeneration = 0;
     useInvalidationMock.mockReset();
   });
 
@@ -306,6 +308,113 @@ describe('Sidebar', () => {
     // factory's concern (see collections.contract.test.ts).
     expect(evaluateCollection).toHaveBeenCalledWith(8);
     expect(await screen.findByText('logo.svg')).toBeDefined();
+  });
+
+  it('refreshes expanded collection members after a collections invalidation', async () => {
+    const user = userEvent.setup();
+    const collection = { id: 7, name: 'hero shots', kind: 'manual' as const, query: {}, member_count: 1, created_at: 1, updated_at: 1 };
+    listCollections.mockResolvedValue({ collections: [collection] });
+    listMembers
+      .mockResolvedValueOnce({ members: [{ path: 'workspace/old.svg', added_at: 1, exists: true }] })
+      .mockResolvedValueOnce({ members: [{ path: 'workspace/current.svg', added_at: 2, exists: true }] });
+    render(<Sidebar onNavigate={() => {}} currentPath="" />, { wrapper: MemoryRouter });
+
+    await user.click(await screen.findByRole('button', { name: /^hero shots/ }));
+    expect(await screen.findByText('old.svg')).toBeDefined();
+
+    await act(async () => {
+      useInvalidationMock.mock.calls.find(call => call[0][0] === 'collections')![1]!();
+    });
+
+    expect(await screen.findByText('current.svg')).toBeDefined();
+    expect(screen.queryByText('old.svg')).toBeNull();
+    expect(listMembers).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not let a superseded collection member response replace refreshed members', async () => {
+    const user = userEvent.setup();
+    const collection = { id: 7, name: 'hero shots', kind: 'manual' as const, query: {}, member_count: 1, created_at: 1, updated_at: 1 };
+    let resolveFirst!: (value: { members: Array<{ path: string; added_at: number; exists: boolean }> }) => void;
+    let resolveSecond!: (value: { members: Array<{ path: string; added_at: number; exists: boolean }> }) => void;
+    listCollections.mockResolvedValue({ collections: [collection] });
+    listMembers
+      .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise(resolve => { resolveSecond = resolve; }));
+    render(<Sidebar onNavigate={() => {}} currentPath="" />, { wrapper: MemoryRouter });
+
+    await user.click(await screen.findByRole('button', { name: /^hero shots/ }));
+    await act(async () => {
+      useInvalidationMock.mock.calls.find(call => call[0][0] === 'collections')![1]!();
+    });
+    await waitFor(() => expect(listMembers).toHaveBeenCalledTimes(2));
+
+    await act(async () => { resolveSecond({ members: [{ path: 'workspace/current.svg', added_at: 2, exists: true }] }); });
+    expect(await screen.findByText('current.svg')).toBeDefined();
+    await act(async () => { resolveFirst({ members: [{ path: 'workspace/stale.svg', added_at: 1, exists: true }] }); });
+
+    expect(screen.queryByText('stale.svg')).toBeNull();
+    expect(screen.getByText('current.svg')).toBeDefined();
+  });
+
+  it('drops pending collection members when the authenticated identity changes', async () => {
+    const user = userEvent.setup();
+    const collection = { id: 7, name: 'hero shots', kind: 'manual' as const, query: {}, member_count: 1, created_at: 1, updated_at: 1 };
+    let resolveFirst!: (value: { members: Array<{ path: string; added_at: number; exists: boolean }> }) => void;
+    let resolveSecond!: (value: { members: Array<{ path: string; added_at: number; exists: boolean }> }) => void;
+    listCollections.mockResolvedValue({ collections: [collection] });
+    listMembers
+      .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise(resolve => { resolveSecond = resolve; }));
+    const view = render(<Sidebar onNavigate={() => {}} currentPath="" />, { wrapper: MemoryRouter });
+
+    await user.click(await screen.findByRole('button', { name: /^hero shots/ }));
+    identityGeneration = 1;
+    api = { identity: 'next' };
+    view.rerender(<Sidebar onNavigate={() => {}} currentPath="" />);
+    await waitFor(() => expect(listMembers).toHaveBeenCalledTimes(2));
+
+    await act(async () => { resolveFirst({ members: [{ path: 'workspace/old-user.svg', added_at: 1, exists: true }] }); });
+    expect(screen.queryByText('old-user.svg')).toBeNull();
+    await act(async () => { resolveSecond({ members: [{ path: 'workspace/new-user.svg', added_at: 2, exists: true }] }); });
+    expect(await screen.findByText('new-user.svg')).toBeDefined();
+  });
+
+  it('does not refresh collections when a create response arrives after an identity change', async () => {
+    const user = userEvent.setup();
+    let resolveCreate!: (value: { collection: { id: number } }) => void;
+    createCollection.mockImplementationOnce(() => new Promise(resolve => { resolveCreate = resolve; }));
+    const prompt = vi.spyOn(window, 'prompt').mockReturnValue('late collection');
+    const view = render(<Sidebar onNavigate={() => {}} currentPath="" />, { wrapper: MemoryRouter });
+    await screen.findByRole('heading', { name: 'Collections' });
+
+    await user.click(screen.getByTestId('sidebar-new-collection'));
+    identityGeneration = 1;
+    api = { identity: 'next' };
+    view.rerender(<Sidebar onNavigate={() => {}} currentPath="" />);
+    await waitFor(() => expect(listCollections).toHaveBeenCalledTimes(2));
+    await act(async () => { resolveCreate({ collection: { id: 9 } }); });
+
+    expect(listCollections).toHaveBeenCalledTimes(2);
+    prompt.mockRestore();
+  });
+
+  it('does not remove or refresh a collection when a delete response arrives after an identity change', async () => {
+    const collection = { id: 7, name: 'hero shots', kind: 'manual' as const, query: {}, member_count: 0, created_at: 1, updated_at: 1 };
+    let resolveDelete!: (value: { ok: boolean }) => void;
+    listCollections.mockResolvedValue({ collections: [collection] });
+    deleteCollection.mockImplementationOnce(() => new Promise(resolve => { resolveDelete = resolve; }));
+    const view = render(<Sidebar onNavigate={() => {}} currentPath="" />, { wrapper: MemoryRouter });
+    await screen.findByTestId('sidebar-delete-collection-7');
+
+    await userEvent.click(screen.getByTestId('sidebar-delete-collection-7'));
+    identityGeneration = 1;
+    api = { identity: 'next' };
+    view.rerender(<Sidebar onNavigate={() => {}} currentPath="" />);
+    await waitFor(() => expect(listCollections).toHaveBeenCalledTimes(2));
+    await act(async () => { resolveDelete({ ok: true }); });
+
+    expect(listCollections).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId('sidebar-collection-7')).toBeDefined();
   });
 
   it('creates a collection through the prompt entry point', async () => {

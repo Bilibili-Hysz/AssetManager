@@ -278,8 +278,8 @@ class MetadataService:
         repo = self._repo(root)
         self._require_event_safe_transaction(repo)
         repo.set_notes(key, text)
-        self._publish_notes_changed(key)
         self._reindex_search_document(key)
+        self._publish_notes_changed(key)
 
     @session_operation
     def get_urls(self, library_root: str | Path, path: str | Path) -> list[str]:

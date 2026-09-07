@@ -125,7 +125,7 @@ export function Sidebar({ onNavigate, currentPath, activeTag = null, onTagFilter
   const [expandedCollections, setExpandedCollections] = useState<Set<number>>(() => new Set());
   const [collectionMembers, setCollectionMembers] = useState<Record<number, CollectionMember[]>>({});
   const [collectionsPending, setCollectionsPending] = useState(false);
-  const { api } = useAuth();
+  const { api, identityGeneration } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
   const metaApi = useMemo(() => createMetadataApi(api), [api]);
@@ -135,7 +135,14 @@ export function Sidebar({ onNavigate, currentPath, activeTag = null, onTagFilter
   const requestGeneration = useRef(0);
   const tagsRequestGeneration = useRef(0);
   const collectionsRequestGeneration = useRef(0);
+  const collectionMembersGeneration = useRef(0);
+  const collectionMemberRequestGeneration = useRef(new Map<number, number>());
+  const collectionMembersCached = useRef(new Set<number>());
+  const collectionMembersPending = useRef(new Map<number, number>());
+  const expandedCollectionsRef = useRef(new Set<number>());
+  const identityGenerationRef = useRef(identityGeneration);
   const mounted = useRef(true);
+  identityGenerationRef.current = identityGeneration;
 
   const refreshTree = useCallback(() => {
     if (!mounted.current) return;
@@ -161,13 +168,77 @@ export function Sidebar({ onNavigate, currentPath, activeTag = null, onTagFilter
     });
   }, [tagsApi]);
 
-  const refreshCollections = useCallback(() => {
+  const clearCollectionMembers = useCallback((ids?: Iterable<number>) => {
+    if (!ids) {
+      collectionMembersGeneration.current += 1;
+      collectionMemberRequestGeneration.current.clear();
+      collectionMembersCached.current.clear();
+      collectionMembersPending.current.clear();
+      setCollectionMembers({});
+      return;
+    }
+    const affected = new Set(ids);
+    for (const id of affected) {
+      collectionMemberRequestGeneration.current.set(id, (collectionMemberRequestGeneration.current.get(id) ?? 0) + 1);
+      collectionMembersCached.current.delete(id);
+      collectionMembersPending.current.delete(id);
+    }
+    setCollectionMembers(previous => {
+      const next = { ...previous };
+      for (const id of affected) delete next[id];
+      return next;
+    });
+  }, []);
+
+  const loadCollectionMembers = useCallback((collection: Collection, force = false) => {
+    const id = collection.id;
+    if (!force && (collectionMembersCached.current.has(id) || collectionMembersPending.current.has(id))) return;
+    const memberGeneration = collectionMembersGeneration.current;
+    const requestGeneration = (collectionMemberRequestGeneration.current.get(id) ?? 0) + 1;
+    collectionMemberRequestGeneration.current.set(id, requestGeneration);
+    collectionMembersPending.current.set(id, requestGeneration);
+    const request = collection.kind === 'smart'
+      ? collectionsApi.evaluate(id).then(res =>
+          (res.results ?? []).map(result => ({ path: result.path, added_at: result.mtime, exists: true })),
+        )
+      : collectionsApi.members(id).then(res => res.members ?? []);
+    const isCurrent = () => mounted.current
+      && memberGeneration === collectionMembersGeneration.current
+      && requestGeneration === collectionMemberRequestGeneration.current.get(id);
+    request.then(members => {
+      if (isCurrent()) {
+        collectionMembersCached.current.add(id);
+        setCollectionMembers(prev => ({ ...prev, [id]: members }));
+      }
+    }).catch(() => {
+      if (isCurrent()) {
+        collectionMembersCached.current.delete(id);
+        setCollectionMembers(prev => ({ ...prev, [id]: [] }));
+      }
+    }).finally(() => {
+      if (memberGeneration === collectionMembersGeneration.current
+        && collectionMembersPending.current.get(id) === requestGeneration) {
+        collectionMembersPending.current.delete(id);
+      }
+    });
+  }, [collectionsApi]);
+
+  const refreshCollections = useCallback((refreshExpandedMembers = false) => {
     if (!mounted.current) return;
+    if (refreshExpandedMembers) clearCollectionMembers();
     const generation = ++collectionsRequestGeneration.current;
     setCollectionsLoading(true);
     collectionsApi.list().then(res => {
       if (mounted.current && generation === collectionsRequestGeneration.current) {
-        setCollections(res.collections ?? []);
+        const nextCollections = res.collections ?? [];
+        setCollections(nextCollections);
+        const available = new Set(nextCollections.map(collection => collection.id));
+        const expanded = new Set([...expandedCollectionsRef.current].filter(id => available.has(id)));
+        expandedCollectionsRef.current = expanded;
+        setExpandedCollections(expanded);
+        for (const collection of nextCollections) {
+          if (expanded.has(collection.id)) loadCollectionMembers(collection, refreshExpandedMembers);
+        }
       }
     }).catch(() => {
       if (mounted.current && generation === collectionsRequestGeneration.current) {
@@ -178,81 +249,75 @@ export function Sidebar({ onNavigate, currentPath, activeTag = null, onTagFilter
         setCollectionsLoading(false);
       }
     });
-  }, [collectionsApi]);
-
-  const loadCollectionMembers = useCallback((collection: Collection) => {
-    const cached = collectionMembers[collection.id];
-    if (cached) return;
-    const request = collection.kind === 'smart'
-      ? collectionsApi.evaluate(collection.id).then(res =>
-          (res.results ?? []).map(result => ({ path: result.path, added_at: result.mtime, exists: true })),
-        )
-      : collectionsApi.members(collection.id).then(res => res.members ?? []);
-    request.then(members => {
-      if (mounted.current) {
-        setCollectionMembers(prev => ({ ...prev, [collection.id]: members }));
-      }
-    }).catch(() => {
-      if (mounted.current) {
-        setCollectionMembers(prev => ({ ...prev, [collection.id]: [] }));
-      }
-    });
-  }, [collectionMembers, collectionsApi]);
+  }, [clearCollectionMembers, collectionsApi, loadCollectionMembers]);
 
   const handleToggleCollection = useCallback((collection: Collection) => {
-    setExpandedCollections(prev => {
-      const next = new Set(prev);
-      if (next.has(collection.id)) next.delete(collection.id);
-      else next.add(collection.id);
-      return next;
-    });
+    const next = new Set(expandedCollectionsRef.current);
+    if (next.has(collection.id)) next.delete(collection.id);
+    else next.add(collection.id);
+    expandedCollectionsRef.current = next;
+    setExpandedCollections(next);
     loadCollectionMembers(collection);
   }, [loadCollectionMembers]);
 
   const handleCreateCollection = useCallback(() => {
     const name = window.prompt(t('sidebar.collection_name_prompt'))?.trim();
     if (!name) return;
+    const requestIdentityGeneration = identityGeneration;
     setCollectionsPending(true);
     // A snapshot of the current browse query state (q/tag) turns the new
     // collection into a smart query view instead of an empty manual set.
     const request = collectionSnapshot
       ? collectionsApi.create(name, 'smart', collectionSnapshot)
       : collectionsApi.create(name);
-    request.then(() => refreshCollections()).catch(() => {}).finally(() => {
-      if (mounted.current) setCollectionsPending(false);
+    request.then(() => {
+      if (mounted.current && requestIdentityGeneration === identityGenerationRef.current) refreshCollections();
+    }).catch(() => {}).finally(() => {
+      if (mounted.current && requestIdentityGeneration === identityGenerationRef.current) setCollectionsPending(false);
     });
-  }, [collectionSnapshot, collectionsApi, refreshCollections, t]);
+  }, [collectionSnapshot, collectionsApi, identityGeneration, refreshCollections, t]);
 
   const handleDeleteCollection = useCallback((collection: Collection) => {
+    const requestIdentityGeneration = identityGeneration;
     setCollectionsPending(true);
     collectionsApi.delete(collection.id).then(() => {
+      if (!mounted.current || requestIdentityGeneration !== identityGenerationRef.current) return;
       setExpandedCollections(prev => {
         const next = new Set(prev);
         next.delete(collection.id);
+        expandedCollectionsRef.current = next;
         return next;
       });
-      setCollectionMembers(prev => {
-        const next = { ...prev };
-        delete next[collection.id];
-        return next;
-      });
+      clearCollectionMembers([collection.id]);
       refreshCollections();
     }).catch(() => {}).finally(() => {
-      if (mounted.current) setCollectionsPending(false);
+      if (mounted.current && requestIdentityGeneration === identityGenerationRef.current) setCollectionsPending(false);
     });
-  }, [collectionsApi, refreshCollections]);
+  }, [clearCollectionMembers, collectionsApi, identityGeneration, refreshCollections]);
 
   useEffect(() => {
     mounted.current = true;
     refreshTree();
-    return () => { mounted.current = false; requestGeneration.current += 1; tagsRequestGeneration.current += 1; collectionsRequestGeneration.current += 1; };
+    return () => {
+      mounted.current = false;
+      requestGeneration.current += 1;
+      tagsRequestGeneration.current += 1;
+      collectionsRequestGeneration.current += 1;
+      collectionMembersGeneration.current += 1;
+      collectionMemberRequestGeneration.current.clear();
+      collectionMembersCached.current.clear();
+      collectionMembersPending.current.clear();
+    };
   }, [refreshTree]);
 
   useEffect(() => { refreshTags(); }, [refreshTags, tagsRefreshKey]);
-  useEffect(() => { refreshCollections(); }, [refreshCollections]);
+  useEffect(() => {
+    setCollectionsPending(false);
+    refreshCollections(true);
+  }, [identityGeneration, refreshCollections]);
   useInvalidation(['tree'], () => { void refreshTree(); });
   useInvalidation(['tags'], () => { void refreshTags(); });
-  useInvalidation(['collections'], () => { void refreshCollections(); });
+  useInvalidation(['collections'], () => { void refreshCollections(true); });
   useEffect(() => {
     const ancestors = collectActiveAncestors(tree, currentPath);
     if (ancestors.size) setExpandedPaths(paths => new Set([...paths, ...ancestors]));

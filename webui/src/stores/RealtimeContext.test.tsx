@@ -98,6 +98,24 @@ describe('RealtimeProvider', () => {
 
     expect(callback).toHaveBeenCalledOnce();
   });
+
+  it('delivers collections invalidations, including events with other projection domains', () => {
+    const collections = vi.fn();
+    const files = vi.fn();
+    const { result } = renderHook(() => useRealtimeContext(), { wrapper });
+    act(() => {
+      result.current.registerInvalidation(['collections'], collections);
+      result.current.registerInvalidation(['files'], files);
+    });
+
+    emit({ type: 'runtime_ready', epoch: 'a', revision: 0 });
+    emit({ type: 'projection_invalidated', epoch: 'a', revision: 1, domains: ['collections', 'files'], paths: ['workspace/hero.svg'] });
+
+    expect(collections).toHaveBeenCalledOnce();
+    expect(files).toHaveBeenCalledOnce();
+    expect(collections.mock.calls[0]?.[0]).toMatchObject({ domains: ['collections', 'files'], revision: 1 });
+  });
+
   it('enables and disables the socket with realtime capability', () => {
     const { rerender } = render(<RealtimeProvider><div /></RealtimeProvider>);
     expect(transport.enabled).toBe(true);
