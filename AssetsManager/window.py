@@ -142,20 +142,26 @@ class _ImportProgressDialog(QProgressDialog):
 
 
 def _restore_window_geometry(window: QWidget) -> None:
-    """Restore window geometry and maximized state saved last session.
+    """Restore window geometry saved last session.
 
     Malformed persisted data is ignored so a hand-edited settings file
     cannot prevent the window from starting.
+
+    The maximized flag is stored on the window (``_pending_maximized``) for
+    the caller to apply AFTER ``_setup_ui()`` — calling ``showMaximized()``
+    during ``__init__`` (before the dock/central widget tree exists) causes
+    a native-level segfault in the frozen bundle (PF-5), and an unstable
+    event cascade in development mode (PF-1).
     """
     try:
         settings = AppSettings.instance()
         geom = settings.get("window_geometry")
         if isinstance(geom, str) and geom:
             window.restoreGeometry(bytes.fromhex(geom))
-        if settings.get("window_maximized"):
-            window.showMaximized()
+        setattr(window, "_pending_maximized", bool(settings.get("window_maximized")))
     except (TypeError, ValueError):
         _log.warning("Ignoring malformed saved window geometry", exc_info=True)
+        setattr(window, "_pending_maximized", False)
 
 
 def maybe_show_tray_hide_hint(tray, *, settings, sharing_running: bool) -> bool:
@@ -257,6 +263,13 @@ class MainWindow(LanSharingMixin, QMainWindow):
         # Must be set before UI setup because workspace restore can switch libraries.
         self._library_session = library_session
         self._setup_ui()
+        # PF-5: apply the deferred maximized state AFTER the full widget tree
+        # exists — showMaximized during __init__ (before _setup_ui) segfaults
+        # in the frozen bundle (native-level, pre-Python) and is unstable in
+        # development mode (PF-1 variant).
+        if getattr(self, "_pending_maximized", False):
+            self._pending_maximized = False
+            self.showMaximized()
         self._bind_plugin_host()
         self._connect_bus()
         self._force_quit = False

@@ -195,7 +195,7 @@
     {
       "family": "qfont_set",
       "file": "AssetsManager\\window.py",
-      "line": 1529,
+      "line": 1542,
       "method": "setPointSize",
       "role_hint": "font",
       "source_text": "font.setPointSize(scaled_pt(base_pt))",
