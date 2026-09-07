@@ -1,21 +1,25 @@
 # 性能审查 W6 · Windows 包冒烟（2026-09-07，PF-5 修后更新）
 
-> 状态：**frozen 包可交付 — 哈希绑定 + 包内功能取证完成（2026-09-08 第二次修订）**
+> 状态：**frozen 包可交付 — 候选包哈希绑定干净（工作树零脏文件）+ 包内功能验收完成（2026-09-08 第三次修订）**
 > 环境：PyInstaller 6.19.0 / PySide6 6.11.0 / Python 3.14.3
 >
+> **修订 3（2026-09-08，第三轮复核 F5 后）**：F1/F2 生产修复（`68ab0e4`）之后，按
+> "候选包必须绑定其自身源码"的要求**重建双模式包并重跑全部四变体包内功能验收**
+> （新增备注评分取证项，四变体全过）。[哈希清单](evidence/w6-package-hash-manifest.json)
+> 绑定 HEAD `68ab0e4` 且**工作树零脏文件**——包内容与提交源码严格一一对应。
+> 证据：[onefile](evidence/w6-functional/onefile.json) ·
+> [onefile-maximized](evidence/w6-functional/onefile-maximized.json) ·
+> [onedir](evidence/w6-functional/onedir.json) ·
+> [onedir-maximized](evidence/w6-functional/onedir-maximized.json)（各含日志 .txt）。
+>
 > **修订 2（2026-09-08）**：R5 降级时登记的两项缺口已全部补齐——
-> ① 哈希绑定：[w6-package-hash-manifest.json](evidence/w6-package-hash-manifest.json)
-> 记录 git HEAD `8421f1c`（工作树仅含本探针/报告类新增文件，无被跟踪源码改动）+ webui/dist
-> 23 文件 + onedir 262 文件 + onefile exe 的 SHA-256；
-> ② 包内功能验收：新探针 [w6_package_functional.py](../../../scripts/perf/w6_package_functional.py)
-> 以真实窗口驱动四个 frozen 变体（onefile/onedir × normal/maximized），全部 PASS
-> （[证据目录](evidence/w6-functional/)）。第一次修订时"启动冒烟通过、功能验收待补"的降级
-> 状态自本修订起解除。
+> ① 哈希绑定 + ② 包内功能验收（四变体 PASS）。第一次修订时"启动冒烟通过、功能验收待补"
+> 的降级状态自本修订起解除。
 >
 > **修订 1（2026-09-08 复核处置 R5）**：本报告曾以"ALL PASS — 4 frozen 模式全部可交付"作结，
 > 独立复核指出该结论缺乏哈希绑定与包内功能证据，据此降级为"启动冒烟通过、功能验收待补"。
 
-## 1. 构建（2026-09-08 重建，哈希绑定）
+## 1. 构建（2026-09-08 重建 ×2，哈希绑定候选包）
 
 | 模式 | 结果 | check_package_contents |
 |---|---|---|
@@ -24,7 +28,7 @@
 
 WebUI dist：从当前源码重建（vite build ✓，产物哈希入清单）。
 
-## 2. 包内功能验收（2026-09-08，四变体全 PASS）
+## 2. 包内功能验收（2026-09-08，四变体全 PASS ×2 轮：初始包 + F1/F2 后候选包，均含备注评分项）
 
 驱动方式：探针种子化隔离运行域（`AM_RUNTIME_ROOT` + 合成库 12 PNG + 共享自启设置），
 启动真实 frozen 二进制，操作者经真实 StartupWindow 一键开库，随后探针自动取证：
@@ -72,10 +76,10 @@ resize+show 事件，C 侧分发进入不完整的 widget tree，frozen 引导�
 | ~~PF-5~~ | ~~P1 阻断~~ | ~~frozen maximized 段错误~~ | ✅ 已修 + 包内实证（d11ad45；0937a95 后重建复验） |
 | PF-6 | P3 | **归因更新（09-08）**：WM_CLOSE 在托盘可用时的应用语义是隐藏到托盘而非退出；随后的强制结束退出码为 1。"exit code=1"不再解释为异常退出路径，而是"托盘常驻 + 强制终止"的组合结果。仍待办：为无托盘/纯 WM_CLOSE 退出路径归因退出码 | 归因部分完成 |
 
-## 6. 交付结论（2026-09-08 第二次修订）
+## 6. 交付结论（2026-09-08 第三次修订）
 
-**4 frozen 变体在哈希绑定的重建包上全部通过包内功能验收，frozen 包可交付。**
-保留说明：包内验收覆盖开库/共享/LAN 资产/缩略图/实时变化/恢复合同；真机长时使用与
-视觉走查（Stage F 十六步）仍属用户真机验收范畴。
+**候选包（HEAD `68ab0e4`，工作树零脏文件）四变体全部通过包内功能验收，frozen 包可交付。**
+包内验收覆盖：开库/共享自启/LAN 字体逐字节/缩略图/备注评分写读/实时变化/PF-5 最大化消费/
+关闭语义。保留说明：真机长时使用与视觉走查（Stage F 十六步）仍属用户真机验收范畴。
 
 无证据即 unverified——本文档自身也是这个纪律的适用对象。

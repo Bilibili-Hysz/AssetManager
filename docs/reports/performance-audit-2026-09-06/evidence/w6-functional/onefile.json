@@ -1,8 +1,8 @@
 {
  "mode": "onefile",
- "exe_sha256": "71ad971946a0bb566a84c16f4ca7ec31a67381c7a21b66e5008658ac9b52a473",
- "pid": 16592,
- "port": 4883,
+ "exe_sha256": "bf00608f881f8f2026403af02072479aacf14f10c8fcd2045a76041def39ef48",
+ "pid": 21048,
+ "port": 8180,
  "maximized": false,
  "checks": {
   "info": {
@@ -14,6 +14,7 @@
   "font": "48256 bytes, byte-identical",
   "thumbnail_single": "178 bytes WEBP",
   "thumbnail_batch": "12/12",
+  "notes_rating": "saved and read back (notes + rating=4)",
   "live_change": "live_added.png listed"
  },
  "close": {

@@ -1,6 +1,6 @@
 {
- "git_head": "8421f1c9f3f56548b14012efb01f1356d8868bf3",
- "worktree_dirty": true,
+ "git_head": "68ab0e4d1ad3f9b348eabd1c77f1668ecf42c0d0",
+ "worktree_dirty_files": [],
  "webui_dist_sha256": {
   "dist\\assets\\AdminPage-Cuqblv6A.js": "fd0db9dafd0a93eea688260e7f05023c903bbc7104c265bf832981431aaa1618",
   "dist\\assets\\AppHeader-CasczflF.js": "379c05ed731d4d79df55e58a252130432d4871a8a946b40b865e7d4d58b95f56",
@@ -26,7 +26,7 @@
   "dist\\fonts\\inter-var-latin.woff2": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62",
   "dist\\index.html": "4247679adba2bcdd8434c8d136e5b1d8465b76523392a142246e575cfee5fdfa"
  },
- "onefile_exe_sha256": "71ad971946a0bb566a84c16f4ca7ec31a67381c7a21b66e5008658ac9b52a473",
+ "onefile_exe_sha256": "bf00608f881f8f2026403af02072479aacf14f10c8fcd2045a76041def39ef48",
  "onedir_files_sha256": {
   "_internal\\81d243bd2c585b0f4821__mypyc.cp314-win_amd64.pyd": "ab64835b63093c31975df2692756c8008e7ec190e4aa86f15a713bcc62e1d432",
   "_internal\\_asyncio.pyd": "48fdd95938c43b8b3e1f6312de651a53d459e8e2c754fbbdf48e99f5caa1f55b",
@@ -130,7 +130,7 @@
   "_internal\\attrs-26.1.0.dist-info\\RECORD": "65b5537e6941067545675b31532859555cb4a4bae7dd55f40848e97d2b5bec67",
   "_internal\\attrs-26.1.0.dist-info\\REQUESTED": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "_internal\\attrs-26.1.0.dist-info\\WHEEL": "41c708c5adba6e097513ab8ccb9f1d7865a2fb469e22491a9e01dcc64da459fc",
-  "_internal\\base_library.zip": "94615ebddf47e5b911d39f97ee2afc42c743bbb9688dba561fa238eae923e40a",
+  "_internal\\base_library.zip": "e244208da1b32e8d121189d21e3e2c190bfe377a339822a944fbe35e23425b89",
   "_internal\\certifi\\cacert.pem": "fc9165a12403263e7ebfbdad7be7a3eac0fa5d325d3c70465f28d3690072ca28",
   "_internal\\certifi\\py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "_internal\\charset_normalizer\\cd.cp314-win_amd64.pyd": "da3ce780d6d58ae8c6920b99f806f64d58a1b33f4a01382861b01b50549199f8",
@@ -289,6 +289,6 @@
   "_internal\\win32\\win32trace.pyd": "9d7eb0f1b4f4041d86420fd0e44fe4b07b6d64c999e8f6b5b5cc3ce8648eabe1",
   "_internal\\win32com\\shell\\shell.pyd": "b85e860e01e94b3aca2e8e7033f8b31439ef670f4810abc9bc4109b2e48f2b47",
   "_internal\\yarl\\_quoting_c.cp314-win_amd64.pyd": "d394097355610b57b243b4353fa73d5d888a82378d7af9a608c41883bb719cb2",
-  "AssetManager.exe": "1c50e602a63012884abc0b22207c6e7f729dfafcf4d99bc346b16446a4d6a17c"
+  "AssetManager.exe": "d276752c71509e2dee0b257e3862e31bbef16fa0bfa63978064ce740396f7cb8"
  }
 }
