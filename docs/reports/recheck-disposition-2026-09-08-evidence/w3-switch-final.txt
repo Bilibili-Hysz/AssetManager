@@ -1,0 +1,41 @@
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+rounds: 10 (20 switches)
+thread baseline/after: 4/2
+bus FileSystemChanged listeners baseline/after: 3/0
+in-flight outcomes:
+  - round 1: 200
+  - round 1: 200
+  - round 2: 200
+  - round 2: 200
+  - round 3: 200
+  - round 3: 200
+  - round 4: 200
+  - round 4: 200
+  - round 5: 200
+  - round 5: 200
+  - round 6: 200
+  - round 6: 200
+  - round 7: 200
+  - round 7: 200
+  - round 8: 200
+  - round 8: 200
+  - round 9: 200
+  - round 9: 200
+  - round 10: 200
+  - round 10: 200
+failures: 0
+ROUNDTRIP: PASS

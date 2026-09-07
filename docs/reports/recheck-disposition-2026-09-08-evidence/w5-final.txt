@@ -1,0 +1,28 @@
+library: C:\Users\86177\AppData\Local\Temp\w5-lan-qx_qski_\library (100 files)
+RSS at start: 32 MB
+{"name": "baseline_after_boot", "rss_mb": 99.1}
+{"name": "server_started", "rss_mb": 99.4, "port": 11509}
+{"name": "health_ok", "rss_mb": 100.7, "share_name": "AssetManager", "auth_mode": "password"}
+{"name": "login_ok", "rss_mb": 100.7}
+{"name": "browse_ok", "rss_mb": 101.1, "items": 50, "count": 1, "total_s": 0.25, "p50_ms": 250.2, "max_ms": 250.2}
+{"name": "thumbnails_c1_100", "rss_mb": 101.7, "count": 100, "total_s": 10.872, "p50_ms": 106.1, "max_ms": 344.3}
+{"name": "after_thumbnails_c1", "rss_mb": 101.7}
+{"name": "thumbnails_batch_50", "rss_mb": 132.2, "delivered": 50, "verified": 50, "total_s": 7.5}
+{"name": "after_thumbnails_batch", "rss_mb": 132.2}
+{"name": "downloads_100", "rss_mb": 132.3, "count": 100, "total_s": 2.97, "p50_ms": 29.8, "max_ms": 44.2}
+{"name": "after_downloads", "rss_mb": 132.3}
+{"name": "zip_20_files", "rss_mb": 132.4, "bytes": 4336, "members": 20, "total_s": 0.553}
+{"name": "after_zip", "rss_mb": 132.4}
+{"name": "mixed_c8_48", "rss_mb": 133.7, "wall_s": 1.012, "count": 48, "total_s": 7.528, "p50_ms": 187.1, "max_ms": 279.1}
+{"name": "after_mixed_c8", "rss_mb": 133.7}
+{"name": "cancel_reclaim_ok", "rss_mb": 133.7, "big_file_mb": 192, "aborted_after_mb": 1, "abort_window_s": 0.04, "rss_after_cancel_mb": 133.7}
+{"name": "post_cancel_redownload_ok", "rss_mb": 133.7}
+{"name": "repeat_thumbnails_1", "rss_mb": 134.1}
+{"name": "repeat_thumbnails_2", "rss_mb": 134.1}
+{"name": "repeat_thumbnails_3", "rss_mb": 134.2}
+{"name": "rss_peak_during_run", "rss_mb": 134.2, "peak_mb": 137.7, "event_loop_max_lag_ms": 127.2}
+{"name": "server_stopped", "rss_mb": 131.2}
+
+evidence: artifacts\perf\w5-lan-resources\results.json
+RSS: start=99.1MB spot_peak=134.2MB during_request_peak=137.7MB final=131.2MB | repeat batch growth: 0.1MB | loop max lag: 127.2ms
+VERDICT: bounded

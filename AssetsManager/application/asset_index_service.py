@@ -348,7 +348,14 @@ class AssetIndexService:
                 raise TypeError("index_directory_result expects dir_path or conn, library_root, dir_path")
             target = self._contained_path(root, dir_path)
             repository = self._repository_for(conn, root)
-            outer_transaction = conn.in_transaction
+            # Sample under the connection-owned write gate: the reconciliation
+            # worker runs short transactions on this same shared connection,
+            # and an unlocked peek can misclassify one of those windows as an
+            # outer transaction of THIS call — silently skipping the durable
+            # commit (round-3 recheck, same root cause as the service guards).
+            from AssetsManager.core.database import db_write_lock
+            with db_write_lock(conn):
+                outer_transaction = conn.in_transaction
             durable_commit = commit and (
                 self._session is None or not outer_transaction
             )
@@ -537,7 +544,12 @@ class AssetIndexService:
                 raise TypeError("index_directory_tree_result expects dir_path or conn, library_root, dir_path")
             target = self._contained_path(root, dir_path)
             repository = self._repository_for(conn, root)
-            outer_transaction = conn.in_transaction
+            # Sample under the connection-owned write gate (see
+            # index_directory_result): unlocked peeks misclassify the
+            # reconciliation worker's transactions as outer transactions.
+            from AssetsManager.core.database import db_write_lock
+            with db_write_lock(conn):
+                outer_transaction = conn.in_transaction
             durable_commit = self._session is None or not outer_transaction
             expected_revision, retry_count, read_failure = self._retry_busy_read(
                 lambda: repository.current_revision(root)

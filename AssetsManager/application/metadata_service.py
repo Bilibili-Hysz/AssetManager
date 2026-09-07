@@ -240,8 +240,20 @@ class MetadataService:
         arbitrary caller later commits that transaction.  Fail closed rather
         than publish a notification for a write that may roll back.
         Raw compatibility services retain their historical behavior.
+
+        Sampled under the connection-owned write gate — same reconciliation-
+        worker race as CollectionService/TagService: an unlocked
+        ``in_transaction`` peek can observe the worker's short transaction on
+        the shared connection and reject a mutation that owns no outer
+        transaction (deterministically reproduced by the round-3 recheck).
         """
-        if self._session is not None and repo._conn.in_transaction:
+        if self._session is None:
+            return
+        from AssetsManager.core.database import db_write_lock
+
+        with db_write_lock(repo._conn):
+            in_transaction = repo._conn.in_transaction
+        if in_transaction:
             raise RuntimeError(
                 "MetadataService metadata mutations require a clean transaction "
                 "boundary"

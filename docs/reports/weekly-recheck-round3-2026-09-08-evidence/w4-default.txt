@@ -1,0 +1,18 @@
+Phase 1 (normal export -> restore -> reopen -> verify): OK
+barrier reached: OLD data quarantined, NEW data not installed
+child killed at the interruption point (install replace)
+--- verification child output ---
+data_dir: C:\Users\86177\AppData\Local\Temp\w4-restore-_rqvtv0j\child_runtime\library_cb245f6228
+runtime_domain_ok: True
+hero_tags: ['hero', 'scene']
+hero_rating: 5
+hero_notes: 备注：hero 场景
+collections: ['我的合集']
+db: C:\Users\86177\AppData\Local\Temp\w4-restore-_rqvtv0j\child_runtime\library_cb245f6228\assetmanager.db 659456
+restore_intent_after_open: None
+VERDICT: complete-old-state
+
+--- verification child stderr (tail) ---
+Rolled back an interrupted library restore (f0bcaea5e47748b292f90084ee9d94a5): previous RuntimeData restored from quarantine to C:\Users\86177\AppData\Local\Temp\w4-restore-_rqvtv0j\child_runtime\library_cb245f6228
+
+W4 RESTORE DRILL: PASS — recovery restored the complete OLD state from the interrupted child's runtime domain

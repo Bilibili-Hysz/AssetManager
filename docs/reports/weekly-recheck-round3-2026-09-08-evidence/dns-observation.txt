@@ -1,0 +1,19 @@
+{
+  "first_result": [
+    [
+      "Ethernet",
+      "192.168.50.10"
+    ],
+    [
+      "VPN",
+      "10.8.0.2"
+    ]
+  ],
+  "follower_result": [],
+  "same_worker": true,
+  "worker_finished": true,
+  "resolver_calls": [
+    "Ethernet",
+    "VPN"
+  ]
+}

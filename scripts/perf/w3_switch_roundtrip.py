@@ -84,7 +84,11 @@ class LanHarness:
         self.base_url = f"http://127.0.0.1:{port}"
 
     def get(self, path: str) -> tuple[int, str]:
-        """One bounded authenticated GET. Returns (status, body-text)."""
+        """One bounded authenticated GET. Returns (status, body-text).
+
+        Status 0 = transport-level failure (connection refused/reset) — a
+        clean invalidation outcome for a stopped/closed server endpoint.
+        """
         request = urllib.request.Request(f"{self.base_url}{path}")
         request.add_header("Cookie", f"lan_token={self._token}")
         try:
@@ -92,6 +96,20 @@ class LanHarness:
                 return response.status, response.read().decode("utf-8", "replace")
         except urllib.error.HTTPError as exc:
             return exc.code, exc.read().decode("utf-8", "replace")
+        except (urllib.error.URLError, OSError) as exc:
+            return 0, f"{type(exc).__name__}: {exc}"[:200]
+
+    def download(self, path: str, *, timeout: float = HTTP_TIMEOUT) -> tuple[int, bytes]:
+        """One bounded authenticated binary GET. Returns (status, raw bytes)."""
+        request = urllib.request.Request(f"{self.base_url}{path}")
+        request.add_header("Cookie", f"lan_token={self._token}")
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return response.status, response.read()
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read()
+        except (urllib.error.URLError, OSError):
+            return 0, b""
 
     def list_names(self) -> tuple[int, set[str]]:
         status, body = self.get("/api/files?sort=name&order=asc&summaries=false&limit=500")
@@ -134,6 +152,13 @@ def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="w3-switch-"))
     lib_a = make_lib(tmp / "lib_a", "a", 20)
     lib_b = make_lib(tmp / "lib_b", "b", 25)
+    # F4 最小集成场景用大文件：首轮切换边界上的活动下载（128MB 在回环上
+    # 足够跨越 50ms 切换错峰窗口）。
+    crossing_blob = lib_a / "crossing.bin"
+    chunk = os.urandom(4 * 1024 * 1024)
+    with crossing_blob.open("wb") as stream:
+        for _ in range(32):
+            stream.write(chunk)
 
     bootstrap = ApplicationBootstrap()
     window = MainWindow(bootstrap)
@@ -158,6 +183,10 @@ def main() -> int:
     harnesses: list[LanHarness] = []
     failures: list[str] = []
     inflight_log: list[str] = []
+    crossing_log: list[str] = []
+    crossing_done = False
+    crossing_worker: threading.Thread | None = None
+    crossing: dict = {}
     current = lib_a
     harness = current_harness()
 
@@ -167,6 +196,28 @@ def main() -> int:
             want_marker = "b_0" if nxt == lib_b else "a_0"
             stale_marker = "a_0" if nxt == lib_b else "b_0"
             old_session = session
+
+            # F4 最小集成场景（仅一次）：活动大文件下载跨越切换边界。
+            # 断言：有界应答（不许悬挂）；完成则字节数必须完整 —— 服务器在
+            # 旧 session 关闭后不得向该响应写入损坏数据。中途被旧会话失效
+            # 打断也记为干净失败。
+            if not crossing_done:
+                crossing_done = True
+                crossing: dict = {}
+
+                def _crossing_download(target_harness: LanHarness, sink: dict) -> None:
+                    try:
+                        status, body = target_harness.download(
+                            "/api/download/crossing.bin", timeout=30.0)
+                        sink["status"] = status
+                        sink["bytes"] = len(body)
+                    except Exception as exc:
+                        sink["error"] = f"{type(exc).__name__}: {exc}"[:200]
+
+                crossing_worker = threading.Thread(
+                    target=_crossing_download, args=(harness, crossing), daemon=True)
+                crossing_worker.start()
+                time.sleep(SWITCH_STAGGER)
 
             # (1) 切换前：当前库服务器必须服务当前库数据
             check_marker = injected_marker if self_check else stale_marker
@@ -198,6 +249,23 @@ def main() -> int:
                 inflight_log.append(f"round {round_no}: {outcome}")
                 if "error" in inflight and "timeout" in str(inflight["error"]).lower():
                     failures.append(f"round {round_no}: in-flight request timed out")
+
+            if crossing_worker is not None:
+                crossing_worker.join(timeout=45.0)
+                if crossing_worker.is_alive():
+                    failures.append("crossing download hung >45s across the switch")
+                else:
+                    blob_size = crossing_blob.stat().st_size
+                    if "error" in crossing:
+                        crossing_log.append(f"clean failure: {crossing['error']}")
+                    else:
+                        crossing_log.append(
+                            f"HTTP {crossing['status']} ({crossing['bytes']} bytes)")
+                        if crossing["status"] == 200 and crossing["bytes"] != blob_size:
+                            failures.append(
+                                "crossing download completed with truncated body "
+                                f"({crossing['bytes']} != {blob_size})")
+                crossing_worker = None
 
             # (3) 旧 session 关闭 + 新 session 就位
             live = bootstrap.library_service
@@ -238,6 +306,17 @@ def main() -> int:
                     f"round {round_no}: post-switch listing still serves stale "
                     f"library files ({stale_marker!r})"
                 )
+            # F4：旧服务入口失效断言 —— 旧 session 已关闭，旧 harness 不得
+            # 再返回 200 的旧库数据（有界应答即可：映射错误或连接拒绝都算
+            # 干净失效，悬挂才算失败）。
+            old_status, old_body = harness.get("/api/files?limit=500")
+            if old_status == 200 and stale_marker in old_body:
+                failures.append(
+                    f"round {round_no}: old endpoint still serves stale library "
+                    f"data after switch (HTTP 200 with {stale_marker!r})")
+            else:
+                inflight_log.append(
+                    f"round {round_no}: old endpoint -> HTTP {old_status} (invalidated)")
             harness.stop()
             harness = new_harness
             current = nxt
@@ -279,6 +358,9 @@ def main() -> int:
     print(f"bus FileSystemChanged listeners baseline/after: {listener_baseline}/{listener_after}")
     print("in-flight outcomes:")
     for line in inflight_log:
+        print("  -", line)
+    print("crossing-download outcome (F4 minimal scenario):")
+    for line in crossing_log:
         print("  -", line)
     print(f"failures: {len(failures)}")
     for f in failures:

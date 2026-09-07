@@ -1,0 +1,25 @@
+{
+ "mode": "onefile",
+ "exe_sha256": "71ad971946a0bb566a84c16f4ca7ec31a67381c7a21b66e5008658ac9b52a473",
+ "pid": 12968,
+ "port": 14131,
+ "maximized": true,
+ "checks": {
+  "info": {
+   "share_name": "W6-Functional",
+   "auth_mode": "password",
+   "thumbnail_cache_namespace": true
+  },
+  "login": "ok",
+  "font": "48256 bytes, byte-identical",
+  "thumbnail_single": "178 bytes WEBP",
+  "thumbnail_batch": "12/12",
+  "live_change": "live_added.png listed"
+ },
+ "close": {
+  "path": "hidden_to_tray",
+  "exit_code": 1
+ },
+ "valid": true,
+ "failures": []
+}

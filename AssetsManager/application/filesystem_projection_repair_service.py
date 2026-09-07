@@ -209,8 +209,15 @@ class FilesystemProjectionRepairService:
     @staticmethod
     def _require_committed(result, conn) -> None:
         if getattr(result, "published", False):
-            if conn.in_transaction:
-                conn.commit()
+            # Commit decision under the connection-owned write gate: an
+            # unlocked ``in_transaction`` read could observe the
+            # reconciliation worker's transaction on this shared connection
+            # and commit IT mid-flight (round-3 recheck, transaction-sampling
+            # root cause).
+            from AssetsManager.core.database import db_write_lock
+            with db_write_lock(conn):
+                if conn.in_transaction:
+                    conn.commit()
             return
         if not getattr(result, "published", False):
             failure = getattr(result, "failure", None)

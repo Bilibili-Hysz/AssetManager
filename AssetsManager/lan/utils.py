@@ -64,6 +64,40 @@ def _default_route_ip() -> str | None:
     return None
 
 
+class _EnumerationFlight:
+    """One resolver pass shared by every caller that overlaps it.
+
+    The worker fills ``results`` and every caller reads THIS list — a follower
+    that joins an in-flight or just-finished worker must observe the collected
+    interfaces, not an empty local container (round-3 recheck F2: results
+    were lost to per-call closures even when the shared worker succeeded).
+    """
+
+    def __init__(self) -> None:
+        self.results: list[tuple[str, str]] = []
+        self.worker: threading.Thread | None = None
+
+    def start(self) -> None:
+        def _run() -> None:
+            try:
+                for _index, name in socket.if_nameindex():
+                    try:
+                        ip = socket.gethostbyname(name)
+                    except OSError:
+                        continue
+                    if _is_private_ipv4(ip):
+                        self.results.append((name, ip))
+            except Exception:
+                pass
+
+        self.worker = threading.Thread(target=_run, daemon=True)
+        self.worker.start()
+
+
+_current_flight = _EnumerationFlight()
+_flight_guard = threading.Lock()
+
+
 def _enumerate_private_ips(timeout: float = 2.0) -> list[tuple[str, str]]:
     """List (name, ip) pairs for interfaces with a private IPv4 address.
 
@@ -72,38 +106,25 @@ def _enumerate_private_ips(timeout: float = 2.0) -> list[tuple[str, str]]:
     daemon thread and return whatever completed before the timeout so
     callers (including async route handlers) never hang.
 
-    Single-flight: a stuck lookup can outlive the join by minutes (Windows
-    resolver on adapter-name GUIDs), so a new worker per call leaked one
-    daemon thread per server start. While a worker is still resolving,
-    later callers wait on it instead of spawning another one.
+    Single-flight with shared results: a stuck lookup can outlive the join
+    by minutes (Windows resolver on adapter-name GUIDs), so callers that
+    overlap an in-flight enumeration join it and read its results instead of
+    spawning another thread (thread count bounded) — and each flight's
+    results container is shared, so a follower that waits long enough sees
+    exactly what the worker collected (F2 fix).  Once a flight's worker has
+    finished, the next call starts a fresh flight so results never go stale.
     """
-    global _enum_worker
-    interfaces: list[tuple[str, str]] = []
-
-    def _run() -> None:
-        try:
-            for _index, name in socket.if_nameindex():
-                try:
-                    ip = socket.gethostbyname(name)
-                except OSError:
-                    continue
-                if _is_private_ipv4(ip):
-                    interfaces.append((name, ip))
-        except Exception:
-            pass
-
-    with _enum_worker_guard:
-        worker = _enum_worker if (_enum_worker is not None and _enum_worker.is_alive()) else None
-        if worker is None:
-            worker = threading.Thread(target=_run, daemon=True)
-            worker.start()
-            _enum_worker = worker
-    worker.join(timeout)
-    return interfaces
-
-
-_enum_worker: threading.Thread | None = None
-_enum_worker_guard = threading.Lock()
+    global _current_flight
+    with _flight_guard:
+        flight = _current_flight
+        if flight.worker is None or not flight.worker.is_alive():
+            flight = _EnumerationFlight()
+            _current_flight = flight
+        if flight.worker is None:
+            flight.start()
+    assert flight.worker is not None
+    flight.worker.join(timeout)
+    return list(flight.results)
 
 
 _local_ip_cache: str | None = None

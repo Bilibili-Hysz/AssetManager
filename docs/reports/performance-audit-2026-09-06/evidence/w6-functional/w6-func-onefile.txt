@@ -1,0 +1,16 @@
+bundle: onefile (D:\~Vibe-Coding\Projects\AssetsManager_old-bak\dist\AssetManager.exe)
+runtime: C:\Users\86177\AppData\Local\Temp\w6-func-78o0_c10\runtime
+library: C:\Users\86177\AppData\Local\Temp\w6-func-78o0_c10\library (12 files)
+lan: http://127.0.0.1:4883 (password auth)
+settings seeded: C:\Users\86177\AppData\Local\Temp\w6-func-78o0_c10\runtime\Shared\settings.json
+OPERATOR: double-click the seeded library card in the StartupWindow
+launched pid=16592
+exe sha256: 71ad971946a0bb566a84c16f4ca7ec31a67381c7a21b66e5008658ac9b52a473
+info OK: share_name='W6-Functional' auth='password'
+login OK (lan_token cookie issued)
+font OK (48256 bytes, byte-identical to webui/dist)
+thumbnail single OK (178 bytes WEBP)
+thumbnail batch OK (12/12)
+live change OK (live_added.png listed in /api/files)
+close: {'path': 'hidden_to_tray', 'exit_code': 1}
+W6 FUNCTIONAL (onefile): PASS

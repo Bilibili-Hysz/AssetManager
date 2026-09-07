@@ -1,0 +1,3 @@
+REPRODUCED: foreground set_notes rejected worker-owned transaction
+exception=RuntimeError: MetadataService metadata mutations require a clean transaction boundary
+CLEANUP: worker rolled back and isolated runtime was closed

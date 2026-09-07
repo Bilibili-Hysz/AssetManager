@@ -1,0 +1,62 @@
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+Unable to inspect active LAN users; failing closed (auth required)
+rounds: 10 (20 switches)
+thread baseline/after: 4/2
+bus FileSystemChanged listeners baseline/after: 3/0
+in-flight outcomes:
+  - round 1: 200
+  - round 1: 200
+  - round 2: 200
+  - round 2: 200
+  - round 3: 200
+  - round 3: 200
+  - round 4: 200
+  - round 4: 200
+  - round 5: 200
+  - round 5: 200
+  - round 6: 200
+  - round 6: 200
+  - round 7: 200
+  - round 7: 200
+  - round 8: 200
+  - round 8: 200
+  - round 9: 200
+  - round 9: 200
+  - round 10: 200
+  - round 10: 200
+failures: 20
+  - round 1: pre-switch listing missing current-library marker 'zz_missing_injected_' (got ['a_000.png', 'a_001.png', 'a_002.png']...)
+  - round 1: pre-switch listing missing current-library marker 'zz_missing_injected_' (got ['b_000.png', 'b_001.png', 'b_002.png']...)
+  - round 2: pre-switch listing missing current-library marker 'zz_missing_injected_' (got ['a_000.png', 'a_001.png', 'a_002.png']...)
+  - round 2: pre-switch listing missing current-library marker 'zz_missing_injected_' (got ['b_000.png', 'b_001.png', 'b_002.png']...)
+  - round 3: pre-switch listing missing current-library marker 'zz_missing_injected_' (got ['a_000.png', 'a_001.png', 'a_002.png']...)
+  - round 3: pre-switch listing missing current-library marker 'zz_missing_injected_' (got ['b_000.png', 'b_001.png', 'b_002.png']...)
+  - round 4: pre-switch listing missing current-library marker 'zz_missing_injected_' (got ['a_000.png', 'a_001.png', 'a_002.png']...)
+  - round 4: pre-switch listing missing current-library marker 'zz_missing_injected_' (got ['b_000.png', 'b_001.png', 'b_002.png']...)
+  - round 5: pre-switch listing missing current-library marker 'zz_missing_injected_' (got ['a_000.png', 'a_001.png', 'a_002.png']...)
+  - round 5: pre-switch listing missing current-library marker 'zz_missing_injected_' (got ['b_000.png', 'b_001.png', 'b_002.png']...)
+  - round 6: pre-switch listing missing current-library marker 'zz_missing_injected_' (got ['a_000.png', 'a_001.png', 'a_002.png']...)
+  - round 6: pre-switch listing missing current-library marker 'zz_missing_injected_' (got ['b_000.png', 'b_001.png', 'b_002.png']...)
+  - round 7: pre-switch listing missing current-library marker 'zz_missing_injected_' (got ['a_000.png', 'a_001.png', 'a_002.png']...)
+  - round 7: pre-switch listing missing current-library marker 'zz_missing_injected_' (got ['b_000.png', 'b_001.png', 'b_002.png']...)
+  - round 8: pre-switch listing missing current-library marker 'zz_missing_injected_' (got ['a_000.png', 'a_001.png', 'a_002.png']...)
+  - round 8: pre-switch listing missing current-library marker 'zz_missing_injected_' (got ['b_000.png', 'b_001.png', 'b_002.png']...)
+  - round 9: pre-switch listing missing current-library marker 'zz_missing_injected_' (got ['a_000.png', 'a_001.png', 'a_002.png']...)
+  - round 9: pre-switch listing missing current-library marker 'zz_missing_injected_' (got ['b_000.png', 'b_001.png', 'b_002.png']...)
+  - round 10: pre-switch listing missing current-library marker 'zz_missing_injected_' (got ['a_000.png', 'a_001.png', 'a_002.png']...)
+  - round 10: pre-switch listing missing current-library marker 'zz_missing_injected_' (got ['b_000.png', 'b_001.png', 'b_002.png']...)
+ROUNDTRIP: FAIL
+SELF-CHECK: OK (injected failure was reported)

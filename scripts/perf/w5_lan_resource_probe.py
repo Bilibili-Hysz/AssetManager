@@ -15,7 +15,8 @@ then measures the real routes registered in ``AssetsManager/lan/api.py``:
   - mid-download cancellation: a 192MB target aborted after 1MB (genuinely
     still-sending slow client) → health re-check + byte-verified re-download
   - RSS: post-phase spot samples AND a 100ms daemon sampler capturing
-    request-phase peaks; event-loop heartbeat records max scheduling lag
+    request-phase peaks; loop heartbeats scheduled on BOTH the client loop
+    and the LAN server's own background loop record max scheduling lag
 
 Every request must answer HTTP 200 with the expected body contract; anything
 else counts as a failed request and invalidates the run. Any failure, missing
@@ -33,7 +34,9 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import concurrent.futures as concurrent_futures
 import gc
+import hashlib
 import io
 import json
 import os
@@ -203,24 +206,32 @@ async def run_measurements(lib: Path) -> list[dict]:
 
     sampler = _RssPeakSampler()
     sampler.start()
-    lag_state: dict = {"max_lag_ms": 0.0}
-    stop_lag = asyncio.Event()
+    lag_state: dict = {"client_max_lag_ms": 0.0, "server_max_lag_ms": 0.0}
 
-    async def _lag_monitor() -> None:
+    async def _lag_monitor(state_key: str) -> None:
         """Event-loop heartbeat: a 50ms tick that reports how far behind the
-        loop actually ran, so request-phase stalls are visible in evidence."""
+        loop actually ran.  Scheduled ONCE on the client loop and — via
+        run_coroutine_threadsafe — on the LAN server's own background loop
+        (round-3 recheck F3: a client-loop heartbeat cannot speak for the
+        server loop that actually serves the requests).  Runs until its task
+        or wrapping future is cancelled; never shares asyncio primitives
+        across loops."""
         last = time.perf_counter()
-        while not stop_lag.is_set():
-            try:
-                await asyncio.wait_for(stop_lag.wait(), timeout=0.05)
-            except asyncio.TimeoutError:
-                pass
+        while True:
+            await asyncio.sleep(0.05)
             now = time.perf_counter()
             lag_ms = max(0.0, (now - last - 0.05) * 1000)
-            lag_state["max_lag_ms"] = max(lag_state["max_lag_ms"], round(lag_ms, 1))
+            key = f"{state_key}_max_lag_ms"
+            lag_state[key] = max(lag_state[key], round(lag_ms, 1))
             last = now
 
-    lag_task = asyncio.get_running_loop().create_task(_lag_monitor())
+    client_loop = asyncio.get_running_loop()
+    lag_task = client_loop.create_task(_lag_monitor("client"))
+    server_loop = getattr(server, "_loop", None)
+    if server_loop is None or not server_loop.is_running():
+        raise ProbeInvalid("server event loop unavailable for the server-side heartbeat")
+    server_lag_future = asyncio.run_coroutine_threadsafe(
+        _lag_monitor("server"), server_loop)
 
     try:
         timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT_S)
@@ -416,19 +427,35 @@ async def run_measurements(lib: Path) -> list[dict]:
             gc.collect()
             record(f"after_mixed_c{CONCURRENCY}")
 
-            # ── Mid-download cancellation → reclaim → health re-check ──
+            # ── Mid-download cancellation → reclaim → same-object retry ──
             # A 192MB target is genuinely still being sent when the client
-            # aborts after 1MB (a few-KB file could finish transmitting before
-            # the close, making the old probe vacuous — weekly-recheck R4).
-            # Evidence recorded: abort window, post-cancel health, RSS after
-            # the aborted transfer, and a full byte-verified re-download.
+            # aborts after ~1MB (a few-KB file could finish transmitting
+            # before the close, making the old probe vacuous).  Evidence
+            # recorded: actual bytes consumed (read() may short-read — F3),
+            # abort window, post-cancel health, RSS after the aborted
+            # transfer, and a STREAMED hash-verified re-download of the SAME
+            # object (a small-file re-download proves nothing about retrying
+            # the big transfer; a full buffered read would pollute the RSS
+            # being measured).
             big_blob = _build_slow_download_blob(lib, size_mb=BIG_BLOB_MB)
+            # Stream the source hash — buffering the 192MB source here would
+            # inflate the very RSS being measured (F3).
+            digest = hashlib.sha256()
+            with big_blob.open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            big_blob_sha = digest.hexdigest()
             t0 = time.perf_counter()
+            consumed = 0
             async with http.get(f"{base_url}/api/download/{big_blob.name}") as resp:
                 if resp.status != 200:
                     raise ProbeInvalid(
                         f"slow-client cancel: big download returned {resp.status}")
-                await resp.content.read(1024 * 1024)
+                while consumed < 1024 * 1024:
+                    chunk = await resp.content.read(64 * 1024)
+                    if not chunk:
+                        break
+                    consumed += len(chunk)
                 resp.close()  # abort while ~191MB remain unsent
             abort_s = time.perf_counter() - t0
             await asyncio.sleep(1.0)
@@ -438,14 +465,24 @@ async def run_measurements(lib: Path) -> list[dict]:
                         f"server unhealthy after mid-download cancel: HTTP {resp.status}")
                 await resp.read()
             record("cancel_reclaim_ok", big_file_mb=BIG_BLOB_MB,
-                   aborted_after_mb=1, abort_window_s=round(abort_s, 3),
+                   aborted_after_bytes=consumed, abort_window_s=round(abort_s, 3),
                    rss_after_cancel_mb=round(_rss_mb(), 1))
-            body, _ = await expect_200(
-                "GET", f"{base_url}/api/download/{names[0]}",
-                ctx="post-cancel re-download")
-            if body != (lib / names[0]).read_bytes():
-                raise ProbeInvalid("post-cancel re-download: content mismatch")
-            record("post_cancel_redownload_ok")
+            # Streamed same-object retry: hash-verified without buffering.
+            retry_sha = hashlib.sha256()
+            retry_bytes = 0
+            async with http.get(f"{base_url}/api/download/{big_blob.name}") as resp:
+                if resp.status != 200:
+                    raise ProbeInvalid(
+                        f"post-cancel same-object retry returned {resp.status}")
+                async for chunk in resp.content.iter_chunked(256 * 1024):
+                    retry_sha.update(chunk)
+                    retry_bytes += len(chunk)
+            if retry_bytes != big_blob.stat().st_size or retry_sha.hexdigest() != big_blob_sha:
+                raise ProbeInvalid(
+                    "post-cancel same-object retry: hash/size mismatch "
+                    f"({retry_bytes} bytes)")
+            record("post_cancel_same_object_retry_ok",
+                   bytes=retry_bytes, sha256=big_blob_sha[:16])
 
             # ── Repeat batches: RSS must stay bounded across re-requests ──
             for batch_no in range(3):
@@ -455,15 +492,20 @@ async def run_measurements(lib: Path) -> list[dict]:
 
         return results
     finally:
-        stop_lag.set()
         lag_task.cancel()
         try:
             await lag_task
         except (asyncio.CancelledError, Exception):
             pass
+        server_lag_future.cancel()
+        try:
+            server_lag_future.result(timeout=5)
+        except (concurrent_futures.CancelledError, concurrent_futures.TimeoutError, Exception):
+            pass
         peak_mb = sampler.stop()
         record("rss_peak_during_run", peak_mb=round(peak_mb, 1),
-               event_loop_max_lag_ms=lag_state["max_lag_ms"])
+               client_loop_max_lag_ms=lag_state["client_max_lag_ms"],
+               server_loop_max_lag_ms=lag_state["server_max_lag_ms"])
         try:
             server.stop()
         except Exception as exc:
@@ -518,7 +560,8 @@ def main() -> int:
         "final_mb": rss_values[-1] if rss_values else None,
         "spot_peak_mb": max(rss_values) if rss_values else None,
         "peak_during_request_mb": peak_sample.get("peak_mb"),
-        "event_loop_max_lag_ms": peak_sample.get("event_loop_max_lag_ms"),
+        "client_loop_max_lag_ms": peak_sample.get("client_loop_max_lag_ms"),
+        "server_loop_max_lag_ms": peak_sample.get("server_loop_max_lag_ms"),
         "repeat_growth_mb": growth,
         "budget_mb": RSS_GROWTH_BUDGET_MB,
     }
@@ -541,7 +584,7 @@ def main() -> int:
     print(f"RSS: start={first}MB spot_peak={peak}MB "
           f"during_request_peak={peak_sample.get('peak_mb')}MB final={last}MB "
           f"| repeat batch growth: {growth}MB | loop max lag: "
-          f"{peak_sample.get('event_loop_max_lag_ms')}ms")
+          f"{peak_sample.get('server_loop_max_lag_ms')}ms")
     if growth >= RSS_GROWTH_BUDGET_MB:
         print("VERDICT: unbounded-growth (repeat batch RSS growth above budget)")
         shutil.rmtree(tmp, ignore_errors=True)
