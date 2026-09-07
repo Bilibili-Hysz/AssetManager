@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Callable
 from AssetsManager.domain.event_bus import EventBus, EventSubscription, get_event_bus
 from AssetsManager.domain.events import (
     AssetNotesChanged,
+    AssetRatingChanged,
     AssetTagsChanged,
     AssetUrlsChanged,
     ActivityChanged,
@@ -103,15 +104,25 @@ EVENT_DOMAINS: dict[type, tuple[ProjectionDomain, ...]] = {
     FileSystemChanged: (
         ProjectionDomain.FILES, ProjectionDomain.TREE,
         ProjectionDomain.HOME, ProjectionDomain.PROJECT_DETAIL,
-        ProjectionDomain.FAVORITES,
+        ProjectionDomain.FAVORITES, ProjectionDomain.COLLECTIONS,
     ),
-    FavoritesChanged: (ProjectionDomain.FAVORITES,),
+    # Smart collections can filter the requesting principal's favorites.
+    FavoritesChanged: (ProjectionDomain.FAVORITES, ProjectionDomain.COLLECTIONS),
     AssetTagsChanged: (
         ProjectionDomain.METADATA, ProjectionDomain.TAGS,
         ProjectionDomain.PROJECT_DETAIL, ProjectionDomain.HOME,
+        ProjectionDomain.COLLECTIONS,
     ),
     TagCatalogChanged: (ProjectionDomain.TAGS, ProjectionDomain.HOME),
-    AssetNotesChanged: (ProjectionDomain.METADATA, ProjectionDomain.PROJECT_DETAIL),
+    # Notes participate in smart collection FTS queries; URLs do not.
+    AssetNotesChanged: (
+        ProjectionDomain.METADATA, ProjectionDomain.PROJECT_DETAIL,
+        ProjectionDomain.COLLECTIONS,
+    ),
+    AssetRatingChanged: (
+        ProjectionDomain.METADATA, ProjectionDomain.PROJECT_DETAIL,
+        ProjectionDomain.COLLECTIONS,
+    ),
     AssetUrlsChanged: (ProjectionDomain.METADATA, ProjectionDomain.PROJECT_DETAIL),
     ShareChanged: (ProjectionDomain.SHARES,),
     UserChanged: (ProjectionDomain.USERS,),
@@ -192,7 +203,7 @@ class RuntimeEventRouter:
             raw_paths = (
                 (event.file_path, *event.paths) if event.file_path else event.paths
             )
-        elif isinstance(event, (AssetNotesChanged, AssetUrlsChanged)):
+        elif isinstance(event, (AssetNotesChanged, AssetRatingChanged, AssetUrlsChanged)):
             raw_paths = (event.file_path,)
         elif isinstance(event, FavoritesChanged):
             raw_paths = event.paths
