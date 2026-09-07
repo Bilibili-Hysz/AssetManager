@@ -1,0 +1,24 @@
+flowchart LR
+    Browse["AssetService / ProjectService / GalleryService"] --> BrowseData["DirectoryCache / ProjectData / GalleryHomeRepository / 文件扫描"]
+    Meta["MetadataService / TagService"] --> MetaData["MetadataRepository / TagRepository / TagStore / TagLibrary"]
+    Fav["FavoriteService / CollectionService"] --> FavData["FavoriteRepository / CollectionRepository"]
+    Search["SearchService / search_syntax"] --> Index["AssetIndexService / SearchIndexService"]
+    Fav -->|"智能集合评估"| Index
+    Meta -->|"提交后维护搜索投影"| Index
+    File["FileOperationService / ImportService / UndoService / relink_service"] --> FS["文件系统操作 / 路径元数据迁移 / 补偿"]
+    File --> Index
+    Index --> IndexData["AssetIndexRepository / assets / asset_search FTS5"]
+    Thumb["ThumbnailService / media 模块"] --> ThumbData["ThumbnailRepository / 文件缓存 / asset_derivatives"]
+    Auth["AuthService / ShareService / FreeDownloadQuotaService"] --> AuthData["AuthRepository / ShareRepository / RevokedTokenRepository / FreeDownloadQuotaRepository"]
+    Plugin["PluginService"] --> PluginData["插件管理器 / PluginMetadataRepository"]
+    Maint["Integrity / Maintenance / Export / LibrarySettingsAdapter"] --> SystemData["连接检查 / VACUUM / checkpoint / 备份与恢复"]
+    Trace["ActivityRecorder / CommandExecutionStore / ImportManifestStore / ReconciliationQueueStore"] --> Journal["activity_log / command_executions / import 与 queue 表"]
+    BrowseData --> DB[("session-bound SQLite")]
+    MetaData --> DB
+    FavData --> DB
+    IndexData --> DB
+    ThumbData --> DB
+    AuthData --> DB
+    PluginData --> DB
+    SystemData --> DB
+    Journal --> DB

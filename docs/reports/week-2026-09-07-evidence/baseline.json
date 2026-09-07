@@ -1,0 +1,725 @@
+{
+ "head": "b9ad72e27b5194df71818616b76c86ace1393a55",
+ "branch": "master",
+ "groups": {
+  "未分组": [],
+  "启动搜索性能": [
+   "AssetsManager/app.py",
+   "AssetsManager/application/ai_tagging/ollama_client.py",
+   "AssetsManager/application/search_service.py",
+   "AssetsManager/core/path_resolver.py",
+   "AssetsManager/widgets/workspace_bar.py",
+   "AssetsManager/window.py",
+   "AssetsManager/window_lifecycle_coordinator.py",
+   "main.py",
+   "tests/core/test_path_resolver.py",
+   "tests/desktop/test_info_ai_tag.py",
+   "tests/desktop/test_info_interactions.py",
+   "tests/desktop/test_info_micro_tabs.py",
+   "tests/desktop/test_settings_ai_tagging.py"
+  ],
+  "B01B02-数据会话": [
+   "AssetsManager/application/file_operation_service.py",
+   "AssetsManager/application/metadata_service.py",
+   "AssetsManager/application/undo_service.py",
+   "tests/integration/test_undo_service.py",
+   "tests/integration/test_window_switch_failure_recovery.py",
+   "tests/unit/test_window_session_switching.py"
+  ],
+  "B03B04B05-失效前端": [
+   "AssetsManager/application/runtime_events.py",
+   "scripts/gen_ts_types.py",
+   "tests/integration/test_runtime_events.py",
+   "tests/unit/test_gen_ts_types.py",
+   "webui/src/components/layout/Sidebar.test.tsx",
+   "webui/src/components/layout/Sidebar.tsx",
+   "webui/src/stores/RealtimeContext.test.tsx",
+   "webui/src/stores/RealtimeContext.tsx",
+   "webui/src/types/contracts.ts",
+   "tests/e2e/test_webui_realtime_acceptance.py",
+   "AssetsManager/application/tag_service.py"
+  ],
+  "LAN-ZIP预览": [
+   "AssetsManager/application/thumbnail_service.py",
+   "AssetsManager/core/file_snapshot.py",
+   "AssetsManager/lan/api.py",
+   "AssetsManager/lan/dto.py",
+   "AssetsManager/lan/routes/_helpers.py",
+   "AssetsManager/lan/routes/downloads.py",
+   "AssetsManager/lan/routes/image.py",
+   "AssetsManager/lan/routes/shares.py",
+   "AssetsManager/lan/routes/system.py",
+   "AssetsManager/lan/routes/thumbnails.py",
+   "AssetsManager/lan/safe_open.py",
+   "AssetsManager/lan/security.py",
+   "AssetsManager/lan/server.py",
+   "tests/lan/test_free_download_quota.py",
+   "tests/lan/test_image_routes.py",
+   "tests/lan/test_l3_thread_resources.py",
+   "tests/lan/test_lan_api.py",
+   "tests/lan/test_media_cache_revalidation.py",
+   "tests/lan/test_public_contracts.py",
+   "tests/lan/test_runtime_realtime.py",
+   "tests/lan/test_security_preflight_integration.py",
+   "tests/lan/test_security_preflight_internal.py",
+   "tests/lan/test_thumbnail_admission.py",
+   "AssetsManager/lan/file_response.py",
+   "AssetsManager/lan/temporary_file_response.py",
+   "AssetsManager/lan/zip_cleanup.py",
+   "AssetsManager/lan/zip_resources.py",
+   "AssetsManager/lan/zip_sources.py",
+   "docs/plans/zip-resource-budget-2026-09-06.md",
+   "docs/reports/lan-quality-gate-2026-09-05.md",
+   "docs/reports/preview-snapshot-consistency-2026-09-06.md",
+   "docs/reports/zip-cleanup-recovery-2026-09-06.md",
+   "tests/integration/test_thumbnail_lan_cache_identity.py",
+   "tests/lan/test_credential_budget_review.py",
+   "tests/lan/test_file_response.py",
+   "tests/lan/test_image_snapshot_consistency.py",
+   "tests/lan/test_spa_font_assets.py",
+   "tests/lan/test_stream_quality_review.py",
+   "tests/lan/test_temporary_file_response.py",
+   "tests/lan/test_thumbnail_snapshot_consistency.py",
+   "tests/lan/test_zip_budget_http.py",
+   "tests/lan/test_zip_budget_routes.py",
+   "tests/lan/test_zip_cancellation.py",
+   "tests/lan/test_zip_cleanup.py",
+   "tests/lan/test_zip_cleanup_diagnostics.py",
+   "tests/lan/test_zip_cleanup_integration.py",
+   "tests/lan/test_zip_resources.py",
+   "tests/lan/test_zip_response_cleanup.py",
+   "tests/lan/test_zip_response_recovery.py",
+   "tests/lan/test_zip_work_limits.py",
+   "tests/lan/test_zip_worker_budget.py"
+  ],
+  "文档": [
+   "docs/README.md",
+   "docs/plans/desktop-visual-stage-d-result-2026-09-06.md",
+   "docs/plans/desktop-visual-stage-e-result-2026-09-06.md",
+   "docs/architecture-code-atlas-2026-09-06.md",
+   "docs/diagrams/code-atlas-2026-09-06/",
+   "docs/plans/development-control-2026-09-06.md",
+   "docs/plans/weekly-priorities-2026-09-07.md",
+   "docs/reports/development-baseline-2026-09-06-evidence/",
+   "docs/reports/project-state-2026-09-07-evidence/",
+   "docs/reports/project-state-2026-09-07.md",
+   "docs/reports/week-2026-09-07-evidence/"
+  ],
+  "B00-测试设施": [
+   "pytest.ini",
+   "tests/conftest.py",
+   "tests/lan/conftest.py",
+   "tests/test_support/",
+   "tests/perf/perf_baseline.py",
+   "tests/performance/test_baselines.py"
+  ],
+  "W1-门禁修正": [
+   ".github/workflows/ci.yml",
+   ".github/workflows/release.yml"
+  ]
+ },
+ "files": [
+  {
+   "status": "M",
+   "path": ".github/workflows/ci.yml",
+   "group": "W1-门禁修正",
+   "sha256": "B89BDDF6EF09FD0C42131F81337C1FCA87513636A6FDFB3C5BF3B9AD593F4AE7"
+  },
+  {
+   "status": "M",
+   "path": ".github/workflows/release.yml",
+   "group": "W1-门禁修正",
+   "sha256": "5943770CDBCE7E8D22B228E6F7BA89B0BCFD84AA0BEEDEE908A0438D182F6F35"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/app.py",
+   "group": "启动搜索性能",
+   "sha256": "3F1DC56EAA89A0AB03B9CA652CE311769C7255491731814DB88186B0F65D6A2B"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/application/ai_tagging/ollama_client.py",
+   "group": "启动搜索性能",
+   "sha256": "167EC53EFBA3764065CF738BCEEB8B5DB4B3077FF60A44F409FFB1D9F61F9E31"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/application/file_operation_service.py",
+   "group": "B01B02-数据会话",
+   "sha256": "14AD1C8FF52548762FA4920E52B5F6D1ABC92F4C4193D2E97BD4D0430880DA3F"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/application/metadata_service.py",
+   "group": "B01B02-数据会话",
+   "sha256": "E43C35E6AB4889359CC0CFA73FBEBE742C86B6328F09589008DE06D92055E449"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/application/runtime_events.py",
+   "group": "B03B04B05-失效前端",
+   "sha256": "AA6344D2B9188FC0B1A0DA6F07000FC88B670C5E687DADFE5DBF432D3F60565B"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/application/search_service.py",
+   "group": "启动搜索性能",
+   "sha256": "A96CD580FDAE0B6C61755AAF0349959A505F7FDE4998142247FCAE4CA03D11DE"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/application/tag_service.py",
+   "group": "B03B04B05-失效前端",
+   "sha256": "AD1FA82396D6CC99B4AC56BB731FD57C79B5A479A4DEDF6DA1EA9A140814BEE4"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/application/thumbnail_service.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "73AB60C50A14E18BF2C59FA291C4C5F2505319D82ABC721AEF6DCA663AD2D4D6"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/application/undo_service.py",
+   "group": "B01B02-数据会话",
+   "sha256": "46B796020601DC28F18B5F1F938EE5EB356FCC77560CCDBED6297CBBEC2968C9"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/core/file_snapshot.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "008685BE9EE706BB0051D8A05EE5A06BE557CB114628D777831B76FD84BE6AAD"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/core/path_resolver.py",
+   "group": "启动搜索性能",
+   "sha256": "B8503C403916E962C0B714FDD0B2EC991B58CBD1EB76721E0B4569B72714AF96"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/lan/api.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "F23FAAEEE152DB8E22A1DA80867A7388E277A032F409F20B755349017B9658A8"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/lan/dto.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "1656964623844D24D67BA997421B2CF9F85716DEF61BAE4E726BCF7744B135BB"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/lan/routes/_helpers.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "F07D074C8E0457FD54C820B5D2DE56E647DA864DB5561F27AE6F79EDB3107152"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/lan/routes/downloads.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "0EC6EBA827086AEE4B090EBEE4D5FD94BF29BA9008F04BB00549157B645A3D8E"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/lan/routes/image.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "85587CEC0E87FCA79D25AF68AD01CA42873317EE65B7005E13F2867691F717D5"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/lan/routes/shares.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "FA20495479D40CBE87344B1946B673CD1BFE2033D69277FBE045F42158441FCB"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/lan/routes/system.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "BE011DB9059A36444860CBCE1FB6EED235F9FF1FA4FE747C1B8D8932544DD4C2"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/lan/routes/thumbnails.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "B10989200C826FDF83CEA2252F6EEA3C27C884F3F32EF66D3C6261047711480D"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/lan/safe_open.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "5B5109AA6AC1F5F5B75C7E705AD302A342A97B6CE01D0B59899A67E612ECF56A"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/lan/security.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "4CD4D87DAFDF83BEFC9643A4DA07F8EC400D6C13777BA0C48DAF20D3FEE2408C"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/lan/server.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "BFFE842CF2462FCE0EF1F82FDF6BB3242A26DA0DF4CC9DB08B96D8D0D4911D1E"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/widgets/workspace_bar.py",
+   "group": "启动搜索性能",
+   "sha256": "AFE0034FA1274FF0628668ABC2CB2365AE5F63EF21A218FF993DEDDC4D5412DD"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/window.py",
+   "group": "启动搜索性能",
+   "sha256": "FAF6A49039FB2013DE385A5358770C9183D4DC67E20EC542CE178216E57B2FA2"
+  },
+  {
+   "status": "M",
+   "path": "AssetsManager/window_lifecycle_coordinator.py",
+   "group": "启动搜索性能",
+   "sha256": "DBAF2C5F155BAC8B24EAA304EF7D8033FE1DF3ADEAD3FE38F8D24C91C8DF81F1"
+  },
+  {
+   "status": "M",
+   "path": "docs/README.md",
+   "group": "文档",
+   "sha256": "62B6525F199DC5CE11D755437B4EA9A4AFB6EB3C985BA2805195A27B05A13B31"
+  },
+  {
+   "status": "M",
+   "path": "docs/plans/desktop-visual-stage-d-result-2026-09-06.md",
+   "group": "文档",
+   "sha256": "FBCA5835FADBD322935AE6DE7463A1EBB04BC8C962896EB3E7520FEF8D95C9FC"
+  },
+  {
+   "status": "M",
+   "path": "docs/plans/desktop-visual-stage-e-result-2026-09-06.md",
+   "group": "文档",
+   "sha256": "9EE1B448EFE365CFC7635179D52E555C9818C325DB3861D404A64BDFAFEDE1B7"
+  },
+  {
+   "status": "M",
+   "path": "main.py",
+   "group": "启动搜索性能",
+   "sha256": "46F25E20F8852E3E064901AE9F51DDCE1C9E857B52A0C463CEA26E4BFFAE0FEF"
+  },
+  {
+   "status": "M",
+   "path": "pytest.ini",
+   "group": "B00-测试设施",
+   "sha256": "04B7913E086EC22DF14DCE37102FD7F3FDE8BEF6C7ED9FF3D47534C857032C99"
+  },
+  {
+   "status": "M",
+   "path": "scripts/gen_ts_types.py",
+   "group": "B03B04B05-失效前端",
+   "sha256": "C0D3F847E1B8585978F1B49700CD49A4EFB9C4F81326AB147DA3CACDE534EF0D"
+  },
+  {
+   "status": "M",
+   "path": "tests/conftest.py",
+   "group": "B00-测试设施",
+   "sha256": "D5B517B923B60816B81A04A9589C55579F17A900D55D3C8DAD72239E332CC80A"
+  },
+  {
+   "status": "M",
+   "path": "tests/core/test_path_resolver.py",
+   "group": "启动搜索性能",
+   "sha256": "CF70FCDF237C80C2D8753C5197A6B572DFB704023AC3A9CDF95DBB7BA73FFF8E"
+  },
+  {
+   "status": "M",
+   "path": "tests/desktop/test_info_ai_tag.py",
+   "group": "启动搜索性能",
+   "sha256": "BB7FC1B505AA2863568B9149F40B7E6D32B47F10431DA30F4020CF60985F403E"
+  },
+  {
+   "status": "M",
+   "path": "tests/desktop/test_info_interactions.py",
+   "group": "启动搜索性能",
+   "sha256": "5F35B2E0A776350EA873C03A22DC37D493CEFD7F5189D5034A6472A8C22EADB9"
+  },
+  {
+   "status": "M",
+   "path": "tests/desktop/test_info_micro_tabs.py",
+   "group": "启动搜索性能",
+   "sha256": "A31353E5B37B110FC45710204A144F4A297EB14EF497AEF6703CD2926EC78D3D"
+  },
+  {
+   "status": "M",
+   "path": "tests/desktop/test_settings_ai_tagging.py",
+   "group": "启动搜索性能",
+   "sha256": "31642ACD7EABC237ED4550FAF4106BA55109C654DDD0AC67DDAE4730045D3E84"
+  },
+  {
+   "status": "M",
+   "path": "tests/e2e/test_webui_realtime_acceptance.py",
+   "group": "B03B04B05-失效前端",
+   "sha256": "B33EF291565F1F16EEF12A753D99DC9C13D3AE815CFCDF171B922B7A8B693803"
+  },
+  {
+   "status": "M",
+   "path": "tests/integration/test_runtime_events.py",
+   "group": "B03B04B05-失效前端",
+   "sha256": "84E732D79C05B99C941C9B2302952A6E060F5606EAA3FA8CE112BA4C91D17654"
+  },
+  {
+   "status": "M",
+   "path": "tests/integration/test_undo_service.py",
+   "group": "B01B02-数据会话",
+   "sha256": "E7B8EA3CD76A6583F586691EE8F82F8714857234A892FB784C287FC8E5261073"
+  },
+  {
+   "status": "M",
+   "path": "tests/lan/test_free_download_quota.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "65281CE3BFF5F6F99848E7F9515A4F89E0E2242247DC8576F023DD0EEA1FAC35"
+  },
+  {
+   "status": "M",
+   "path": "tests/lan/test_image_routes.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "D89EB4A23277430EB98C45D2AC4CA07ABF9792900D994631B376EA76B07D38A2"
+  },
+  {
+   "status": "M",
+   "path": "tests/lan/test_l3_thread_resources.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "048DCFE15719B4AFCB5BBF3FEEC7CB8F7A27DBD33C098010E25F51096DCDAD95"
+  },
+  {
+   "status": "M",
+   "path": "tests/lan/test_lan_api.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "A4010517ECBBCDE9530BC2B02A1C129EAD52B6969709A287DF399B314961E05B"
+  },
+  {
+   "status": "M",
+   "path": "tests/lan/test_media_cache_revalidation.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "FAF13BD0E0600DA83CA2BC2FB991BB9C2C4615EB9ABB9FF86719831DC0BF94C0"
+  },
+  {
+   "status": "M",
+   "path": "tests/lan/test_public_contracts.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "28518B75EAB9C7EF60D2C25CB998CB5DBC4E1EF5722F4AB0CC791CB85AB1715A"
+  },
+  {
+   "status": "M",
+   "path": "tests/lan/test_runtime_realtime.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "EDA523A451C012B33F768BDFDF41708147B4EC633FC2FF5AE53C719464CC1B8E"
+  },
+  {
+   "status": "M",
+   "path": "tests/lan/test_security_preflight_integration.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "3758D4E0B3EFDE9330D04A564D16B110AA2EAAE6F645C76907EE69C972E0196B"
+  },
+  {
+   "status": "M",
+   "path": "tests/lan/test_security_preflight_internal.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "549E5DF2C665F82C57BE19C5FFF8038062C5A5A35AA788753B751E1A9B733926"
+  },
+  {
+   "status": "M",
+   "path": "tests/lan/test_thumbnail_admission.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "62EA3AE74419B883BF9EBF24BB6F841193D54C734BAF825BD297E92C65F8BB8E"
+  },
+  {
+   "status": "M",
+   "path": "tests/perf/perf_baseline.py",
+   "group": "B00-测试设施",
+   "sha256": "3F99ADC6DDD849F31D2999AC39FF675D75A829C6CB0AF87B5729958A3474B4F8"
+  },
+  {
+   "status": "M",
+   "path": "tests/performance/test_baselines.py",
+   "group": "B00-测试设施",
+   "sha256": "6995CC9247200B9FCA5FE7115A72EA7F05DC911AB95FEB5ACCEA9C045FC3171C"
+  },
+  {
+   "status": "M",
+   "path": "tests/unit/test_gen_ts_types.py",
+   "group": "B03B04B05-失效前端",
+   "sha256": "9EF20F07085C4108B9F62E1B37999851B4A2539F93520146BF0190AF79BC74EC"
+  },
+  {
+   "status": "M",
+   "path": "tests/unit/test_window_session_switching.py",
+   "group": "B01B02-数据会话",
+   "sha256": "BD045B58421EAE6FF27B9F096B62C9A70574F22E0EC5F3123BDA47ABBFE77CD3"
+  },
+  {
+   "status": "M",
+   "path": "webui/src/components/layout/Sidebar.test.tsx",
+   "group": "B03B04B05-失效前端",
+   "sha256": "00A9150CBA403609C18EACC1D89956392386B41A209A4DA68F57C207EF05B41B"
+  },
+  {
+   "status": "M",
+   "path": "webui/src/components/layout/Sidebar.tsx",
+   "group": "B03B04B05-失效前端",
+   "sha256": "C2F0BE40D364BCCD98C2FAFE33CCD0E281C241FF7126F71D46F4E589E8069E54"
+  },
+  {
+   "status": "M",
+   "path": "webui/src/stores/RealtimeContext.test.tsx",
+   "group": "B03B04B05-失效前端",
+   "sha256": "21E6EB601DCC2F570023DA1CD2CC37A399AFE3EAD14121444F805FE30C4E27DF"
+  },
+  {
+   "status": "M",
+   "path": "webui/src/stores/RealtimeContext.tsx",
+   "group": "B03B04B05-失效前端",
+   "sha256": "77AEA85DF6D7F5C2B2CDAF6F03B2E10A5BCBB4291A6BE12022E75A878CC63F11"
+  },
+  {
+   "status": "M",
+   "path": "webui/src/types/contracts.ts",
+   "group": "B03B04B05-失效前端",
+   "sha256": "95C09DA7CD7EB2A970D5AAA33E1ED7E7880F65308BB77C6D3B1330C578553BCC"
+  },
+  {
+   "status": "??",
+   "path": "AssetsManager/lan/file_response.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "516FA653FB9ADA8BB25AA0D35209688A6064DB4BCEC72DEEEC662812EB9A8829"
+  },
+  {
+   "status": "??",
+   "path": "AssetsManager/lan/temporary_file_response.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "3795230333CC80B9499C66EBC6BCC37C7F5E262E73AC76307C9B5722D346586E"
+  },
+  {
+   "status": "??",
+   "path": "AssetsManager/lan/zip_cleanup.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "ED09124BB05A96D5296B6694533813E3AF3529118879512286CCBD1C4EB1FD88"
+  },
+  {
+   "status": "??",
+   "path": "AssetsManager/lan/zip_resources.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "1D687B0C93877A6C7082A5D08477C8334F49E2DCE85A0AC3AE901D849D102EDF"
+  },
+  {
+   "status": "??",
+   "path": "AssetsManager/lan/zip_sources.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "0FB05695C527C3CB764D03DA6F7F0BCC19856A3C39FCFEAE85559ADD48FE7927"
+  },
+  {
+   "status": "??",
+   "path": "docs/architecture-code-atlas-2026-09-06.md",
+   "group": "文档",
+   "sha256": "C5A317230A5CD97AE95D9945BC0A6AD508614E1284F79467DD559996330B514D"
+  },
+  {
+   "status": "??",
+   "path": "docs/diagrams/code-atlas-2026-09-06/",
+   "group": "文档"
+  },
+  {
+   "status": "??",
+   "path": "docs/plans/development-control-2026-09-06.md",
+   "group": "文档",
+   "sha256": "CB06B134563641D02DEF180C4C2079E82D3C131FC583B37714D19ED9BC2B433E"
+  },
+  {
+   "status": "??",
+   "path": "docs/plans/weekly-priorities-2026-09-07.md",
+   "group": "文档",
+   "sha256": "2B2C5274F389C0A3D88F692C17DC25D0003C0E105B71A694866C212110B86497"
+  },
+  {
+   "status": "??",
+   "path": "docs/plans/zip-resource-budget-2026-09-06.md",
+   "group": "LAN-ZIP预览",
+   "sha256": "1EDC6D496F6F4E8FF6C783BE211D8DCC3E9F18FFD28562C57810991F21D9BC59"
+  },
+  {
+   "status": "??",
+   "path": "docs/reports/development-baseline-2026-09-06-evidence/",
+   "group": "文档"
+  },
+  {
+   "status": "??",
+   "path": "docs/reports/lan-quality-gate-2026-09-05.md",
+   "group": "LAN-ZIP预览",
+   "sha256": "7CFD1AD63DDCAFEC186423AAAD1FCED36939536C014B20D174BA90A5FF8D2D4E"
+  },
+  {
+   "status": "??",
+   "path": "docs/reports/preview-snapshot-consistency-2026-09-06.md",
+   "group": "LAN-ZIP预览",
+   "sha256": "7389A897EE50FDB9E60FD6868D1513A1C1D16D043143E0062BFDBC2575875281"
+  },
+  {
+   "status": "??",
+   "path": "docs/reports/project-state-2026-09-07-evidence/",
+   "group": "文档"
+  },
+  {
+   "status": "??",
+   "path": "docs/reports/project-state-2026-09-07.md",
+   "group": "文档",
+   "sha256": "7301FB279A3CA8EBE0E08A3A35D3E315DB8130BEB293F3D5314D2AD2AF61BFD7"
+  },
+  {
+   "status": "??",
+   "path": "docs/reports/week-2026-09-07-evidence/",
+   "group": "文档"
+  },
+  {
+   "status": "??",
+   "path": "docs/reports/zip-cleanup-recovery-2026-09-06.md",
+   "group": "LAN-ZIP预览",
+   "sha256": "76DDBE2101F0735C537D2C05303D0EF97A953237F6A989D2B8EC0E1552216492"
+  },
+  {
+   "status": "??",
+   "path": "tests/integration/test_thumbnail_lan_cache_identity.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "F364FF2428C172CCE1003919BCFF950D1C7E1401B5088D288BC39C541E5C058C"
+  },
+  {
+   "status": "??",
+   "path": "tests/integration/test_window_switch_failure_recovery.py",
+   "group": "B01B02-数据会话",
+   "sha256": "005FFFCECFEDAEA526441C89D936002E648890DC732DC66DD191035679583E45"
+  },
+  {
+   "status": "??",
+   "path": "tests/lan/conftest.py",
+   "group": "B00-测试设施",
+   "sha256": "103883BEC61B99DDD521A4FE0D1DA381D0E4044CACB17F038604F8B36943B286"
+  },
+  {
+   "status": "??",
+   "path": "tests/lan/test_credential_budget_review.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "E26E60A35A8E1DDE4AB0E3452175DCC80E80D0DE2B8C814ED4C690CFF4D45125"
+  },
+  {
+   "status": "??",
+   "path": "tests/lan/test_file_response.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "E9A631B97C4DCD8079F7A5D0F3A403BAB1F7C1B6696640A4DD2F565A42813448"
+  },
+  {
+   "status": "??",
+   "path": "tests/lan/test_image_snapshot_consistency.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "31171A0535ACAF3C33FC87786E98223A295943AC632FA8FC8F5558A8C7A8C961"
+  },
+  {
+   "status": "??",
+   "path": "tests/lan/test_spa_font_assets.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "55AAF24B31E5CA8E6CE1E719961906BE89E02AA02C6272D62A95717D323C8F78"
+  },
+  {
+   "status": "??",
+   "path": "tests/lan/test_stream_quality_review.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "2E5C6830307685DEB86AE23E832CD8EB2A4DA869853A3C0F5629CE1564647F04"
+  },
+  {
+   "status": "??",
+   "path": "tests/lan/test_temporary_file_response.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "9823388183988AF8FC525169FBCE6C0EBE3339EFEFAB5785AF8610D184DB8DEF"
+  },
+  {
+   "status": "??",
+   "path": "tests/lan/test_thumbnail_snapshot_consistency.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "6EA3F36E7B87AE1D803D341767068704D17C178C0D7D095F5D01CFB47E49A415"
+  },
+  {
+   "status": "??",
+   "path": "tests/lan/test_zip_budget_http.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "9F66178A0C7E935D45263BB9C9B2A499CAF13929ED1BE486F2FD723909BF6425"
+  },
+  {
+   "status": "??",
+   "path": "tests/lan/test_zip_budget_routes.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "985F19174CCF6FCB9600C2FD250123DEE5D86B1B6C006D2B9BC4DD8E3FA55D4A"
+  },
+  {
+   "status": "??",
+   "path": "tests/lan/test_zip_cancellation.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "D9977D1565ED9CDAFBDB39A8BB594FA4EEF0B7CBA78FCEDB20CEFF85D91E3CCC"
+  },
+  {
+   "status": "??",
+   "path": "tests/lan/test_zip_cleanup.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "59AC998FF416D71E5BFB1D655E458553A533CFAC0ADB2192667A6A73F72240E3"
+  },
+  {
+   "status": "??",
+   "path": "tests/lan/test_zip_cleanup_diagnostics.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "84BFE031C81A2C6A383D7BD5898BDFC8B9DD503F69B95C1DBC8C036708F20BAF"
+  },
+  {
+   "status": "??",
+   "path": "tests/lan/test_zip_cleanup_integration.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "F99B2ED58DB9F4882BF009FFD08726692993768BD89C3AC9577B852BEC32236A"
+  },
+  {
+   "status": "??",
+   "path": "tests/lan/test_zip_resources.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "158C5DFEFD855A912A02D5887381CEC5832D10B9227B0D803A2F7B0DE4C6891F"
+  },
+  {
+   "status": "??",
+   "path": "tests/lan/test_zip_response_cleanup.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "1536E37EDD8B39EBD52D074CFF9227CEC50394A4B0353A56582026F55E6E3848"
+  },
+  {
+   "status": "??",
+   "path": "tests/lan/test_zip_response_recovery.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "66B3E35BC5FA85D124B6A7A3B3442D1670DCCEE83FDCF49C8916485C7DDF7A7C"
+  },
+  {
+   "status": "??",
+   "path": "tests/lan/test_zip_work_limits.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "AE82BB3E82F262B23D144C6672FD39B3811F40E7821590B6FD8BD4070C9BEDBE"
+  },
+  {
+   "status": "??",
+   "path": "tests/lan/test_zip_worker_budget.py",
+   "group": "LAN-ZIP预览",
+   "sha256": "4B6CDE95993A2BADFA1F7C99117F2492C378EC6D87E867428916417E5F2590C8"
+  },
+  {
+   "status": "??",
+   "path": "tests/test_support/",
+   "group": "B00-测试设施"
+  }
+ ],
+ "deps": {
+  "PySide6": "6.11.0",
+  "pytest": "9.0.2",
+  "xdist": "3.8.0",
+  "pyright": "1.1.410",
+  "python": "3.14.3"
+ }
+}

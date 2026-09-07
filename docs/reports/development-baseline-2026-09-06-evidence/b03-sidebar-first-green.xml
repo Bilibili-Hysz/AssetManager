@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="20" failures="0" errors="0" time="2.4423686">
+    <testsuite name="src/components/layout/Sidebar.test.tsx" timestamp="2026-09-06T11:30:12.337Z" hostname="Administrator" tests="20" failures="0" errors="0" skipped="0" time="2.4423686">
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; registers only the tree projection domain" time="0.0614473">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; uses translated folder controls after switching to Chinese" time="0.0865256">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; expands all nested directories and collapses them again" time="0.1633447">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; expands every ancestor of the active path" time="0.0308192">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; clears every expanded path when collapsing all, including active ancestors" time="0.1099555">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; navigates directory rows but chevrons only change expansion" time="0.1227072">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; navigates from a nested directory indentation while its chevron only toggles" time="0.1994629">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; uses localized tree expansion labels and filter-disabled titles while retaining manual expansion" time="0.3722718">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; ignores a response from a superseded tree request" time="0.0142758">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; loads, filters, highlights, and clears real tags" time="0.2637103">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; renders favorites and navigates them with workspace context" time="0.0770839">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; renders the collections group and expands manual members on click" time="0.1577058">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; expands a smart collection through the evaluate endpoint" time="0.0777989">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; refreshes expanded collection members after a collections invalidation" time="0.1243248">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; does not let a superseded collection member response replace refreshed members" time="0.1143498">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; drops pending collection members when the authenticated identity changes" time="0.1192174">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; creates a collection through the prompt entry point" time="0.0650799">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; shows the live asset_count beside smart collections only" time="0.0156066">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; saves the browse-state snapshot as a smart collection query" time="0.0630637">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; navigates tree leaves to detail with encoded parent context while directories use onNavigate" time="0.2019328">
+        </testcase>
+    </testsuite>
+</testsuites>

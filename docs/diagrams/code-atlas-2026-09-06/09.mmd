@@ -1,0 +1,19 @@
+flowchart TB
+    Request["HTTP 请求 / LAN 或 cloudflared"] --> Security["security middleware / IP 黑白名单 / 分级限流 / 隧道身份"]
+    Security --> Metrics["metrics middleware / 请求与流量指标"]
+    Metrics --> Auth["auth middleware / 身份验证 / token 撤销 / capability 检查"]
+    Auth --> Error["error_contract_middleware / handler 异常契约"]
+    Error --> Routes["api.setup_routes / routes 各功能 handler"]
+    Policy["RoutePolicy / 每路径每方法声明"] -.-> Security
+    Policy -.-> Auth
+    Routes --> Guards["require_permission / require_user_write / PathGuard / 分享路径约束"]
+    Guards --> Services["LanScopedServices / 当前 Runtime 应用服务"]
+    Services --> DTO["dto.py / _resource_urls.py / 库相对路径与资源 URL"]
+    DTO --> Response["JSON / 媒体响应 / ZIP / WebSocket"]
+    Routes --> Pages["pages.py / webui/dist 静态资源与 SPA"]
+    Routes --> MCP["mcp_server.py / 独立 Bearer token / 默认关闭 / 只读工具"]
+    Principal["guest / password / access_key / local_ui / user / share"] -.-> Auth
+    AuthService["AuthService / ShareService / 持久撤销表"] --> Auth
+    Preflight["SecurityPreflight / 启动设置检查"] -.-> Server["LanServer facade / _LanServerImpl / 生命周期 mixin"]
+    Server --> Routes
+    Server --> Tunnel["GuardedTunnel / TunnelManager / cloudflared 子进程"]

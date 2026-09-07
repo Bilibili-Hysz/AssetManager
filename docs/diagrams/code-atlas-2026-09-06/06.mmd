@@ -1,0 +1,18 @@
+flowchart LR
+    Root["用户选择的资产库目录 / 普通文件和目录"] --> Identity["RootIdentity / 规范路径 / 稳定数据槽身份"]
+    Identity --> Slot["RuntimeData / 每库数据槽"]
+    Identity --> Lock["RuntimeData/Shared / 库锁与 identity 标记"]
+    Slot --> DB[("assetmanager.db / WAL / schema v46")]
+    Slot --> Cache["thumbnails / 媒体派生文件 / 恢复标记"]
+    Shared["RuntimeData/Shared"] --> Settings["应用设置 / tools.json / 日志 / 共享配置"]
+    DB --> Asset["assets + asset_index_state"]
+    DB --> Metadata["file_meta + file_tags / 标签目录与来源"]
+    DB --> Organize["library_favorites / asset_collections / asset_collection_members"]
+    DB --> Derived["thumbnail_cache / asset_derivatives / gallery_home / asset_search FTS5"]
+    DB --> Access["users / invite_codes / share_links / revoked_tokens / free_download_quota_windows"]
+    DB --> Recovery["import_manifests / import_manifest_items / reconciliation_tasks / queue_state / transition_outbox / dead_letters"]
+    DB --> Audit["activity_log / command_executions / 插件元数据 / schema_migrations"]
+    DB --> Legacy["历史 shop / seller 表与迁移保留；商城运行时已移除"]
+    Asset -.->|"路径关联，非统一资产 UUID"| Metadata
+    Asset -.->|"路径引用"| Organize
+    Asset -.->|"可重建投影"| Derived

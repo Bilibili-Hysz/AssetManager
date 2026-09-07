@@ -1,0 +1,21 @@
+flowchart TB
+    Python["AssetsManager Python 代码"] --> Static["ruff / pyright / compileall / 边界脚本"]
+    Python --> Unit["tests/unit / core / plugins"]
+    Python --> Integration["tests/integration / SQLite + 文件系统 + 生命周期"]
+    Python --> Desktop["tests/desktop / Qt offscreen / 视觉"]
+    Python --> LAN["tests/lan / HTTP、身份、下载、WS"]
+    Web["webui/src"] --> TS["TypeScript / Vitest / Vite build"]
+    Web --> Browser["Playwright / app、a11y、shell / 真实 LAN E2E"]
+    Python --> Browser
+    Contracts["gen_ts_types / route capabilities / frontend data fetch / web tokens"] --> Python
+    Contracts --> Web
+    TS --> Dist["webui/dist"]
+    Dist --> Build["build.py / AssetManager.spec / PyInstaller / installer"]
+    Python --> Build
+    Static --> CI[".github/workflows / CI 与 release"]
+    Unit --> CI
+    Integration --> CI
+    Desktop --> CI
+    LAN --> CI
+    Browser --> CI
+    Build --> Smoke["run.py --package-smoke / 冻结包启动验证"]

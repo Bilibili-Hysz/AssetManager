@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="46" failures="0" errors="0" time="4.1286196">
+    <testsuite name="src/stores/RealtimeContext.test.tsx" timestamp="2026-09-06T12:09:15.584Z" hostname="Administrator" tests="24" failures="0" errors="0" skipped="0" time="1.2249292">
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; shares exactly one enabled transport between multiple consumers" time="0.0247422">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; accepts the favorites projection domain" time="0.0052527">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; delivers collections invalidations, including events with other projection domains" time="0.005168">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; enables and disables the socket with realtime capability" time="0.0088745">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; establishes cursor, delivers only the next revision, and suppresses duplicates" time="0.0033884">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; ignores an older runtime_ready in the same epoch" time="0.0044251">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; recovers and fans out when a newer runtime_ready advances the same epoch" time="0.0630643">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; replaces the transport when the principal identity changes while realtime remains enabled" time="0.0065587">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; resets the cursor on identity change and recovers once from the first ready" time="0.0219802">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; drops projection registrations when identity changes" time="0.0043096">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; recovers once for a gap and notifies every registered projection" time="0.0731914">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; retries once for a same-epoch stale recovery response without regressing or notifying" time="0.0779003">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; isolates callback failures during recovery fan-out" time="0.0774585">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; replaces the epoch on ready and recovers on mismatched events" time="0.0789516">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; recovers and notifies immediately for a new runtime epoch, once per ready" time="0.0156539">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; fans out once when a new epoch keeps the same revision after equal recovery" time="0.0151044">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; drops a stale recovery response and allows recovery for the new epoch" time="0.0933421">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; retries recovery when a valid event advances the cursor during recovery" time="0.1557137">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; retries recovery when a stale response still leaves the current gap unresolved" time="0.1559645">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; retries a stale response when the gap cursor has not advanced yet" time="0.1731924">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; marks recovery failed when the shared client rejects with UnauthorizedError" time="0.0780453">
+            <system-err>
+Realtime recovery failed: UnauthorizedError: Unauthorized
+    at Z:\webui\src\stores\RealtimeContext.test.tsx:445:51
+    at file:///Z:/webui/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11
+    at file:///Z:/webui/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26
+    at file:///Z:/webui/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20
+    at new Promise (&lt;anonymous&gt;)
+    at runWithTimeout (file:///Z:/webui/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)
+    at runTest (file:///Z:/webui/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)
+    at runSuite (file:///Z:/webui/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+    at runSuite (file:///Z:/webui/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+    at runFiles (file:///Z:/webui/node_modules/@vitest/runner/dist/chunk-hooks.js:1787:3) {
+  status: 401,
+  body: undefined
+}
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; fans out a null event when recovery fails so consumers re-probe" time="0.0755004">
+            <system-err>
+Realtime recovery failed: Error: probe unreachable
+    at Z:\webui\src\stores\RealtimeContext.test.tsx:456:51
+    at file:///Z:/webui/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11
+    at file:///Z:/webui/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26
+    at file:///Z:/webui/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20
+    at new Promise (&lt;anonymous&gt;)
+    at runWithTimeout (file:///Z:/webui/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)
+    at runTest (file:///Z:/webui/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)
+    at runSuite (file:///Z:/webui/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+    at runSuite (file:///Z:/webui/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+    at runFiles (file:///Z:/webui/node_modules/@vitest/runner/dist/chunk-hooks.js:1787:3)
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; ignores malformed and unrelated messages safely" time="0.0017986">
+        </testcase>
+        <testcase classname="src/stores/RealtimeContext.test.tsx" name="RealtimeProvider &gt; unsubscribes callbacks and cleans them on unmount" time="0.0030438">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/layout/Sidebar.test.tsx" timestamp="2026-09-06T12:09:15.599Z" hostname="Administrator" tests="22" failures="0" errors="0" skipped="0" time="2.9036904">
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; registers only the tree projection domain" time="0.0896515">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; uses translated folder controls after switching to Chinese" time="0.1239399">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; expands all nested directories and collapses them again" time="0.2183077">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; expands every ancestor of the active path" time="0.0660853">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; clears every expanded path when collapsing all, including active ancestors" time="0.0959399">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; navigates directory rows but chevrons only change expansion" time="0.1000111">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; navigates from a nested directory indentation while its chevron only toggles" time="0.2230108">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; uses localized tree expansion labels and filter-disabled titles while retaining manual expansion" time="0.4721458">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; ignores a response from a superseded tree request" time="0.0210045">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; loads, filters, highlights, and clears real tags" time="0.2719005">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; renders favorites and navigates them with workspace context" time="0.0766673">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; renders the collections group and expands manual members on click" time="0.205374">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; expands a smart collection through the evaluate endpoint" time="0.1079231">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; refreshes expanded collection members after a collections invalidation" time="0.1109009">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; does not let a superseded collection member response replace refreshed members" time="0.1259798">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; drops pending collection members when the authenticated identity changes" time="0.1067068">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; does not refresh collections when a create response arrives after an identity change" time="0.0675463">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; does not remove or refresh a collection when a delete response arrives after an identity change" time="0.0966585">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; creates a collection through the prompt entry point" time="0.0558502">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; shows the live asset_count beside smart collections only" time="0.0201064">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; saves the browse-state snapshot as a smart collection query" time="0.0724559">
+        </testcase>
+        <testcase classname="src/components/layout/Sidebar.test.tsx" name="Sidebar &gt; navigates tree leaves to detail with encoded parent context while directories use onNavigate" time="0.1730883">
+        </testcase>
+    </testsuite>
+</testsuites>

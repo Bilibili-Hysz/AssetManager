@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="1.885" timestamp="2026-09-06T19:38:40.858188+08:00" hostname="Administrator"><testcase classname="tests.integration.test_runtime_events" name="test_smart_collection_fts_is_current_inside_notes_and_tag_invalidation" time="0.302"><failure message="assert [(False, Fals..., False), ...] == [(True, False..., False), ...]&#10;  &#10;  At index 0 diff: (False, False, False, False) != (True, False, False, False)&#10;  Use -v to get more diff">tmp_path = WindowsPath('C:/Users/86177/AppData/Local/Temp/am-test-qhsqy2gh')
+
+    def test_smart_collection_fts_is_current_inside_notes_and_tag_invalidation(tmp_path):
+        """The synchronous router callback can query FTS after each mutation."""
+        bootstrap = ApplicationBootstrap()
+        session = bootstrap.library_service.open_session(tmp_path / "library")
+        runtime = bootstrap.runtime_for(session)
+        target = session.root / "indexed.txt"
+        target.parent.mkdir(parents=True)
+        target.write_text("indexed", encoding="utf-8")
+        runtime.services.asset_index_service.index_directory(session.root)
+        collections = runtime.services.collection_service
+        assert collections is not None
+        notes_view = collections.create_smart(session.root_str, "notes", {"fts": "notes:signalnote"})
+        tags_view = collections.create_smart(session.root_str, "tags", {"fts": "tags:signaltag"})
+        renamed_view = collections.create_smart(session.root_str, "renamed", {"fts": "tags:renamedtag"})
+        cleared_view = collections.create_smart(session.root_str, "cleared", {"fts": "tags:clearme"})
+        views = (notes_view, tags_view, renamed_view, cleared_view)
+        observed = []
+    
+        def observe(event):
+            if ProjectionDomain.COLLECTIONS in event.domains and event.paths == ("indexed.txt",):
+                observed.append(tuple(
+                    bool(collections.evaluate(session.root_str, view["id"]))
+                    for view in views
+                ))
+    
+        runtime.event_router.subscribe(observe)
+        try:
+            runtime.services.metadata_service.set_notes(session.root_str, target, "signalnote")
+            runtime.services.tag_service.add_tag(session.root_str, target, "signaltag")
+            runtime.services.tag_service.remove_tag(session.root_str, target, "signaltag")
+            runtime.services.tag_service.add_tag(session.root_str, target, "signaltag")
+            runtime.services.tag_service.rename_tag(session.root_str, "signaltag", "renamedtag")
+            runtime.services.tag_service.delete_tag(session.root_str, "renamedtag")
+            runtime.services.tag_service.add_tag(session.root_str, target, "clearme")
+            runtime.services.tag_service.remove_file(session.root_str, target)
+    
+&gt;           assert observed == [
+                (True, False, False, False),
+                (True, True, False, False),
+                (True, False, False, False),
+                (True, True, False, False),
+                (True, False, True, False),
+                (True, False, False, False),
+                (True, False, False, True),
+                (True, False, False, False),
+            ]
+E           assert [(False, Fals..., False), ...] == [(True, False..., False), ...]
+E             
+E             At index 0 diff: (False, False, False, False) != (True, False, False, False)
+E             Use -v to get more diff
+
+tests\integration\test_runtime_events.py:248: AssertionError</failure></testcase></testsuite></testsuites>

@@ -1,0 +1,22 @@
+flowchart LR
+    Plugins["Plugins/Addons / plugin.json"] --> PluginService["PluginService / discover / enable / load / unload"]
+    PluginService --> Manager["core.plugins / descriptor / loader / manager / preferences"]
+    Manager --> Host["PluginHostContext / 当前窗口绑定的库服务"]
+    Host --> API["plugin_api v2 / 注册、贡献归属、权限检查"]
+    API --> Contributions["菜单 / 分类 / 解析器 / 信息字段 / 工具面板 / 快捷键 / 主题 / 事件"]
+    Command["CommandRegistry / 现有文件和标签操作描述"] --> Services["库级应用服务"]
+    Journal["CommandExecutionStore / 执行记录基础设施"] -.-> Command
+    MCP["独立只读 MCP endpoint / 5 个工具"] --> Services
+    AI["Info 单图 / FileList 批量 AI 标签"] --> Ollama["ollama_client / requests / 图像分析"]
+    Ollama --> Write["write_policy / converge_tags / TagService"]
+    Write --> Services
+    ThemeJSON["主题 JSON / core.themes / theme_loader"] --> Qt["StyleKit / icons / ui_scale / Qt 外观"]
+    ThemeJSON --> Tokens["gen_web_tokens / Web tokens / useServerTheme"]
+    Language["i18n / 中英日"] --> Qt
+    Language --> Web["React 外观与文案"]
+    Tokens --> Web
+    Wallpaper["静态背景图片 / EffectChain"] --> Effects["ImageEffectRenderer"]
+    Effects --> GL["离屏 OpenGL 滤镜"]
+    Effects --> CPU["CPU fallback / 不支持的 shader 返回原图"]
+    GL --> Paint["MainWindow.paintEvent / 整窗 CPU 合成"]
+    CPU --> Paint

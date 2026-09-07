@@ -1,0 +1,22 @@
+flowchart TB
+    UI["文件操作 / 批量重命名 / 导入 / 撤销"] --> Operation["FileOperationService / ImportService / UndoService"]
+    Operation --> FS["文件系统实际变更"]
+    Operation --> Projection["路径元数据迁移 / AssetIndexService / SearchIndexService"]
+    Operation --> Manifest["ImportManifestStore / 批次与逐项状态 / 指纹 / claim lease"]
+    Operation -->|"失败补偿意图"| Markers["pending_projection_repairs 标记"]
+    FS -.-> Watcher["LibraryWatcherService / 轮询目录快照"]
+    Watcher --> Queue["ReconciliationQueue / 同进程 Condition + 跨进程轮询"]
+    Manifest --> Recovery["ImportManifestRecoveryService"]
+    Recovery --> Queue
+    Markers -->|"启动 drain"| Queue
+    Queue --> Store[("SQLiteReconciliationQueueStore / tasks + queue state")]
+    Store --> Worker["AssetIndexReconciliationService / 领取租约 / heartbeat / 有界重试"]
+    Worker --> Rescan["资产重扫 / CAS 发布"]
+    Worker --> Repair["FilesystemProjectionRepairService / 意图与实际文件对齐"]
+    Repair --> Projection
+    Rescan --> Projection
+    Worker --> Outbox[("transition outbox / 顺序投递 / ACK / dead letters")]
+    Outbox -->|"持久 consumer"| Recovery
+    Recovery -->|"收到所需 ACK 后结算"| Manifest
+    Projection -.-> Events["FileSystemChanged / 失效通知"]
+    Worker --> Health["故障状态 / retention / dead-letter 诊断"]

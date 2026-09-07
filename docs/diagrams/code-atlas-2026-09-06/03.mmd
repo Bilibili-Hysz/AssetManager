@@ -1,0 +1,28 @@
+sequenceDiagram
+    participant UI as MainWindow / LifecycleCoordinator
+    participant Lib as LibraryService
+    participant DB as DatabaseManager
+    participant Boot as ApplicationBootstrap
+    participant RT as LibraryRuntime
+    participant Adapter as 面板 / watcher / worker / LAN
+    UI->>Lib: 打开资产库
+    Lib->>Lib: 规范化 RootIdentity / 占用库所有权 / LibraryLock
+    Lib->>DB: 初始化数据库 / 校验身份 / 迁移与 schema 契约
+    DB-->>Lib: 该库连接
+    Lib-->>UI: canonical LibrarySession
+    UI->>Boot: runtime_for(session)
+    Boot->>RT: 构建服务快照 / 事件路由 / 后台适配器
+    RT-->>UI: services_snapshot
+    UI->>Adapter: 绑定 session / runtime / 固定服务
+    Note over UI,Adapter: 切库先停止旧工作并清理旧绑定，再注入新库；失败走回滚或重试
+    UI->>Lib: close_session(old_session)
+    Lib->>Lib: begin_close / 禁止新操作
+    Lib->>Boot: closing listeners
+    Boot->>RT: mark_closing / 排空事件回调 / close_adapters
+    RT->>Adapter: stop
+    Lib->>Lib: 等待已接受的 session.operation 完成
+    Lib->>Boot: close listeners
+    Boot->>RT: 清理 undo / 懒服务订阅 / runtime 缓存
+    Lib->>DB: close_library
+    Lib->>Lib: 释放 LibraryLock / 失效 context / 清理所有权
+    Note over Lib,RT: 超时或清理失败保留可重试状态，不宣称已释放数据库与库锁

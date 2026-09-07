@@ -1,0 +1,25 @@
+sequenceDiagram
+    participant Caller as 桌面或 LAN handler
+    participant Service as 应用服务
+    participant DB as 会话数据库 / 文件投影
+    participant Bus as Domain EventBus
+    participant Qt as queued Qt bridge
+    participant Router as RuntimeEventRouter
+    participant WS as LAN / WebSocketManager
+    participant Web as RealtimeProvider / QueryCache
+    Caller->>Service: 修改标签、备注、文件等
+    Service->>DB: 校验与写入 / 提交
+    Service->>Bus: 发布 library_root + session_token + paths 事件
+    Bus-->>Qt: 对应领域事件订阅
+    Qt-->>Caller: 在 GUI 线程刷新对应面板
+    Bus-->>Router: EVENT_DOMAINS 中已映射的事件
+    Router->>Router: 验证所属 session / revision 加一 / 计算 domains 和 paths
+    Router-->>WS: InvalidationEvent(epoch, revision, domains, paths)
+    WS-->>Web: projection_invalidated
+    Web->>Web: 域与路径匹配 / 标记缓存失效
+    Web->>Caller: HTTP 重新查询权威数据
+    opt 断线重连、游标跳跃或 epoch 变化
+        Web->>Caller: GET /api/revision
+        Caller-->>Web: 当前 epoch + revision
+        Web->>Web: 恢复并重新查询受影响数据
+    end

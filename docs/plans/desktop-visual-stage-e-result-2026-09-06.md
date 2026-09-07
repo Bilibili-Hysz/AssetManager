@@ -1,6 +1,6 @@
 # 桌面视觉统一 · 阶段 E 结果（覆盖补齐与文案收口）
 
-> 状态：**STAGE RESULT（2026-09-06）**
+> 状态：**STAGE RESULT（2026-09-06；已入库 commit 6139113 / f3563e1）**
 > 依据：主报告 V10/V05 残余（§8 阶段 E 完成条件）+ 阶段 D 结果文档 §6 移交清单。
 > 范围约束：与并行 LAN 工作线互不接触（其 `lan/`、`webui/`、`thumbnail_service.py`、`file_snapshot.py` 在途改动未纳入本阶段）。
 

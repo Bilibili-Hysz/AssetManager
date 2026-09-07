@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="2.851" timestamp="2026-09-06T20:00:03.516158+08:00" hostname="Administrator"><testcase classname="tests.lan.test_spa_font_assets" name="test_spa_font_route_serves_only_dist_fonts[asyncio]" time="0.039"><failure message="AssertionError: assert 404 == 200&#10; +  where 404 = &lt;ClientResponse(http://127.0.0.1:5899/fonts/inter-var-latin.woff2) [404 Not Found]&gt;\n&lt;CIMultiDictProxy('Content-Type': ...rset=utf-8', 'Content-Length': '14', 'Date': 'Sun, 06 Sep 2026 12:00:05 GMT', 'Server': 'Python/3.14 aiohttp/3.14.0')&gt;\n.status">tmp_path = WindowsPath('C:/Users/86177/AppData/Local/Temp/am-test-oij11a0x')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x00000214A75E4C30&gt;
+
+    @pytest.mark.anyio
+    async def test_spa_font_route_serves_only_dist_fonts(tmp_path, monkeypatch):
+        dist = tmp_path / "dist"
+        fonts = dist / "fonts"
+        fonts.mkdir(parents=True)
+        font = fonts / "inter-var-latin.woff2"
+        font.write_bytes(b"test-font")
+        (dist / "private.txt").write_text("must-not-leak", encoding="utf-8")
+        monkeypatch.setattr(pages, "SPA_DIR", dist)
+    
+        app = web.Application()
+        app[LAN_APP_KEY] = SimpleNamespace(runtime=None)
+        setup_routes(app)
+        client = TestClient(TestServer(app))
+        await client.start_server()
+        try:
+            response = await client.get("/fonts/inter-var-latin.woff2")
+&gt;           assert response.status == 200
+E           AssertionError: assert 404 == 200
+E            +  where 404 = &lt;ClientResponse(http://127.0.0.1:5899/fonts/inter-var-latin.woff2) [404 Not Found]&gt;\n&lt;CIMultiDictProxy('Content-Type': ...rset=utf-8', 'Content-Length': '14', 'Date': 'Sun, 06 Sep 2026 12:00:05 GMT', 'Server': 'Python/3.14 aiohttp/3.14.0')&gt;\n.status
+
+tests\lan\test_spa_font_assets.py:32: AssertionError</failure></testcase></testsuite></testsuites>

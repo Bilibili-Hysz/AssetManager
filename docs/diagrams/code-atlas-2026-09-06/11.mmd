@@ -1,0 +1,17 @@
+flowchart TB
+    Request["普通下载 / 批量下载 / 分享下载"] --> Auth["权限与路径校验 / 分享有效性 / 配额预检"]
+    Auth --> Kind{"内容类型"}
+    Kind -->|"单文件"| Open["open_download_file / SafeOpenedFile / 保留最终文件句柄"]
+    Open --> Single["SafeFileResponse / 固定 Content-Length / 分块读取与身份复核"]
+    Kind -->|"目录或批量"| Scan["zip_sources / 有界扫描 / 来源数量、大小、深度检查"]
+    Scan --> Reserve["进程级 ZipResourceBudget / job + 预留字节"]
+    Reserve --> Builder["每 LAN 的 ZIP executor / build_zip_async / 输出大小限制"]
+    Builder --> Temp["TemporaryFileResponse / 临时文件 owner / reservation 引用"]
+    Single --> Count["最终来源就绪后 / 普通配额或分享下载次数准入"]
+    Temp --> Count
+    Count --> Transfer["发送响应 / HEAD 特殊处理 / 断开与取消"]
+    Transfer --> Close["关闭持有的文件句柄"]
+    Close --> Cleanup["临时 ZIP 删除 / cleanup_zip_path"]
+    Cleanup --> Released["成功后释放对应 reservation 引用"]
+    Cleanup -->|"删除失败"| Retry["进程级 ZipCleanupService / 有界注册 / 退避重试 / 文件身份检查"]
+    Retry --> Cleanup

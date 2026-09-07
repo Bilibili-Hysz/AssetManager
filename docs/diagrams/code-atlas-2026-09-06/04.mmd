@@ -1,0 +1,28 @@
+flowchart LR
+    Window["MainWindow"] --> Life["WindowLifecycleCoordinator / WindowCoordinator"]
+    Window --> Work["WorkspaceBar / TabContainer / 布局与视图状态"]
+    Window --> Dock["dock_factory / 统一 Dock 外壳"]
+    Dock --> Panels["Sidebar / Info / ImageViewer / 可创建的 TagTree"]
+    Work --> FilePanel["FileListPanel"]
+    FilePanel --> Mixins["LayoutMixin / LogicMixin / EventsMixin / NavigationMixin / ActionsMixin"]
+    Mixins --> Model["FileSystemModel / 文件与排序筛选数据"]
+    Model --> Grid["FileListGridWidget / QWidget + QPainter"]
+    Model --> Detail["详情模型 / QTreeView"]
+    Grid --> GridParts["grid layout / render / interact / texture cache / animator"]
+    Mixins --> Loader["ThumbnailLoader / generation + runtime snapshot"]
+    Loader --> Pools["QThreadPool / 独立 ffmpeg 池 / 磁盘写入线程"]
+    Panels --> Controllers["Info / Sidebar / TagTree 控制器"]
+    Mixins --> FileController["FileListController"]
+    Controllers --> Ports["desktop_ports / RootBoundTagService / 应用服务"]
+    FileController --> Ports
+    Mixins -->|"文件操作等直接调用"| Ports
+    Loader -->|"缩略图与派生物"| Ports
+    Window --> Dialogs["设置 / 分享 / 标签浏览 / 导入 / 活动 / 撤销 / 插件对话框"]
+    Dialogs --> Ports
+    Dialogs --> SharePort["ShareSettingsPort / LanControlPort"]
+    SharePort --> LanAdapter["lan.ports / LanDesktopAdapter / build_lan_server"]
+    Window --> Overlays["QuickLook / QuickTagger / CommandPalette / Toast / 托盘"]
+    Bus["Qt signal_bus / 导航、主题、语言、缩放"] -.-> Window
+    Bus -.-> Panels
+    Bridge["DomainEventSubscription / RuntimeEventSubscription / queued Qt"] -.-> Panels
+    Bridge -.-> FilePanel

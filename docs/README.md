@@ -12,8 +12,12 @@
 |---|---|
 | [`architecture.md`](architecture.md) | 当前架构与模块职责（权威） |
 | [`architecture-diagram.md`](architecture-diagram.md) | 架构图（文本版） |
+| [`architecture-code-atlas-2026-09-06.md`](architecture-code-atlas-2026-09-06.md) | 当前代码架构图册（dated 工作区快照）：14 张分图、离线 SVG/HTML、源码与路由索引 |
 | [`migrations.md`](migrations.md) | 数据库迁移版本账本 |
 | [`development.md`](development.md) | 开发规则与工程约定 |
+| [`plans/development-control-2026-09-06.md`](plans/development-control-2026-09-06.md) | 开发统筹：Terra 执行分工、当前优先级、首轮核验与修复验收 |
+| [`reports/project-state-2026-09-07.md`](reports/project-state-2026-09-07.md) | 9/7 当前代码核查：已确认门禁问题、82 项抽样回归和当前证据边界 |
+| [`plans/weekly-priorities-2026-09-07.md`](plans/weekly-priorities-2026-09-07.md) | 9/7–9/13 一周重点任务：每日安排、投入、分工与验收条件 |
 | [`testing.md`](testing.md) | 测试策略与门禁 |
 | [`lan-security.md`](lan-security.md) | LAN 服务安全模型 |
 | [`perf-baseline-2026-08-29.md`](perf-baseline-2026-08-29.md) | 性能基线（dated 实测） |

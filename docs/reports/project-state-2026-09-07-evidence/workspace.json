@@ -1,0 +1,43 @@
+{
+  "captured_at": "2026-09-07T13:15:13.6573894+08:00",
+  "head": "b9ad72e27b5194df71818616b76c86ace1393a55",
+  "branch": "master",
+  "tracked_modified": 57,
+  "untracked_entries": 106,
+  "key_hashes": [
+    {
+      "path": "tests/conftest.py",
+      "sha256": "D5B517B923B60816B81A04A9589C55579F17A900D55D3C8DAD72239E332CC80A"
+    },
+    {
+      "path": "tests/test_support/runtime_isolation.py",
+      "sha256": "3BC4B376578B66DE6769C2621235BA569554CA7B682F87EBFAFCEDC33528D1DD"
+    },
+    {
+      "path": "AssetsManager/window.py",
+      "sha256": "FAF6A49039FB2013DE385A5358770C9183D4DC67E20EC542CE178216E57B2FA2"
+    },
+    {
+      "path": "AssetsManager/app.py",
+      "sha256": "3F1DC56EAA89A0AB03B9CA652CE311769C7255491731814DB88186B0F65D6A2B"
+    },
+    {
+      "path": "AssetsManager/application/search_service.py",
+      "sha256": "A96CD580FDAE0B6C61755AAF0349959A505F7FDE4998142247FCAE4CA03D11DE"
+    },
+    {
+      "path": "pytest.ini",
+      "sha256": "4A55323381F56B7107F563DD208AC7A7064D2F7231DFC5B8F4A59F5B249307FC"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "347DAF8E84EF31C9F6CC72415DEE209901155E7F954514D280E967099980155A"
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "sha256": "C315FF8AF91422205E98D9976CAC1BCF431D30E49020788C993E14308F5AAE75"
+    }
+  ],
+  "python": "Python 3.14.3",
+  "npm": "11.9.0"
+}

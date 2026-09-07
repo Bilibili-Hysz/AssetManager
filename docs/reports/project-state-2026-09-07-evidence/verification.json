@@ -1,0 +1,17 @@
+{
+  "snapshot_id": "0d87daf0",
+  "captured_files": 965,
+  "changed_since_capture": [],
+  "junit": [
+    {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "82",
+      "time": "23.321",
+      "timestamp": "2026-09-07T13:13:47.396950+08:00",
+      "hostname": "Administrator"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+flowchart TB
+    User["本机用户"] --> Desktop["PySide6 桌面界面"]
+    Visitor["远程用户"] --> Browser["浏览器 React SPA"]
+    Browser -->|"HTTP / WebSocket"| Lan
+    Remote["公网浏览器"] -.->|"可选 cloudflared 隧道"| Lan
+    subgraph Proc["AssetManager 单个 Python 进程"]
+        Desktop -->|"进程内调用"| Services
+        Lan["aiohttp LAN 服务 / 独立 asyncio 线程"] -->|"路由 / DTO / 服务调用"| Services
+        Boot["ApplicationBootstrap / LibraryService"] -->|"每库创建并拥有"| Runtime
+        Runtime["LibrarySession + LibraryRuntime"] -->|"固定服务快照"| Services
+        Services["应用服务层 application"] --> Repo["repositories + core 存储适配"]
+        Services --> IO["文件系统 / 解码 / 后台任务"]
+        Services -.-> Events["领域事件 EventBus / Qt 桥与 WebSocket 失效通知"]
+        Lan -->|"托管构建产物"| Spa["webui/dist"]
+    end
+    Repo --> DB[("每库 SQLite 数据库")]
+    IO --> Files[("用户资产库原始文件")]
+    IO --> Cache[("缩略图 / 派生物 / 恢复标记")]
+    Services -.-> Ollama["可选 Ollama 图片打标签"]
+    IO -.-> Tools["可选 ffmpeg / ffprobe / 外部编辑器"]

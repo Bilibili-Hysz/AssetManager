@@ -1,0 +1,25 @@
+flowchart LR
+    Entry["main.py / run.py"] --> App["app.main / QApplication / 单实例检查"]
+    App --> Boot["ApplicationBootstrap"]
+    Boot --> Container["ServiceContainer / 应用生命周期"]
+    Container --> DBM["DatabaseManager"]
+    Container --> LS["LibraryService"]
+    Container --> PS["PluginService"]
+    App --> Startup["StartupWindow / 选择资产库"]
+    Startup --> Window["MainWindow"]
+    Window --> LS
+    LS --> Session["LibraryContext + LibrarySession / root identity + event token"]
+    Session --> Conn["connection_for + operation 租约"]
+    Boot -->|"runtime_for / 按 session 缓存"| Runtime["唯一 LibraryRuntime / epoch + revision"]
+    Session --> Runtime
+    Runtime --> Snapshot["冻结 LibraryScopedServices"]
+    Snapshot --> Shared["Metadata / Tag / Thumbnail / FileOperation / Undo / AssetIndex / Collection"]
+    Snapshot --> Maintain["Integrity / Maintenance / Export"]
+    Snapshot --> Recovery["ReconciliationQueue / Worker / ImportManifestRecovery"]
+    Snapshot --> Commands["CommandRegistry / CommandExecutionStore / MediaDerivativesRecorder"]
+    Snapshot --> Sharing["RuntimeSharingServices / AuthService + ShareService + token_secret"]
+    Snapshot --> Holder["_LanServicesHolder / single-flight 懒装配"]
+    Holder --> LAN["Asset / Project / Search / Gallery / Favorite"]
+    Snapshot -->|"复用应用级实例"| PS
+    Runtime --> Adapters["生命周期适配器 / watcher / maintenance / reconciliation / LAN"]
+    Conn --> DBM

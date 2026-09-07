@@ -1,0 +1,21 @@
+flowchart TB
+    Main["main.tsx / App.tsx / BrowserRouter"] --> Auth["AuthProvider / principal / capabilities / identityGeneration"]
+    Auth --> Realtime["RealtimeProvider / useWebSocket / revision recovery"]
+    Realtime --> CacheProvider["QueryCacheProvider"]
+    CacheProvider --> UIProviders["ToastProvider / DownloadProgressProvider"]
+    UIProviders --> Pages["Landing / Login / Browse / Detail / GalleryHome / GalleryCollection / GalleryFavorites / ShareReceive / Admin / NotFound"]
+    Guard["ProtectedRoute / browse 或 manage_users"] --> Pages
+    Pages --> Hooks["usePageApis / useProjects / useSearch / useFavorites / useQuota"]
+    Hooks --> Cached["useCachedQuery / QueryCache / 域与路径失效"]
+    Hooks --> API["api 模块工厂 / files / metadata / tags / shares / users / collections 等"]
+    Cached --> API
+    API --> Client["ApiClient / 身份头 / AbortSignal / 错误类型 / GET 重试退避"]
+    Client --> HTTP["aiohttp /api 接口"]
+    Realtime -.-> Cached
+    Auth -.->|"身份切换隔离"| Cached
+    Pages --> Thumbs["useThumbnailCache / 媒体资源 URL"]
+    Thumbs --> HTTP
+    Pages --> PublicShare["usePublicShareApi / 独立匿名客户端"]
+    PublicShare --> HTTP
+    Types["types/contracts / DTO 生成契约"] -.-> API
+    Theme["useServerTheme / tokens / i18n / 响应式 CSS"] -.-> Pages

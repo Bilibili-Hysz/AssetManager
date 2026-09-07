@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="1.537" timestamp="2026-09-06T19:31:10.114356+08:00" hostname="Administrator"><testcase classname="tests.integration.test_runtime_events" name="test_rating_service_mutation_routes_normalized_collection_invalidation" time="0.178"><failure message="assert 0 == 1&#10; +  where 0 = len([])">tmp_path = WindowsPath('C:/Users/86177/AppData/Local/Temp/am-test-nezt110l')
+
+    def test_rating_service_mutation_routes_normalized_collection_invalidation(tmp_path):
+        """A real rating write invalidates the smart-collection query view."""
+        bootstrap = ApplicationBootstrap()
+        session = bootstrap.library_service.open_session(tmp_path / "library")
+        runtime = bootstrap.runtime_for(session)
+        target = session.root / "nested" / "rated.txt"
+        target.parent.mkdir(parents=True)
+        target.write_text("rating", encoding="utf-8")
+        received = []
+        runtime.event_router.subscribe(received.append)
+        try:
+            runtime.services.metadata_service.set_rating(session.root_str, target, 4)
+    
+&gt;           assert len(received) == 1
+E           assert 0 == 1
+E            +  where 0 = len([])
+
+tests\integration\test_runtime_events.py:188: AssertionError</failure></testcase></testsuite></testsuites>

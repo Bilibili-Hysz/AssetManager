@@ -1,0 +1,18 @@
+flowchart TB
+    Desktop["桌面 ThumbnailLoader / ImageViewer / Info / QuickLook"] --> Snapshot["core.file_snapshot / source identity / 稳定字节快照"]
+    HTTP["LAN image / thumbnails / share preview"] --> Guard["权限 / 路径 / 隐私模糊策略"]
+    Guard --> Open["safe_open / 最终打开与文件身份"]
+    Open --> Snapshot
+    Snapshot --> Admit["ThumbnailService / 来源大小与像素等准入"]
+    Admit --> Decode["Pillow / Qt 解码 / media.decoders 注册表"]
+    Decode --> RAW["可选 rawpy / psd-tools"]
+    Decode --> Analysis["media.analysis / 调色板 / 音频波形"]
+    Desktop --> FF["专用 ffmpeg 池 / 视频首帧 / 音频分析"]
+    FF --> Derivatives["MediaDerivativesRecorder / asset_derivatives"]
+    Decode --> Policy["尺寸 / 质量 / 模糊 / 输出格式"]
+    Policy --> Key["thumbnail_key / 源身份 + 渲染 profile + 隐私变体"]
+    Key --> Cache["内存缓存 / 文件缓存 / ThumbnailRepository"]
+    Cache --> Desktop
+    Cache --> Response["LAN 字节响应 / 内容类型 / 缓存校验"]
+    Derivatives --> Cache
+    Owner["ThumbnailCacheLifecycle / 进程锁 + 库缓存 owner lease"] -.-> Cache
