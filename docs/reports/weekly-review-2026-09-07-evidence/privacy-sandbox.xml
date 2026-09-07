@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="3" time="15.950" timestamp="2026-09-07T22:58:52.964990+08:00" hostname="Administrator"><testcase classname="tests.e2e.test_webui_thumbnail_privacy_acceptance" name="test_real_browser_namespace_and_private_thumbnail_headers" time="4.546"><failure message="playwright._impl._errors.Error: BrowserType.launch: spawn EPERM&#10;Call log:&#10;  - &lt;launching&gt; C:\Users\86177\AppData\Local\ms-playwright\chromium_headless_shell-1228\chrome-headless-shell-win64\chrome-headless-shell.exe --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\7655e64d\sync\.pytest-runtime\48008-95608222d10a44c5a68b3a1b2fdbd806\scratch\playwright_chromiumdev_profile-ZY8KGP --remote-debugging-pipe --no-startup-window">browser_thumbnail_runtime = (&lt;AssetsManager.application.bootstrap.ApplicationBootstrap object at 0x000001D6B3D77770&gt;, LibrarySession(context=Libra...ect at 0x000001D6B412C590&gt;, &lt;test_webui_thumbnail_privacy_acceptance._LoopbackCacheProxy object at 0x000001D6B43FB4D0&gt;)
+
+    @pytest.mark.skipif(not __import__("pathlib").Path("webui/dist/index.html").is_file(), reason="WebUI dist is unavailable")
+    def test_real_browser_namespace_and_private_thumbnail_headers(browser_thumbnail_runtime):
+        _bootstrap, _session, _runtime, server, proxy = browser_thumbnail_runtime
+        with sync_playwright() as pw:
+&gt;           browser = pw.chromium.launch(headless=True)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\e2e\test_webui_thumbnail_privacy_acceptance.py:197: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\86177\AppData\Local\Programs\Python\Python314\Lib\site-packages\playwright\sync_api\_generated.py:16515: in launch
+    self._sync(
+C:\Users\86177\AppData\Local\Programs\Python\Python314\Lib\site-packages\playwright\_impl\_browser_type.py:97: in launch
+    await self._channel.send(
+C:\Users\86177\AppData\Local\Programs\Python\Python314\Lib\site-packages\playwright\_impl\_connection.py:69: in send
+    return await self._connection.wrap_api_call(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;playwright._impl._connection.Connection object at 0x000001D6B4530590&gt;
+cb = &lt;function Channel.send.&lt;locals&gt;.&lt;lambda&gt; at 0x000001D6B44C6820&gt;
+is_internal = False, title = None
+
+    async def wrap_api_call(
+        self, cb: Callable[[], Any], is_internal: bool = False, title: str = None
+    ) -&gt; Any:
+        if self._api_zone.get():
+            return await cb()
+        task = asyncio.current_task(self._loop)
+        st: List[inspect.FrameInfo] = getattr(
+            task, "__pw_stack__", None
+        ) or inspect.stack(0)
+    
+        parsed_st = _extract_stack_trace_information_from_stack(st, is_internal, title)
+        self._api_zone.set(parsed_st)
+        try:
+            return await cb()
+        except Exception as error:
+&gt;           raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+E           playwright._impl._errors.Error: BrowserType.launch: spawn EPERM
+E           Call log:
+E             - &lt;launching&gt; C:\Users\86177\AppData\Local\ms-playwright\chromium_headless_shell-1228\chrome-headless-shell-win64\chrome-headless-shell.exe --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\7655e64d\sync\.pytest-runtime\48008-95608222d10a44c5a68b3a1b2fdbd806\scratch\playwright_chromiumdev_profile-ZY8KGP --remote-debugging-pipe --no-startup-window
+
+C:\Users\86177\AppData\Local\Programs\Python\Python314\Lib\site-packages\playwright\_impl\_connection.py:563: Error</failure></testcase><testcase classname="tests.e2e.test_webui_thumbnail_privacy_acceptance" name="test_intermediary_does_not_cache_private_batch_responses" time="5.239" /><testcase classname="tests.e2e.test_webui_thumbnail_privacy_acceptance" name="test_intermediary_only_caches_explicit_public_thumbnail_responses" time="3.173"><failure message="AssertionError: assert 'private, no-cache' == 'public, max-age=3600'&#10;  &#10;  - public, max-age=3600&#10;  + private, no-cache">browser_thumbnail_runtime = (&lt;AssetsManager.application.bootstrap.ApplicationBootstrap object at 0x000001D6B1645F90&gt;, LibrarySession(context=Libra...ect at 0x000001D6B681A210&gt;, &lt;test_webui_thumbnail_privacy_acceptance._LoopbackCacheProxy object at 0x000001D6B681B890&gt;)
+
+    def test_intermediary_only_caches_explicit_public_thumbnail_responses(browser_thumbnail_runtime):
+        _bootstrap, _session, _runtime, server, proxy = browser_thumbnail_runtime
+        with sync_playwright() as pw:
+            cookie = _cookie(server)
+            cookie.pop("url", None)
+            cookie.update({
+                "domain": "127.0.0.1",
+                "path": "/",
+                "expires": -1,
+                "httpOnly": False,
+                "secure": False,
+                "sameSite": "Lax",
+            })
+            request = pw.request.new_context(storage_state={"cookies": [cookie]})
+            try:
+                path = "/api/thumbnails/cover.png?size=128"
+                first = request.get(f"{proxy.base_url}{path}")
+                second = request.get(f"{proxy.base_url}{path}")
+                assert first.ok and second.ok
+&gt;               assert first.headers["cache-control"] == "public, max-age=3600"
+E               AssertionError: assert 'private, no-cache' == 'public, max-age=3600'
+E                 
+E                 - public, max-age=3600
+E                 + private, no-cache
+
+tests\e2e\test_webui_thumbnail_privacy_acceptance.py:301: AssertionError</failure></testcase></testsuite></testsuites>

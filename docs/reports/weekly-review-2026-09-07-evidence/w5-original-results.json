@@ -1,0 +1,69 @@
+[
+ {
+  "name": "baseline_after_boot",
+  "rss_mb": 100.6
+ },
+ {
+  "name": "server_started",
+  "rss_mb": 100.7,
+  "port": 11081
+ },
+ {
+  "name": "thumbnails_c1_50",
+  "rss_mb": 101.2,
+  "total_s": 102.15,
+  "p50_ms": 0,
+  "errors": 50
+ },
+ {
+  "name": "after_thumbnails_c1",
+  "rss_mb": 101.2
+ },
+ {
+  "name": "thumbnails_c2_50",
+  "rss_mb": 101.2,
+  "total_s": 101.964,
+  "p50_ms": 0,
+  "errors": 50
+ },
+ {
+  "name": "after_thumbnails_c2",
+  "rss_mb": 101.2
+ },
+ {
+  "name": "downloads_100",
+  "rss_mb": 101.9,
+  "total_s": 0,
+  "p50_ms": 0,
+  "count": 0
+ },
+ {
+  "name": "after_downloads",
+  "rss_mb": 101.9
+ },
+ {
+  "name": "zip_20_files",
+  "rss_mb": 101.9,
+  "error": "Cannot connect to host 127.0.0.1:11081 ssl:default [远程计算机拒绝网络连接。]"
+ },
+ {
+  "name": "after_zip",
+  "rss_mb": 101.9
+ },
+ {
+  "name": "repeat_thumbnails_1",
+  "rss_mb": 101.9
+ },
+ {
+  "name": "repeat_thumbnails_2",
+  "rss_mb": 101.9
+ },
+ {
+  "name": "repeat_thumbnails_3",
+  "rss_mb": 101.9
+ },
+ {
+  "name": "server_stopped",
+  "rss_mb": 101.9
+ }
+]

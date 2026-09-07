@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="3" time="17.487" timestamp="2026-09-07T22:59:50.698432+08:00" hostname="Administrator"><testcase classname="tests.e2e.test_webui_thumbnail_privacy_acceptance" name="test_real_browser_namespace_and_private_thumbnail_headers" time="8.118"><failure message="assert 0 == 1&#10; +  where 0 = len([])">browser_thumbnail_runtime = (&lt;AssetsManager.application.bootstrap.ApplicationBootstrap object at 0x0000024D6331B620&gt;, LibrarySession(context=Libra...ect at 0x0000024D636C4440&gt;, &lt;test_webui_thumbnail_privacy_acceptance._LoopbackCacheProxy object at 0x0000024D638F7B60&gt;)
+
+    @pytest.mark.skipif(not __import__("pathlib").Path("webui/dist/index.html").is_file(), reason="WebUI dist is unavailable")
+    def test_real_browser_namespace_and_private_thumbnail_headers(browser_thumbnail_runtime):
+        _bootstrap, _session, _runtime, server, proxy = browser_thumbnail_runtime
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=True)
+            context = browser.new_context()
+            page: Page = context.new_page()
+            try:
+                context.add_cookies([_cookie(server, base_url=proxy.base_url)])
+                page.goto(f"{proxy.base_url}/browse", wait_until="domcontentloaded")
+                page.get_by_test_id("browse-workspace").wait_for(timeout=10_000)
+                page.wait_for_timeout(500)
+                info = page.request.get(f"{proxy.base_url}/api/info")
+                assert info.ok
+                namespace = info.json()["thumbnail_cache_namespace"]
+                assert namespace
+                namespace_keys = page.evaluate(
+                    """(ns) =&gt; Object.keys(sessionStorage).filter((key) =&gt; key.startsWith('lan_thumb_cache:'))""",
+                    namespace,
+                )
+&gt;               assert len(namespace_keys) == 1
+E               assert 0 == 1
+E                +  where 0 = len([])
+
+tests\e2e\test_webui_thumbnail_privacy_acceptance.py:213: AssertionError</failure></testcase><testcase classname="tests.e2e.test_webui_thumbnail_privacy_acceptance" name="test_intermediary_does_not_cache_private_batch_responses" time="3.219" /><testcase classname="tests.e2e.test_webui_thumbnail_privacy_acceptance" name="test_intermediary_only_caches_explicit_public_thumbnail_responses" time="3.203"><failure message="AssertionError: assert 'private, no-cache' == 'public, max-age=3600'&#10;  &#10;  - public, max-age=3600&#10;  + private, no-cache">browser_thumbnail_runtime = (&lt;AssetsManager.application.bootstrap.ApplicationBootstrap object at 0x0000024D63A1C2D0&gt;, LibrarySession(context=Libra...ect at 0x0000024D0612E990&gt;, &lt;test_webui_thumbnail_privacy_acceptance._LoopbackCacheProxy object at 0x0000024D0614C050&gt;)
+
+    def test_intermediary_only_caches_explicit_public_thumbnail_responses(browser_thumbnail_runtime):
+        _bootstrap, _session, _runtime, server, proxy = browser_thumbnail_runtime
+        with sync_playwright() as pw:
+            cookie = _cookie(server)
+            cookie.pop("url", None)
+            cookie.update({
+                "domain": "127.0.0.1",
+                "path": "/",
+                "expires": -1,
+                "httpOnly": False,
+                "secure": False,
+                "sameSite": "Lax",
+            })
+            request = pw.request.new_context(storage_state={"cookies": [cookie]})
+            try:
+                path = "/api/thumbnails/cover.png?size=128"
+                first = request.get(f"{proxy.base_url}{path}")
+                second = request.get(f"{proxy.base_url}{path}")
+                assert first.ok and second.ok
+&gt;               assert first.headers["cache-control"] == "public, max-age=3600"
+E               AssertionError: assert 'private, no-cache' == 'public, max-age=3600'
+E                 
+E                 - public, max-age=3600
+E                 + private, no-cache
+
+tests\e2e\test_webui_thumbnail_privacy_acceptance.py:301: AssertionError</failure></testcase></testsuite></testsuites>

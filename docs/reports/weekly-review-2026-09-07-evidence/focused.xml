@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="5" time="9.982" timestamp="2026-09-07T22:57:49.892170+08:00" hostname="Administrator"><testcase classname="tests.unit.test_gen_ts_types" name="test_check_reports_up_to_date" time="0.497" /><testcase classname="tests.unit.test_gen_ts_types" name="test_disk_matches_generated_bytes" time="0.020" /><testcase classname="tests.unit.test_gen_ts_types" name="test_generated_contains_expected_interfaces_and_fields" time="0.025" /><testcase classname="tests.unit.test_gen_ts_types" name="test_generated_preserves_optional_zip_resource_diagnostics" time="0.010" /><testcase classname="tests.integration.test_collection_service" name="test_collection_service_publishes_collection_changed" time="0.262"><failure message="RuntimeError: CollectionService mutations require a clean transaction boundary">tmp_path = WindowsPath('D:/~Vibe-Coding/Projects/AssetsManager_old-bak/.pytest-tmp-lead-snapshots/7655e64d/sync/.pytest-runtime/40452-18b5271721354a3289318eba7b4b361b/pytest/test_collection_service_publis0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000020A2633A780&gt;
+
+    def test_collection_service_publishes_collection_changed(tmp_path, monkeypatch):
+        """Mutations publish the 17th domain event, scoped to the session."""
+        from AssetsManager.domain.event_bus import EventBus
+        from AssetsManager.domain.events import CollectionChanged
+    
+        library = tmp_path / "library"
+        library.mkdir()
+        asset = library / "a.png"
+        asset.write_bytes(b"png")
+    
+        bus = EventBus()
+        events = []
+        bus.subscribe(CollectionChanged, events.append)
+        import AssetsManager.domain.event_bus as eb
+        monkeypatch.setattr(eb, "_instance", bus)
+    
+        from AssetsManager.application.bootstrap import ApplicationBootstrap
+        bootstrap = ApplicationBootstrap()
+        session = bootstrap.library_service.open_session(library)
+        service = bootstrap.runtime_for(session).services.collection_service
+        try:
+&gt;           created = service.create(session.root, "hero")
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_collection_service.py:429: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+AssetsManager\application\context.py:58: in leased
+    return method(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssetsManager\application\collection_service.py:313: in create
+    self._require_event_safe_transaction(repo)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;AssetsManager.application.collection_service.CollectionService object at 0x0000020A29518050&gt;
+repo = &lt;AssetsManager.repositories.collection_repository.CollectionRepository object at 0x0000020A295181A0&gt;
+
+    def _require_event_safe_transaction(self, repo: CollectionRepository) -&gt; None:
+        """Reject outer transactions before publishing collection events."""
+        if isinstance(self._session, LibrarySession) and repo._conn.in_transaction:
+&gt;           raise RuntimeError(
+                "CollectionService mutations require a clean transaction boundary"
+            )
+E           RuntimeError: CollectionService mutations require a clean transaction boundary
+
+AssetsManager\application\collection_service.py:266: RuntimeError</failure></testcase></testsuite></testsuites>
