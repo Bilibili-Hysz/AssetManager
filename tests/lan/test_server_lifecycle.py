@@ -9,8 +9,10 @@ import pytest
 
 from AssetsManager.lan.server import _LanServerImpl
 
-# These tests bind a fixed port (8765); under xdist --dist worksteal they
-# must never run concurrently on different workers.
+# These tests bind a fixed port (8765); under xdist --dist loadgroup the
+# xdist_group("serial") marker keeps them on one worker — they must never
+# run concurrently on different workers (C02: the old worksteal config
+# silently ignored the group marker).
 pytestmark = pytest.mark.xdist_group(name="serial")
 
 
