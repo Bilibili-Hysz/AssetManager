@@ -1,0 +1,13 @@
+N2 recovery acceptance matrix — pytest run (row 1 + row 2)
+Command: QT_QPA_PLATFORM=offscreen python -m pytest -q -o addopts='' -p no:cacheprovider --junitxml=artifacts/n2-matrix.xml tests/integration/test_recovery_acceptance_matrix.py
+Run directory (snapshot): D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\n2-recovery-ops
+Snapshot HEAD: 82b74846bbd2d4293fe78c4daf93bd016a5446b1
+Exit code: 0
+
+--- pytest output (full) ---
+..                                                                       [100%]
+2 passed in 2.41s
+
+--- test names (from JUnit XML) ---
+test_row1_full_backup_restore_round_trip
+test_row2_metadata_json_export_contract

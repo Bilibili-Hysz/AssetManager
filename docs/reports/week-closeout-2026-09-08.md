@@ -92,6 +92,16 @@ onefile 最大化首次运行和复跑超时均观察到前台已不是目标、
 设施，未改生产 UI。**候选包四场景现全部 PASS（每场景 ≥1 次全链路证据）。**
 N1 剩余：活动下载关窗场景、真实托盘图标恢复（未开始）。
 
+### 3.3 N2 进展附录（2026-09-08 晚间，子代理执行线 + 主代理整合验收）
+
+恢复验收矩阵前两行已实施并通过（快照 `82b74846` 独立执行，主代理复跑确认 2 passed）：
+
+- **行 1 · 正常完整备份/恢复**：中文/空格/字面 `%` 路径三资产；tags/notes/urls/rating 5·0·NULL/favorites/普通集合成员/smart 规则全量种子 → 备份（manifest/digest 逐成员校验、原始资产不入 ZIP）→ 新运行域恢复 → 原始资产逐字节不变、DB 投影全量 SQL 相等、0 与 NULL 显式区分、smart evaluate 恰为预期子集。测试含防空种子假通过守卫。
+- **行 2 · 元数据 JSON 合同**：顶层/entry 键集钉死、稳定 casefold 排序、中文与 `%` 原始 UTF-8、rating/favorite/collection 明确不在合同、同目标重导出原子替换。
+- 证据：[JUnit](week-closeout-2026-09-08-evidence/n2-matrix.xml) · [输出](week-closeout-2026-09-08-evidence/n2-matrix-output.txt) · [摘要](week-closeout-2026-09-08-evidence/n2-matrix-summary.md)
+- **重要合同发现**：DB 存库根绝对路径且恢复无路径重映射——当前受支持目标是**同库根路径 + 新运行域**；跨路径迁移须另立需求。`FavoriteService` 未暴露于 `LibraryScopedServices`（装配备注）。行 3-7（覆盖语义/中断回滚/损坏归档/不可写/源资产异常）已由子代理排好实施顺序。
+- 测试已收入主仓 `tests/integration/test_recovery_acceptance_matrix.py`（主代理工作区复跑 2 passed）。
+
 ## 4. 已明确移交的范围
 
 - **N1 包与真实工作流**：先收口 onefile 最大化退出的未决结果，再做活动下载关闭、浏览器实时订阅与真实托盘图标恢复；已通过三场景保留证据，受影响修改后再补验。
