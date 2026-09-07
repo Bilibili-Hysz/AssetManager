@@ -155,7 +155,11 @@ def main() -> None:
             break
         time.sleep(0.1)
     if not barrier.exists():
-        print("INTERRUPTION: barrier never reached"); print(proc.stdout.read()[-800:] if proc.poll() is not None else "still running")
+        print("INTERRUPTION: barrier never reached")
+        if proc.poll() is not None:
+            print(proc.stdout.read()[-800:])
+        else:
+            print("still running")
         proc.kill()
         return
     print("barrier reached: old data quarantined, new data NOT installed")

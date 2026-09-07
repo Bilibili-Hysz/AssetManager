@@ -54,7 +54,7 @@ def main() -> None:
     window._workspace.add_library(str(lib_a))
     app.processEvents()
     thread_baseline = thread_count()
-    timer_baseline = getattr(window, "_bg_resize_timer", None)
+    getattr(window, "_bg_resize_timer", None)
 
     failures = []
     current = lib_a
