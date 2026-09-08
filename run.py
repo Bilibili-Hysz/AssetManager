@@ -26,7 +26,6 @@ def _show_startup_error(message: str) -> None:
     tkinter.  Prefer a Qt message box, but always retain a stderr fallback for
     environments where Qt itself cannot initialize.
     """
-    print(message, file=sys.stderr)  # TEMP-DIAG: capture message before dialog
     try:
         from PySide6.QtWidgets import QApplication, QMessageBox
 
