@@ -1,0 +1,13 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.3, pytest-9.0.2, pluggy-1.6.0
+rootdir: D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\n3-lan-ops
+configfile: pytest.ini
+plugins: anyio-4.13.0, cov-7.1.0, xdist-3.8.0
+collected 15 items
+
+tests\lan\test_zip_cancel_ownership_loop.py ..                           [ 13%]
+tests\lan\test_zip_response_cleanup.py .........                         [ 73%]
+tests\lan\test_zip_cleanup_integration.py ....                           [100%]
+
+- generated xml file: D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\n3-lan-ops\artifacts\n3-zip-ownership.xml -
+============================= 15 passed in 4.38s ==============================

@@ -113,6 +113,26 @@ N1 剩余：活动下载关窗（探针就绪，待稳定环境窗口）、真�
 - **重要合同发现**：DB 存库根绝对路径且恢复无路径重映射——当前受支持目标是**同库根路径 + 新运行域**；跨路径迁移须另立需求。`FavoriteService` 未暴露于 `LibraryScopedServices`（装配备注）。行 3-7（覆盖语义/中断回滚/损坏归档/不可写/源资产异常）已由子代理排好实施顺序。
 - 测试已收入主仓 `tests/integration/test_recovery_acceptance_matrix.py`（主代理工作区复跑 2 passed）。
 
+### 3.4 N2 收口 + N3 首项（2026-09-08 深夜，子代理执行线 ×2 + 主代理整合）
+
+**N2 验收矩阵饱和（7 行 9 用例全绿，主仓复跑 11 passed 含 N3）**——行 6 fail-closed 与自愈边界
+（健康 marker + 隔离缺失 → open 拒绝并有操作指引；corrupt marker 原地改名留证 + 最新有效候补
+自动回装 + 无候补 fail-closed，绝不物化空库）；行 7 并发与处置面（崩溃窗口期第二进程
+open/restore/retry/ACK 全部立即快速失败——QLockFile.tryLock(0)，被杀锁由 pid 存活检查回收；
+错 token 拒绝、live 会话 ACK 拒绝、崩溃窗口正确 token 也不可 ACK；3 轮中断+回滚循环隔离区
+每轮清零、staging 残留线性 +1 符合清扫合同）。行 1–5 回归原样保持。
+证据：[rows67.xml](week-closeout-2026-09-08-evidence/n2-matrix-rows67.xml) ·
+[rows67-summary](week-closeout-2026-09-08-evidence/n2-matrix-rows67-summary.md)。
+**N2 建议关闭**（矩阵饱和，六条恢复性质全部自动化钉死）。
+
+**N3 首项落地**：取消后的 ZIP 所有权闭环（2 新测试 + 13 既有回归未弱化，主仓复跑通过）——
+取消续读 + 断开 transport 后预算仍被持有（"handler 返回 ≠ 释放"实证）、第二 job 503 不建包
+不消费额度、retry clock 驱动后归零放行、PermissionError 保留文件与 reservation 并记
+`last_error_type`、identity 改变绝不删除替换文件。证据：
+[ownership.xml](week-closeout-2026-09-08-evidence/n3-zip-ownership.xml) ·
+[summary](week-closeout-2026-09-08-evidence/n3-zip-ownership-summary.md)。
+N3 剩余：独占测量矩阵（c1/c8/慢读/ZIP 饱和/清理失败/thumbnail/quota，需独占时段）。
+
 ## 4. 已明确移交的范围
 
 - **N1 包与真实工作流**：先收口 onefile 最大化退出的未决结果，再做活动下载关闭、浏览器实时订阅与真实托盘图标恢复；已通过三场景保留证据，受影响修改后再补验。
