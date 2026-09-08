@@ -1,0 +1,604 @@
+{
+ "mode": "onefile",
+ "exe_sha256": "1d568fb80ef6dcb78f9d8001ea68c521367638938a3463cf2964e51960372c5a",
+ "pid": 29076,
+ "port": 5970,
+ "maximized": true,
+ "checks": {
+  "info": {
+   "share_name": "W6-Functional",
+   "auth_mode": "password"
+  },
+  "login": "ok",
+  "notes_rating": "ok",
+  "geometry_persisted": {
+   "window_maximized": true,
+   "has_geometry": true
+  }
+ },
+ "g1v2": {
+  "input_mode": "F",
+  "mode_definition": {
+   "interface": "keybd_event",
+   "scan": "real"
+  },
+  "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f",
+  "argv": {
+   "exe": "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\g1-ops\\artifacts\\candidate.exe",
+   "mode": "onefile",
+   "maximized": true,
+   "auto_open": true,
+   "input_mode": "F",
+   "tag": "F2"
+  },
+  "wall_clock_start": "2026-09-09T02:36:03",
+  "design_note": "no inter-event sleeps in any cell; scan query in every cell"
+ },
+ "window_initial_api_precondition": {
+  "endpoint": "/api/info",
+  "status": 200
+ },
+ "window_initial": {
+  "hwnd": 23008582,
+  "pid": 37008,
+  "title": "AssetManager — C:\\Users\\86177\\AppData\\Local\\Temp\\w6-g1v2-yltcmz7e\\library",
+  "class": "Qt6110QWindowIcon",
+  "owner": 0,
+  "visible": true,
+  "enabled": true,
+  "maximized": true,
+  "minimized": false,
+  "ready_predicates": {
+   "own_process_tree": true,
+   "sole_visible_unowned_window": true,
+   "stable_hwnd_pid_title_maximized": true,
+   "stable_observations": 2
+  }
+ },
+ "close": {
+  "input_delivery": {
+   "entry": "Ctrl+Q",
+   "expected_maximized": true,
+   "input_mode": "F",
+   "mode_definition": {
+    "interface": "keybd_event",
+    "scan": "real"
+   },
+   "stages": [
+    {
+     "stage": "before_ctrl_down",
+     "monotonic_s": 182698.695865,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "modifiers": {
+      "Ctrl": false,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     },
+     "q_was_preheld": false
+    },
+    {
+     "stage": "after_ctrl_down_before_q",
+     "monotonic_s": 182698.696671,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "modifiers": {
+      "Ctrl": true,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     }
+    },
+    {
+     "stage": "after_q_down",
+     "monotonic_s": 182698.697079,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "modifiers": {
+      "Ctrl": true,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     }
+    },
+    {
+     "stage": "after_probe_key_release",
+     "monotonic_s": 182698.697982,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "modifiers": {
+      "Ctrl": false,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     }
+    }
+   ],
+   "input_receipts": [
+    {
+     "interface": "keybd_event",
+     "vk": 17,
+     "key_up": false,
+     "scan_sent": 29,
+     "scan_real": 29
+    },
+    {
+     "interface": "keybd_event",
+     "vk": 81,
+     "key_up": false,
+     "scan_sent": 16,
+     "scan_real": 16
+    },
+    {
+     "interface": "keybd_event",
+     "vk": 81,
+     "key_up": true,
+     "scan_sent": 16,
+     "scan_real": 16
+    },
+    {
+     "interface": "keybd_event",
+     "vk": 17,
+     "key_up": true,
+     "scan_sent": 29,
+     "scan_real": 29
+    }
+   ],
+   "outcome": "q_sent_with_target_foreground",
+   "released_probe_keys": {
+    "Ctrl": true,
+    "Q": true
+   }
+  },
+  "exit_state_samples": [
+   {
+    "monotonic_s": 182698.716,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 37008,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182698.917,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 37008,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182699.117,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 37008,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182699.318,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 37008,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182699.518,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 37008,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182699.718,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 37008,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182699.918,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 37008,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182700.119,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 37008,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182700.319,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 37008,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182700.52,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 37008,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182700.72,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 37008,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182700.938,
+    "iconic": false,
+    "zoomed": false,
+    "visible": false,
+    "fg_target": false,
+    "fg_pid": 27948,
+    "fg_name": "ZCode.exe"
+   },
+   {
+    "monotonic_s": 182701.139,
+    "iconic": false,
+    "zoomed": false,
+    "visible": false,
+    "fg_target": false,
+    "fg_pid": 27948,
+    "fg_name": "ZCode.exe"
+   },
+   {
+    "monotonic_s": 182701.339,
+    "iconic": false,
+    "zoomed": false,
+    "visible": false,
+    "fg_target": false,
+    "fg_pid": 27948,
+    "fg_name": "ZCode.exe"
+   },
+   {
+    "monotonic_s": 182701.539,
+    "iconic": false,
+    "zoomed": false,
+    "visible": false,
+    "fg_target": false,
+    "fg_pid": 27948,
+    "fg_name": "ZCode.exe"
+   },
+   {
+    "monotonic_s": 182701.74,
+    "iconic": false,
+    "zoomed": false,
+    "visible": false,
+    "fg_target": false,
+    "fg_pid": 27948,
+    "fg_name": "ZCode.exe"
+   }
+  ],
+  "normal_exit": {
+   "entry": "Ctrl+Q",
+   "exit_code": 0
+  }
+ },
+ "restart": {
+  "pid": 44428,
+  "window_api_precondition": {
+   "endpoint": "/api/info",
+   "status": 200
+  },
+  "window": {
+   "hwnd": 7082134,
+   "pid": 25128,
+   "title": "AssetManager",
+   "class": "Qt6110QWindowIcon",
+   "owner": 0,
+   "visible": true,
+   "enabled": true,
+   "maximized": true,
+   "minimized": false,
+   "ready_predicates": {
+    "own_process_tree": true,
+    "sole_visible_unowned_window": true,
+    "stable_hwnd_pid_title_maximized": true,
+    "stable_observations": 2
+   }
+  },
+  "notes_rating": {
+   "path": "pkg_000.png",
+   "tags": [],
+   "notes": "G1v2 note",
+   "urls": [],
+   "rating": 4
+  },
+  "input_delivery": {
+   "entry": "Ctrl+Q",
+   "expected_maximized": true,
+   "input_mode": "F",
+   "mode_definition": {
+    "interface": "keybd_event",
+    "scan": "real"
+   },
+   "stages": [
+    {
+     "stage": "before_ctrl_down",
+     "monotonic_s": 182711.928048,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "modifiers": {
+      "Ctrl": false,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     },
+     "q_was_preheld": false
+    },
+    {
+     "stage": "after_ctrl_down_before_q",
+     "monotonic_s": 182711.928774,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "modifiers": {
+      "Ctrl": true,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     }
+    },
+    {
+     "stage": "after_q_down",
+     "monotonic_s": 182711.929171,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "modifiers": {
+      "Ctrl": true,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     }
+    },
+    {
+     "stage": "after_probe_key_release",
+     "monotonic_s": 182711.929977,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "modifiers": {
+      "Ctrl": false,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     }
+    }
+   ],
+   "input_receipts": [
+    {
+     "interface": "keybd_event",
+     "vk": 17,
+     "key_up": false,
+     "scan_sent": 29,
+     "scan_real": 29
+    },
+    {
+     "interface": "keybd_event",
+     "vk": 81,
+     "key_up": false,
+     "scan_sent": 16,
+     "scan_real": 16
+    },
+    {
+     "interface": "keybd_event",
+     "vk": 81,
+     "key_up": true,
+     "scan_sent": 16,
+     "scan_real": 16
+    },
+    {
+     "interface": "keybd_event",
+     "vk": 17,
+     "key_up": true,
+     "scan_sent": 29,
+     "scan_real": 29
+    }
+   ],
+   "outcome": "q_sent_with_target_foreground",
+   "released_probe_keys": {
+    "Ctrl": true,
+    "Q": true
+   }
+  },
+  "exit_state_samples": [
+   {
+    "monotonic_s": 182711.949,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 25128,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182712.149,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 25128,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182712.349,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 25128,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182712.55,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 25128,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182712.75,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 25128,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182712.951,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 25128,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182713.151,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 25128,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182713.351,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 25128,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182713.552,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 25128,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182713.752,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 25128,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182713.953,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true,
+    "fg_pid": 25128,
+    "fg_name": "candidate.exe"
+   },
+   {
+    "monotonic_s": 182714.173,
+    "iconic": false,
+    "zoomed": false,
+    "visible": false,
+    "fg_target": false,
+    "fg_pid": 27948,
+    "fg_name": "ZCode.exe"
+   },
+   {
+    "monotonic_s": 182714.373,
+    "iconic": false,
+    "zoomed": false,
+    "visible": false,
+    "fg_target": false,
+    "fg_pid": 27948,
+    "fg_name": "ZCode.exe"
+   },
+   {
+    "monotonic_s": 182714.574,
+    "iconic": false,
+    "zoomed": false,
+    "visible": false,
+    "fg_target": false,
+    "fg_pid": 27948,
+    "fg_name": "ZCode.exe"
+   },
+   {
+    "monotonic_s": 182714.774,
+    "iconic": false,
+    "zoomed": false,
+    "visible": false,
+    "fg_target": false,
+    "fg_pid": 27948,
+    "fg_name": "ZCode.exe"
+   },
+   {
+    "monotonic_s": 182714.975,
+    "iconic": false,
+    "zoomed": false,
+    "visible": false,
+    "fg_target": false,
+    "fg_pid": 27948,
+    "fg_name": "ZCode.exe"
+   }
+  ],
+  "normal_exit_code": 0
+ },
+ "valid": true,
+ "failures": []
+}

@@ -1,0 +1,185 @@
+{
+ "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f",
+ "design": {
+  "E": {
+   "interface": "keybd_event",
+   "scan": "zero",
+   "note": "historical failing form (archived drivers keybd_event scan=0, back-to-back)"
+  },
+  "F": {
+   "interface": "keybd_event",
+   "scan": "real"
+  },
+  "G": {
+   "interface": "SendInput",
+   "scan": "zero"
+  },
+  "H": {
+   "interface": "SendInput",
+   "scan": "real",
+   "note": "= official bd8142 form"
+  }
+ },
+ "cells": [
+  {
+   "tag": "E1",
+   "input_mode": "E",
+   "exit": 0,
+   "elapsed_s": 29.6,
+   "result": "PASS",
+   "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f"
+  },
+  {
+   "tag": "E2",
+   "input_mode": "E",
+   "exit": 0,
+   "elapsed_s": 29.3,
+   "result": "PASS",
+   "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f"
+  },
+  {
+   "tag": "E3",
+   "input_mode": "E",
+   "exit": 0,
+   "elapsed_s": 29.6,
+   "result": "PASS",
+   "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f"
+  },
+  {
+   "tag": "E4",
+   "input_mode": "E",
+   "exit": 0,
+   "elapsed_s": 28.7,
+   "result": "PASS",
+   "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f"
+  },
+  {
+   "tag": "E5",
+   "input_mode": "E",
+   "exit": 0,
+   "elapsed_s": 30.0,
+   "result": "PASS",
+   "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f"
+  },
+  {
+   "tag": "F1",
+   "input_mode": "F",
+   "exit": 0,
+   "elapsed_s": 28.5,
+   "result": "PASS",
+   "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f"
+  },
+  {
+   "tag": "F2",
+   "input_mode": "F",
+   "exit": 0,
+   "elapsed_s": 27.2,
+   "result": "PASS",
+   "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f"
+  },
+  {
+   "tag": "F3",
+   "input_mode": "F",
+   "exit": 0,
+   "elapsed_s": 28.5,
+   "result": "PASS",
+   "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f"
+  },
+  {
+   "tag": "F4",
+   "input_mode": "F",
+   "exit": 0,
+   "elapsed_s": 29.5,
+   "result": "PASS",
+   "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f"
+  },
+  {
+   "tag": "F5",
+   "input_mode": "F",
+   "exit": 0,
+   "elapsed_s": 28.8,
+   "result": "PASS",
+   "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f"
+  },
+  {
+   "tag": "G1",
+   "input_mode": "G",
+   "exit": 0,
+   "elapsed_s": 28.7,
+   "result": "PASS",
+   "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f"
+  },
+  {
+   "tag": "G2",
+   "input_mode": "G",
+   "exit": 0,
+   "elapsed_s": 29.6,
+   "result": "PASS",
+   "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f"
+  },
+  {
+   "tag": "G3",
+   "input_mode": "G",
+   "exit": 0,
+   "elapsed_s": 27.9,
+   "result": "PASS",
+   "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f"
+  },
+  {
+   "tag": "G4",
+   "input_mode": "G",
+   "exit": 0,
+   "elapsed_s": 29.0,
+   "result": "PASS",
+   "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f"
+  },
+  {
+   "tag": "G5",
+   "input_mode": "G",
+   "exit": 0,
+   "elapsed_s": 28.6,
+   "result": "PASS",
+   "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f"
+  },
+  {
+   "tag": "H1",
+   "input_mode": "H",
+   "exit": 0,
+   "elapsed_s": 28.4,
+   "result": "PASS",
+   "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f"
+  },
+  {
+   "tag": "H2",
+   "input_mode": "H",
+   "exit": 0,
+   "elapsed_s": 27.0,
+   "result": "PASS",
+   "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f"
+  },
+  {
+   "tag": "H3",
+   "input_mode": "H",
+   "exit": 0,
+   "elapsed_s": 28.1,
+   "result": "PASS",
+   "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f"
+  },
+  {
+   "tag": "H4",
+   "input_mode": "H",
+   "exit": 0,
+   "elapsed_s": 29.0,
+   "result": "PASS",
+   "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f"
+  },
+  {
+   "tag": "H5",
+   "input_mode": "H",
+   "exit": 0,
+   "elapsed_s": 28.3,
+   "result": "PASS",
+   "driver_sha256": "c6ba08103a9533bd968172d26e376f797f6fca462274f5d89d501915681fc47f"
+  }
+ ]
+}
