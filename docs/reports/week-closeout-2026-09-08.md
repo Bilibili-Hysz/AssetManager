@@ -133,6 +133,33 @@ open/restore/retry/ACK 全部立即快速失败——QLockFile.tryLock(0)，被�
 [summary](week-closeout-2026-09-08-evidence/n3-zip-ownership-summary.md)。
 N3 剩余：独占测量矩阵（c1/c8/慢读/ZIP 饱和/清理失败/thumbnail/quota，需独占时段）。
 
+### 3.5 单实例产品缺陷修复 + 活动下载执行（2026-09-08 深夜，主代理）
+
+**新 P1 产品缺陷（py-spy 实证）**：验证过无实例的干净启动弹出 "Already Running"——
+`_bind_single_instance` 旧探测以"管道可连接"判定"已有实例"，而 QLocalServer 管道句柄经
+子进程继承可越过其崩溃的 owner 长期存活（幻影管道应答任何连接且从不回显，服务端从不
+accept）。挂起实例的 py-spy 栈钉死在 `app.py:161` 弹窗参数求值。本会话多轮"无窗"失败
+皆源于此。
+
+**修复（`c844f14`）**：探测升级 ping/echo 握手——活实例回显探针（`_wire_probe_echo`：
+accept 时即排水缓冲 + 保持连接引用防 PySide GC + deleteLater 安全守卫）；静默管道判定
+陈旧并 **fail-open 接管**（接管后自身服务器继续应答）。三合同测试
+（`tests/integration/test_single_instance_bind.py`：活实例 already-running / 陈旧
+fail-open / 接管后可应答）+ 桌面旧契约测试同步；活实例以真实子进程回显服务器模拟
+（进程内同步握手无法调度 accept，非生产形态）；`tests/test_support/single_instance_echo.py`
+共享助手；qapp 夹具改 QApplication（core 实例污染同 worker 桌面测试）。
+
+**活动下载关窗场景已执行 PASS**（幻影击破后）：慢客户端连接持有（1 MiB 已消费不继续读）、
+Ctrl+Q 于传输中送达 → **2.2 秒退出 code=0**；持有连接随后干净终结。
+证据：[n1-active-final3](week-closeout-2026-09-08-evidence/n1-active-final3.txt) ·
+[探针](../../../scripts/perf/n1_active_download_close.py)。边界如实：验证的是"传输中
+正常退出 + 客户端连接干净终结"，服务端侧任务回收计数归 N3。
+
+**复核（round5，分批自审）**：快照 `c844f14` 定向 28 passed + guard_stress 0 误拒；
+r19 计数核对（5110 = 5090 passed + 20 skipped）与报告一致；closeout 33 处证据引用
+零缺失；生产 diff 区间仅 app.py（run.py 净还原确认）。
+[round5.xml](weekly-recheck-round5-2026-09-08-evidence/round5.xml)。
+
 ## 4. 已明确移交的范围
 
 - **N1 包与真实工作流**：先收口 onefile 最大化退出的未决结果，再做活动下载关闭、浏览器实时订阅与真实托盘图标恢复；已通过三场景保留证据，受影响修改后再补验。

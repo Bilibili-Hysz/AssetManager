@@ -1,0 +1,17 @@
+{
+  "snapshot_head": "c844f14a0a8669c04a666785d092308af2eaf1aa",
+  "extract": "git archive c844f14 | tar -x -> .pytest-tmp-lead-snapshots/round5-ops",
+  "sources": {
+    "AssetsManager/app.py": "f3c49d149254ca9a22ef1093140ec2d8403860e02b446a5a198f3bd62f8b44d0",
+    "run.py": "d4bb358b3889964be95112fec1aa7e5a96b8dee26f692a13647d790ed57a94b5",
+    "tests/integration/test_single_instance_bind.py": "c48bbdbaaa7fa53802bcbb906563279429687b6c66dfef6703eeefacbaf6a712",
+    "tests/integration/test_recovery_acceptance_matrix.py": "5d85d2570c9ed82a4ab53b1628db1be8af7ff65ed041767a8fbe5922850740e2",
+    "tests/lan/test_zip_cancel_ownership_loop.py": "c5187027d374c423f549ee2c1eb192d5d686ff7abe0195b96bcdb6513b83c5e8",
+    "tests/lan/test_zip_saturation_quota_timing.py": "f8c6dc6c8aba2e7a19fa764c1169256f2ca9077a90b77d6ef6154dd604dec508",
+    "tests/lan/test_thumbnail_policy_capacity.py": "bd4b265c26692d0eb1eb4897c43b6afab842edee855ed5d930112d64c32d949a",
+    "tests/desktop/test_single_instance_and_tray_hint.py": "7d80f4e5711bae095e7d48eb8292d250507c765be9815ee986ce451a0c4942b0",
+    "tests/test_support/single_instance_echo.py": "e5f126781562086f2a155d702d3df21e5947ffac8b2f330e988b16f284384a19",
+    "scripts/perf/n1_active_download_close.py": "49e229bf0f9e52c9e7f8625ba307df8cc8eba9400e508ef0fca12375eaf12646",
+    "scripts/perf/guard_stress.py": "5303aa57f3db363f5d5002f8f1a3a754341baaea8e8691e4b8f7b68175cf15f8"
+  }
+}

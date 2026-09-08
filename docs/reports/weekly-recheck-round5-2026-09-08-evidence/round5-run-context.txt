@@ -1,0 +1,60 @@
+Round 5 independent recheck — run context (2026-09-08)
+======================================================
+
+Main workspace
+  HEAD:        c844f14a0a8669c04a666785d092308af2eaf1aa (2026-09-08 17:33:52 +0800)
+  Worktree:    clean except the untracked round5 evidence/report files of this audit.
+  Reviewed range: 82b7484..c844f14 = {c7d0759, 6af4aae, e3a908e, 9f6d20c, c844f14}
+  (82b7484 is the range BASE; 9f6d20c — N2 rows 6-7 + N3 ZIP ownership first item —
+   is part of the range and was reviewed accordingly.)
+
+Snapshot
+  Path:    .pytest-tmp-lead-snapshots/round5-ops  (cleared, then extracted via
+           `git archive c844f14 | tar -x -C ...`)
+  Python:  3.14.3 (tags/v3.14.3: 323c59a, Feb 3 2026)  MSC v.1944 x64
+  PySide6: 6.11.0
+  pytest:  9.0.2
+  Platform: win32
+
+Command 1 (targeted, serial, no xdist)
+  QT_QPA_PLATFORM=offscreen python -m pytest -q -o addopts='' -p no:cacheprovider \
+    --junitxml=artifacts/round5.xml \
+    tests/integration/test_single_instance_bind.py \
+    tests/integration/test_recovery_acceptance_matrix.py \
+    tests/lan/test_zip_cancel_ownership_loop.py \
+    tests/lan/test_zip_saturation_quota_timing.py \
+    tests/lan/test_thumbnail_policy_capacity.py \
+    tests/desktop/test_single_instance_and_tray_hint.py
+
+  Result: 28 passed / 0 failed / 0 errors / 0 skipped in 29.26s (exit 0)
+  Breakdown (from round5.xml):
+    tests.integration.test_single_instance_bind      3  (all executed; win32 skipif inactive)
+    tests.integration.test_recovery_acceptance_matrix 9  (rows 1-7)
+    tests.lan.test_zip_cancel_ownership_loop         2
+    tests.lan.test_zip_saturation_quota_timing       2
+    tests.lan.test_thumbnail_policy_capacity         4
+    tests.desktop.test_single_instance_and_tray_hint 8
+  All three ping/echo contract tests EXECUTED (not skipped):
+    test_live_server_echoes_and_next_bind_reports_running
+    test_silent_pipe_is_stale_and_bind_fails_open
+    test_takeover_server_remains_answerable
+
+Command 2 (guard stress, snapshot)
+  QT_QPA_PLATFORM=offscreen python scripts/perf/guard_stress.py
+  Result: reconciliation worker running: True; rounds: 50 in 1.9s;
+          spurious rejections: 0; other errors: 0; GUARD STRESS: PASS (exit 0)
+
+Cross-checks performed (read-only, main workspace at c844f14)
+  - full-suite-r19.xml: testsuite tests=5110 failures=0 errors=0 skipped=20
+    -> 5090 passed. New tests in range counted inside r19 XML:
+       single_instance_bind 3 + recovery_matrix 9 + saturation 2 + thumbnail 4
+       + ownership_loop 2 = 20  => r17 5070 + 20 = 5090. Exactly consistent.
+  - n2-matrix.xml = 2, rows345 = 7, rows67 = 9 (7 rows / 9 cases "all green" claim OK)
+  - n3-zip-ownership.xml = 15 (2 new + 13 regressions claim OK)
+  - n3-sat-thumb.xml = 8 passed (NOT referenced by either report; see P2-2/P3)
+  - n1-onefile-max run2/run3 bind exe sha256 d749a55d... ==
+    week-closeout section 3.1 onefile candidate SHA (evidence binding verified)
+  - run.py range diff EMPTY; 6af4aae added exactly one TEMP-DIAG print to run.py,
+    e3a908e removed exactly that line (net revert confirmed)
+  - Production tree in range: only AssetsManager/app.py (+63/-5). No other
+    AssetsManager/ or main.py changes.

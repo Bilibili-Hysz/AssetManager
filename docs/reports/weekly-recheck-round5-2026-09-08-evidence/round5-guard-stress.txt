@@ -1,0 +1,5 @@
+reconciliation worker running: True (started_on_demand=False)
+rounds: 50 in 1.9s
+spurious rejections: 0
+other errors: 0
+GUARD STRESS: PASS
