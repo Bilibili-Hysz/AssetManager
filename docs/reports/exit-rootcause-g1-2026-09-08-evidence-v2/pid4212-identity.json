@@ -1,0 +1,8 @@
+{
+ "purpose": "identify the foreground PID recorded in both historical exit-timeout failure observations (observed-08, native-focus-3)",
+ "query": "Get-CimInstance Win32_Process -Filter \"ProcessId = 4212\" | Select-Object ProcessId, Name, CreationDate, CommandLine | ConvertTo-Json -Compress",
+ "exit_code": 0,
+ "stdout": "{\"ProcessId\":4212,\"Name\":\"QQ.exe\",\"CreationDate\":\"\\/Date(1788757153883)\\/\",\"CommandLine\":\"\\\"D:\\\\_Social Media Software\\\\Tencent QQ\\\\QQ.exe\\\" \"}",
+ "stderr": null,
+ "note": "run on 2026-09-09 to back the report's QQ.exe claim; a match of CreationDate with the 2026-09-07 12:58 timestamp quoted at 01:40 would confirm the process never restarted between then and now"
+}
