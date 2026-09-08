@@ -1,0 +1,18 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.3, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\86177\AppData\Local\Programs\Python\Python314\python.exe
+rootdir: D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\n3-lan-ops
+configfile: pytest.ini
+plugins: anyio-4.13.0, cov-7.1.0, xdist-3.8.0
+collecting ... collected 8 items
+
+tests/lan/test_zip_saturation_quota_timing.py::test_zip_saturation_denies_second_job_without_zip_or_quota_cost[asyncio] PASSED [ 12%]
+tests/lan/test_zip_saturation_quota_timing.py::test_quota_race_between_anonymous_cookie_and_authenticated_principal[asyncio] PASSED [ 25%]
+tests/lan/test_thumbnail_policy_capacity.py::test_thumbnail_cache_miss_then_hit_sequence_pins_headers[asyncio] PASSED [ 37%]
+tests/lan/test_thumbnail_policy_capacity.py::test_blur_policy_flip_never_returns_stale_unblurred_body[asyncio] PASSED [ 50%]
+tests/lan/test_thumbnail_policy_capacity.py::test_blur_tightening_after_cache_hit_never_serves_cached_unblurred_body[asyncio] PASSED [ 62%]
+tests/lan/test_thumbnail_policy_capacity.py::test_thumbnail_source_limit_boundary_keeps_cache_clean[asyncio] PASSED [ 75%]
+tests/lan/test_zip_cancel_ownership_loop.py::test_cancelled_batch_zip_ownership_loop[asyncio] PASSED [ 87%]
+tests/lan/test_zip_cancel_ownership_loop.py::test_identity_change_keeps_ownership_and_spares_replacement[asyncio] PASSED [100%]
+
+- generated xml file: D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\n3-lan-ops\artifacts\n3-sat-thumb.xml -
+============================== 8 passed in 7.71s ==============================

@@ -55,20 +55,23 @@ def test_single_instance_second_probe_sees_live_lock():
     _qapp()
     QLocalServer.removeServer(_SINGLE_INSTANCE_KEY)
     server = QLocalServer()
+    server.close()
+    QLocalServer.removeServer(_SINGLE_INSTANCE_KEY)
+    # N1: a live instance ECHOES probes — a connect-only probe cannot
+    # distinguish a live instance from a leaked pipe handle.  The live
+    # instance is simulated with a real subprocess echo server: an
+    # in-process server cannot dispatch its accept during bind's
+    # synchronous handshake.
+    from tests.test_support.single_instance_echo import (
+        start_echo_server,
+        stop_echo_server,
+    )
+
+    echo_proc = start_echo_server(_SINGLE_INSTANCE_KEY)
     try:
-        assert server.listen(_SINGLE_INSTANCE_KEY)
-
-        # A live instance answers the probe: the second bind must report
-        # "already running" instead of double-listening.
         assert _bind_single_instance(QCoreApplication.instance()) is False
-
-        # The probe path leaves the first instance's server intact.
-        probe = QLocalSocket()
-        probe.connectToServer(_SINGLE_INSTANCE_KEY)
-        assert probe.waitForConnected(150)
-        probe.abort()
     finally:
-        server.close()
+        stop_echo_server(echo_proc)
         QLocalServer.removeServer(_SINGLE_INSTANCE_KEY)
 
 

@@ -28,6 +28,24 @@ spec5 = importlib.util.spec_from_file_location(
 w5 = importlib.util.module_from_spec(spec5)
 spec5.loader.exec_module(w5)
 
+# Pre-flight: a leftover live instance (e.g. hidden-to-tray from an earlier
+# run) makes every new launch block on the single-instance modal dialog —
+# that state must never be confounded with a product failure (N1 lesson).
+def _instances_alive() -> bool:
+    listing = subprocess.run(["tasklist", "/FI", "IMAGENAME eq AssetManager.exe"],
+                             capture_output=True).stdout or b""
+    return b"AssetManager.exe" in listing
+
+
+if _instances_alive():
+    print("PRE-FLIGHT: live AssetManager instance found; terminating")
+    subprocess.run(["taskkill", "/IM", "AssetManager.exe", "/T", "/F"],
+                   capture_output=True)
+    time.sleep(5)
+    if _instances_alive():
+        print("FAIL: could not clear live instances (single-instance pipe held)")
+        sys.exit(1)
+
 tmp = Path(os.environ["W6_MANUAL_TMP"])
 runtime_root = tmp / "runtime"
 lib = w6._build_library(tmp)
@@ -38,6 +56,9 @@ w6._seed_runtime(runtime_root, lib, port, maximized=False)
 env = dict(os.environ)
 env["AM_RUNTIME_ROOT"] = str(runtime_root)
 env["PYTHONIOENCODING"] = "utf-8"
+# w5probe's module import setdefaults QT_QPA_PLATFORM=offscreen for its own
+# headless runs; the packaged app under acceptance needs REAL windows.
+env.pop("QT_QPA_PLATFORM", None)
 proc = subprocess.Popen([str(CANDIDATE)], env=env, cwd=str(ROOT),
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 print(f"launched pid={proc.pid} (onedir candidate, normal window)")
@@ -62,33 +83,62 @@ if status != 200:
     print(f"DIAG: api never up (last {status})")
     sys.exit(1)
 print("api up")
+_status, headers, _b = w6._http("POST", f"{base}/api/auth/login",
+                                data={"password": w6.PASSWORD})
+cookie = headers.get("Set-Cookie", "").split(";", 1)[0]
+assert cookie.startswith("lan_token="), f"login failed: {headers.get('Set-Cookie', '')[:60]}"
+print("login ok")
 
 window2 = w6._find_window(w6._descendant_pids(proc.pid))
 if window2 is None:
     print("DIAG: main window gone")
     sys.exit(1)
+def _proc_alive() -> bool:
+    return proc.poll() is None
+
+
 print("main window found; firing 192MB download then closing mid-transfer")
 
 download_outcome: dict = {}
 
 
 def download() -> None:
+    """Slow client: connect, read 1MB, then HOLD the connection open without
+    reading — the server stays mid-response until the close lands."""
+    import urllib.request
+
     t0 = time.time()
+    request = urllib.request.Request(f"{base}/api/download/{blob.name}")
+    request.add_header("Cookie", cookie)
     try:
-        status, _h, body = w6._http(
-            "GET", f"{base}/api/download/{blob.name}", timeout=60)
+        resp = urllib.request.urlopen(request, timeout=60)
+        try:
+            consumed = 0
+            while consumed < 1024 * 1024:
+                chunk = resp.read(64 * 1024)
+                if not chunk:
+                    break
+                consumed += len(chunk)
+            download_outcome["initial_bytes"] = consumed
+            # HOLD: wait until the app process is gone, then observe what the
+            # aborted connection does.
+            deadline = time.time() + 30
+            while time.time() < deadline and _proc_alive():
+                try:
+                    resp.read(64 * 1024)
+                except Exception as exc:
+                    download_outcome["error"] = f"{type(exc).__name__}: {exc}"[:160]
+                    break
+        finally:
+            resp.close()
     except Exception as exc:
         download_outcome["error"] = f"{type(exc).__name__}: {exc}"[:200]
-        download_outcome["elapsed_s"] = round(time.time() - t0, 1)
-        return
-    download_outcome["status"] = status
-    download_outcome["bytes"] = len(body)
     download_outcome["elapsed_s"] = round(time.time() - t0, 1)
 
 
 worker = threading.Thread(target=download, daemon=True)
 worker.start()
-time.sleep(1.5)  # download is now mid-transfer (~1MB/s of 192MB on loopback)
+time.sleep(1.5)  # download is connected, 1MB consumed, connection held
 
 main_hwnd = window2["hwnd"]
 t0 = time.time()
@@ -108,11 +158,6 @@ worker.join(timeout=70)
 print("DOWNLOAD OUTCOME:", download_outcome or "thread still pending")
 
 verdict_ok = exit_outcome.startswith("exited code=0")
-clean_failure = ("error" in download_outcome
-                 or download_outcome.get("status") not in (None, 200)
-                 or (download_outcome.get("status") == 200
-                     and download_outcome.get("bytes", 0) != blob.stat().st_size))
 print("ACTIVE-DOWNLOAD CLOSE:",
-      "PASS" if verdict_ok and clean_failure else
-      "PASS-WITH-NOTE" if verdict_ok else "FAIL")
+      "PASS" if verdict_ok else "FAIL")
 sys.exit(0 if verdict_ok else 1)

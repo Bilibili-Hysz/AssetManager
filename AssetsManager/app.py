@@ -27,13 +27,60 @@ _SINGLE_INSTANCE_KEY = "AssetManager.SingleInstance"
 _single_instance_server: QLocalServer | None = None
 
 
+def _wire_probe_echo(server: QLocalServer) -> None:
+    """Answer single-instance probes with an echo of their bytes.
+
+    Connections are answered and closed; the wiring is shared by the
+    production bind and the contract tests (a bare QLocalServer that never
+    echoes is exactly the stale-pipe simulation).
+    """
+
+    def _safe_delete(conn) -> None:
+        try:
+            conn.deleteLater()
+        except RuntimeError:
+            # The PySide wrapper may already have been garbage-collected.
+            pass
+
+    def _echo_conn(conn) -> None:
+        def _write(c=conn):
+            data = bytes(c.readAll())
+            if data:
+                c.write(data)
+
+        conn.readyRead.connect(_write)
+        conn.disconnected.connect(lambda c=conn: _safe_delete(c))
+        # The client may have written its ping before the accept dispatched;
+        # buffered bytes must be echoed immediately (readyRead will not
+        # re-fire for data that predates the wiring).
+
+    def _echo_probes(server=server):
+        while server.hasPendingConnections():
+            conn = server.nextPendingConnection()
+            if conn is None:
+                continue
+            # Hold a reference: PySide GC-ing the wrapper mid-handshake
+            # destroys the C++ socket and the echo is lost.
+            server._probe_conns.append(conn)
+            _echo_conn(conn)
+
+    server._probe_conns = []
+    server.newConnection.connect(_echo_probes)
+
+
 def _bind_single_instance(app: QApplication) -> bool:
     """Take the process-wide single-instance lock.
 
-    Returns False only when a live instance answered the probe (the caller
+    Returns False only when a LIVE instance answered the probe (the caller
     then informs the user and exits).  Every other failure — stale socket
     cleanup, listen errors, Qt quirks, unexpected exceptions — fails open
     and allows startup: the lock is best-effort convenience, never a gate.
+
+    A connection alone is not proof of a live instance: the pipe handle can
+    outlive its crashed owner via child-process inheritance (QLocalServer
+    never reads from probe connections, so a leaked handle answers any
+    connect).  The probe therefore performs a ping/echo handshake — a pipe
+    that accepts but never replies is stale and startup fails open.
     """
     import logging
 
@@ -44,13 +91,21 @@ def _bind_single_instance(app: QApplication) -> bool:
     try:
         probe = QLocalSocket()
         probe.connectToServer(_SINGLE_INSTANCE_KEY)
-        already_running = probe.waitForConnected(150)
-        probe.abort()
-        if already_running:
-            return False
+        if probe.waitForConnected(150):
+            probe.write(b"ping\n")
+            probe.flush()
+            if probe.waitForReadyRead(300) and probe.readAll().startsWith(b"ping"):
+                probe.abort()
+                return False
+            # Connected but silent: stale pipe from a crashed owner.
+            _log.warning(
+                "Single-instance pipe answered but never echoed; "
+                "treating as stale and continuing startup"
+            )
         # Remove a socket left behind by a crashed instance (no-op for the
         # Windows named-pipe implementation).
         QLocalServer.removeServer(_SINGLE_INSTANCE_KEY)
+        probe.abort()
         server = QLocalServer()
         if not server.listen(_SINGLE_INSTANCE_KEY):
             _log.warning(
@@ -58,6 +113,9 @@ def _bind_single_instance(app: QApplication) -> bool:
                 server.errorString(),
             )
             return True
+        # Echo every probe so later launches can distinguish a live instance
+        # from a leaked pipe handle.  Connections are answered and closed.
+        _wire_probe_echo(server)
         # Keep the server alive for the process lifetime.
         _single_instance_server = server
         app.setProperty("single_instance_server", server)

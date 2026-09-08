@@ -1,0 +1,8 @@
+launched pid=35736 (onedir candidate, normal window)
+api up
+login ok
+main window found; firing 192MB download then closing mid-transfer
+Ctrl+Q sent mid-download
+EXIT: exited code=0 after 2.2s
+DOWNLOAD OUTCOME: {'initial_bytes': 1048576, 'elapsed_s': 3.2}
+ACTIVE-DOWNLOAD CLOSE: PASS

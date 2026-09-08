@@ -1,0 +1,9 @@
+PRE-FLIGHT: live AssetManager instance found; terminating
+launched pid=27028 (onedir candidate, normal window)
+api up
+login ok
+main window found; firing 192MB download then closing mid-transfer
+Ctrl+Q sent mid-download
+EXIT: exited code=0 after 2.2s
+DOWNLOAD OUTCOME: {'status': 200, 'bytes': 201326592, 'elapsed_s': 0.8}
+ACTIVE-DOWNLOAD CLOSE: PASS-WITH-NOTE

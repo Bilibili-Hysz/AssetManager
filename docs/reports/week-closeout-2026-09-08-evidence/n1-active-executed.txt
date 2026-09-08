@@ -1,0 +1,7 @@
+launched pid=23696 (onedir candidate, normal window)
+Traceback (most recent call last):
+  File "D:\~Vibe-Coding\Projects\AssetsManager_old-bak\scripts\perf\n1_active_download_close.py", line 62, in <module>
+    window = w6._wait_for_window(proc.pid, timeout_s=90)
+  File "D:\~Vibe-Coding\Projects\AssetsManager_old-bak\scripts\perf\w6_package_functional.py", line 227, in _wait_for_window
+    raise _invalid(f"no top-level package window found for PID tree {root_pid}")
+RuntimeError: no top-level package window found for PID tree 23696
