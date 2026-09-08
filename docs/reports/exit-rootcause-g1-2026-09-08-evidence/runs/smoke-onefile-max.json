@@ -1,0 +1,151 @@
+{
+ "mode": "onefile",
+ "exe_sha256": "1d568fb80ef6dcb78f9d8001ea68c521367638938a3463cf2964e51960372c5a",
+ "pid": 31676,
+ "port": 12162,
+ "maximized": true,
+ "checks": {
+  "info": {
+   "share_name": "W6-Functional",
+   "auth_mode": "password",
+   "thumbnail_cache_namespace": true
+  },
+  "login": "ok",
+  "font": "48256 bytes, byte-identical",
+  "thumbnail_single": "178 bytes WEBP",
+  "thumbnail_batch": "12/12",
+  "notes_rating": "saved and read back (notes + rating=4)",
+  "live_change": "live_added.png listed"
+ },
+ "window_initial_api_precondition": {
+  "endpoint": "/api/info",
+  "status": 200
+ },
+ "window_initial": {
+  "hwnd": 1840340,
+  "pid": 32696,
+  "title": "AssetManager — C:\\Users\\86177\\AppData\\Local\\Temp\\w6-func-_8zlwr_l\\library",
+  "class": "Qt6110QWindowIcon",
+  "owner": 0,
+  "visible": true,
+  "enabled": true,
+  "maximized": true,
+  "minimized": false,
+  "ready_predicates": {
+   "own_process_tree": true,
+   "sole_visible_unowned_window": true,
+   "stable_hwnd_pid_title_maximized": true,
+   "stable_observations": 2
+  }
+ },
+ "close": {
+  "input_delivery": {
+   "entry": "Ctrl+Q",
+   "expected_maximized": true,
+   "stages": [
+    {
+     "stage": "before_ctrl_down",
+     "monotonic_s": 171557.717056,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "gui_thread_info": {
+      "query_success": true,
+      "target_thread": 23320,
+      "cb_size": 72,
+      "flags": 0,
+      "active": 1840340,
+      "focus": 1840340,
+      "capture": 0,
+      "menu_owner": 0,
+      "move_size": 0,
+      "caret": 0
+     },
+     "modifiers": {
+      "Ctrl": false,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     },
+     "q_was_preheld": false
+    },
+    {
+     "stage": "input_exception",
+     "monotonic_s": 171557.717777,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "gui_thread_info": {
+      "query_success": true,
+      "target_thread": 23320,
+      "cb_size": 72,
+      "flags": 0,
+      "active": 1840340,
+      "focus": 1840340,
+      "capture": 0,
+      "menu_owner": 0,
+      "move_size": 0,
+      "caret": 0
+     },
+     "modifiers": {
+      "Ctrl": false,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     }
+    },
+    {
+     "stage": "after_probe_key_release",
+     "monotonic_s": 171557.718412,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "gui_thread_info": {
+      "query_success": true,
+      "target_thread": 23320,
+      "cb_size": 72,
+      "flags": 0,
+      "active": 1840340,
+      "focus": 1840340,
+      "capture": 0,
+      "menu_owner": 0,
+      "move_size": 0,
+      "caret": 0
+     },
+     "modifiers": {
+      "Ctrl": false,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     }
+    }
+   ],
+   "input_receipts": [],
+   "outcome": "invalid_input_delivery",
+   "released_probe_keys": {
+    "Ctrl": true,
+    "Q": false
+   },
+   "release_errors": [
+    "Ctrl up: NameError: name 'INPUT_MODE' is not defined"
+   ]
+  }
+ },
+ "invalid_run_cleanup": [
+  {
+   "process": "initial",
+   "pid": 31676,
+   "returncode": 0
+  }
+ ],
+ "valid": false,
+ "failures": [
+  "Ctrl+Q input exception: NameError: name 'INPUT_MODE' is not defined"
+ ]
+}

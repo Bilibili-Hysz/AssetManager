@@ -1,0 +1,473 @@
+{
+ "mode": "onefile",
+ "exe_sha256": "1d568fb80ef6dcb78f9d8001ea68c521367638938a3463cf2964e51960372c5a",
+ "pid": 3184,
+ "port": 6838,
+ "maximized": true,
+ "checks": {
+  "info": {
+   "share_name": "W6-Functional",
+   "auth_mode": "password",
+   "thumbnail_cache_namespace": true
+  },
+  "login": "ok",
+  "font": "48256 bytes, byte-identical",
+  "thumbnail_single": "178 bytes WEBP",
+  "thumbnail_batch": "12/12",
+  "notes_rating": "saved and read back (notes + rating=4)",
+  "live_change": "live_added.png listed",
+  "geometry_persisted": {
+   "window_maximized": true,
+   "has_geometry": true
+  }
+ },
+ "window_initial_api_precondition": {
+  "endpoint": "/api/info",
+  "status": 200
+ },
+ "window_initial": {
+  "hwnd": 4199618,
+  "pid": 43260,
+  "title": "AssetManager — C:\\Users\\86177\\AppData\\Local\\Temp\\w6-func-rfhxbv4w\\library",
+  "class": "Qt6110QWindowIcon",
+  "owner": 0,
+  "visible": true,
+  "enabled": true,
+  "maximized": true,
+  "minimized": false,
+  "ready_predicates": {
+   "own_process_tree": true,
+   "sole_visible_unowned_window": true,
+   "stable_hwnd_pid_title_maximized": true,
+   "stable_observations": 2
+  }
+ },
+ "close": {
+  "input_delivery": {
+   "entry": "Ctrl+Q",
+   "expected_maximized": true,
+   "stages": [
+    {
+     "stage": "before_ctrl_down",
+     "monotonic_s": 172473.715976,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "gui_thread_info": {
+      "query_success": true,
+      "target_thread": 31520,
+      "cb_size": 72,
+      "flags": 0,
+      "active": 4199618,
+      "focus": 4199618,
+      "capture": 0,
+      "menu_owner": 0,
+      "move_size": 0,
+      "caret": 0
+     },
+     "modifiers": {
+      "Ctrl": false,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     },
+     "q_was_preheld": false
+    },
+    {
+     "stage": "after_ctrl_down_before_q",
+     "monotonic_s": 172473.717334,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "gui_thread_info": {
+      "query_success": true,
+      "target_thread": 31520,
+      "cb_size": 72,
+      "flags": 0,
+      "active": 4199618,
+      "focus": 4199618,
+      "capture": 0,
+      "menu_owner": 0,
+      "move_size": 0,
+      "caret": 0
+     },
+     "modifiers": {
+      "Ctrl": true,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     }
+    },
+    {
+     "stage": "after_q_down",
+     "monotonic_s": 172473.718239,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "gui_thread_info": {
+      "query_success": true,
+      "target_thread": 31520,
+      "cb_size": 72,
+      "flags": 0,
+      "active": 4199618,
+      "focus": 4199618,
+      "capture": 0,
+      "menu_owner": 0,
+      "move_size": 0,
+      "caret": 0
+     },
+     "modifiers": {
+      "Ctrl": true,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     }
+    },
+    {
+     "stage": "after_probe_key_release",
+     "monotonic_s": 172473.720071,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "gui_thread_info": {
+      "query_success": true,
+      "target_thread": 31520,
+      "cb_size": 72,
+      "flags": 0,
+      "active": 4199618,
+      "focus": 4199618,
+      "capture": 0,
+      "menu_owner": 0,
+      "move_size": 0,
+      "caret": 0
+     },
+     "modifiers": {
+      "Ctrl": false,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     }
+    }
+   ],
+   "input_receipts": [
+    {
+     "vk": 17,
+     "key_up": false,
+     "target_thread": 31520,
+     "scan": 29,
+     "input_size": 40,
+     "inserted": 1
+    },
+    {
+     "vk": 81,
+     "key_up": false,
+     "target_thread": 31520,
+     "scan": 16,
+     "input_size": 40,
+     "inserted": 1
+    },
+    {
+     "vk": 81,
+     "key_up": true,
+     "target_thread": 31520,
+     "scan": 16,
+     "input_size": 40,
+     "inserted": 1
+    },
+    {
+     "vk": 17,
+     "key_up": true,
+     "target_thread": 31520,
+     "scan": 29,
+     "input_size": 40,
+     "inserted": 1
+    }
+   ],
+   "outcome": "q_sent_with_target_foreground",
+   "released_probe_keys": {
+    "Ctrl": true,
+    "Q": true
+   }
+  },
+  "exit_state_samples": [
+   {
+    "monotonic_s": 172473.72,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true
+   },
+   {
+    "monotonic_s": 172473.921,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true
+   },
+   {
+    "monotonic_s": 172474.121,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true
+   },
+   {
+    "monotonic_s": 172474.322,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true
+   },
+   {
+    "monotonic_s": 172474.522,
+    "iconic": false,
+    "zoomed": true,
+    "visible": true,
+    "fg_target": true
+   },
+   {
+    "monotonic_s": 172474.723,
+    "iconic": false,
+    "zoomed": false,
+    "visible": false,
+    "fg_target": false
+   },
+   {
+    "monotonic_s": 172474.923,
+    "iconic": false,
+    "zoomed": false,
+    "visible": false,
+    "fg_target": false
+   },
+   {
+    "monotonic_s": 172475.123,
+    "iconic": false,
+    "zoomed": false,
+    "visible": false,
+    "fg_target": false
+   },
+   {
+    "monotonic_s": 172475.324,
+    "iconic": false,
+    "zoomed": false,
+    "visible": false,
+    "fg_target": false
+   },
+   {
+    "monotonic_s": 172475.524,
+    "iconic": false,
+    "zoomed": false,
+    "visible": false,
+    "fg_target": false
+   },
+   {
+    "monotonic_s": 172475.724,
+    "iconic": false,
+    "zoomed": false,
+    "visible": false,
+    "fg_target": false
+   }
+  ],
+  "normal_exit": {
+   "entry": "Ctrl+Q",
+   "exit_code": 0
+  },
+  "hide_observation": "not_run (use --observe-hide; diagnostic only)"
+ },
+ "restart": {
+  "pid": 51968,
+  "window_api_precondition": {
+   "endpoint": "/api/info",
+   "status": 200
+  },
+  "window": {
+   "hwnd": 7538450,
+   "pid": 51348,
+   "title": "AssetManager",
+   "class": "Qt6110QWindowIcon",
+   "owner": 0,
+   "visible": true,
+   "enabled": true,
+   "maximized": true,
+   "minimized": false,
+   "ready_predicates": {
+    "own_process_tree": true,
+    "sole_visible_unowned_window": true,
+    "stable_hwnd_pid_title_maximized": true,
+    "stable_observations": 2
+   }
+  },
+  "notes_rating": {
+   "path": "pkg_000.png",
+   "tags": [],
+   "notes": "W6 functional note",
+   "urls": [],
+   "rating": 4
+  },
+  "input_delivery": {
+   "entry": "Ctrl+Q",
+   "expected_maximized": true,
+   "stages": [
+    {
+     "stage": "before_ctrl_down",
+     "monotonic_s": 172486.102248,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "gui_thread_info": {
+      "query_success": true,
+      "target_thread": 29620,
+      "cb_size": 72,
+      "flags": 0,
+      "active": 7538450,
+      "focus": 7538450,
+      "capture": 0,
+      "menu_owner": 0,
+      "move_size": 0,
+      "caret": 0
+     },
+     "modifiers": {
+      "Ctrl": false,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     },
+     "q_was_preheld": false
+    },
+    {
+     "stage": "after_ctrl_down_before_q",
+     "monotonic_s": 172486.103699,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "gui_thread_info": {
+      "query_success": true,
+      "target_thread": 29620,
+      "cb_size": 72,
+      "flags": 0,
+      "active": 7538450,
+      "focus": 7538450,
+      "capture": 0,
+      "menu_owner": 0,
+      "move_size": 0,
+      "caret": 0
+     },
+     "modifiers": {
+      "Ctrl": true,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     }
+    },
+    {
+     "stage": "after_q_down",
+     "monotonic_s": 172486.104421,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "gui_thread_info": {
+      "query_success": true,
+      "target_thread": 29620,
+      "cb_size": 72,
+      "flags": 0,
+      "active": 7538450,
+      "focus": 7538450,
+      "capture": 0,
+      "menu_owner": 0,
+      "move_size": 0,
+      "caret": 0
+     },
+     "modifiers": {
+      "Ctrl": true,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     }
+    },
+    {
+     "stage": "after_probe_key_release",
+     "monotonic_s": 172486.105759,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "gui_thread_info": {
+      "query_success": true,
+      "target_thread": 29620,
+      "cb_size": 72,
+      "flags": 0,
+      "active": 7538450,
+      "focus": 7538450,
+      "capture": 0,
+      "menu_owner": 0,
+      "move_size": 0,
+      "caret": 0
+     },
+     "modifiers": {
+      "Ctrl": false,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     }
+    }
+   ],
+   "input_receipts": [
+    {
+     "vk": 17,
+     "key_up": false,
+     "target_thread": 29620,
+     "scan": 29,
+     "input_size": 40,
+     "inserted": 1
+    },
+    {
+     "vk": 81,
+     "key_up": false,
+     "target_thread": 29620,
+     "scan": 16,
+     "input_size": 40,
+     "inserted": 1
+    },
+    {
+     "vk": 81,
+     "key_up": true,
+     "target_thread": 29620,
+     "scan": 16,
+     "input_size": 40,
+     "inserted": 1
+    },
+    {
+     "vk": 17,
+     "key_up": true,
+     "target_thread": 29620,
+     "scan": 29,
+     "input_size": 40,
+     "inserted": 1
+    }
+   ],
+   "outcome": "q_sent_with_target_foreground",
+   "released_probe_keys": {
+    "Ctrl": true,
+    "Q": true
+   }
+  },
+  "normal_exit_code": 0
+ },
+ "valid": true,
+ "failures": []
+}
