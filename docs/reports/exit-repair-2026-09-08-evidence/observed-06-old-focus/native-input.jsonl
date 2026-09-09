@@ -1,0 +1,12 @@
+{"phase": "before_focus", "time": 1788875442.3811235, "hwnd": 3870424, "foreground": 3870424, "maximized": false, "pressed": {"ctrl": false, "shift": false, "alt": false, "win_l": false, "win_r": false, "q": false}}
+{"phase": "after_focus", "time": 1788875442.3820524, "hwnd": 3870424, "foreground": 3870424, "maximized": false, "pressed": {"ctrl": false, "shift": false, "alt": false, "win_l": false, "win_r": false, "q": false}}
+{"phase": "before_ctrl_q", "time": 1788875450.2916193, "hwnd": 1707586, "foreground": 1707586, "maximized": true, "pressed": {"ctrl": false, "shift": false, "alt": false, "win_l": false, "win_r": false, "q": false}}
+{"phase": "before_focus", "time": 1788875450.2929683, "hwnd": 1707586, "foreground": 1707586, "maximized": true, "pressed": {"ctrl": false, "shift": false, "alt": false, "win_l": false, "win_r": false, "q": false}}
+{"phase": "after_focus", "time": 1788875450.293976, "hwnd": 1707586, "foreground": 1707586, "maximized": true, "pressed": {"ctrl": false, "shift": false, "alt": false, "win_l": false, "win_r": false, "q": false}}
+{"phase": "after_ctrl_q", "time": 1788875450.4474761, "hwnd": 1707586, "foreground": 1707586, "maximized": true, "pressed": {"ctrl": false, "shift": false, "alt": false, "win_l": false, "win_r": false, "q": false}}
+{"phase": "before_focus", "time": 1788875453.607769, "hwnd": 335018, "foreground": 335018, "maximized": false, "pressed": {"ctrl": false, "shift": false, "alt": false, "win_l": false, "win_r": false, "q": false}}
+{"phase": "after_focus", "time": 1788875453.6105404, "hwnd": 335018, "foreground": 335018, "maximized": false, "pressed": {"ctrl": false, "shift": false, "alt": false, "win_l": false, "win_r": false, "q": false}}
+{"phase": "before_ctrl_q", "time": 1788875460.2259817, "hwnd": 531642, "foreground": 460792, "maximized": true, "pressed": {"ctrl": false, "shift": false, "alt": false, "win_l": false, "win_r": false, "q": false}}
+{"phase": "before_focus", "time": 1788875460.227309, "hwnd": 531642, "foreground": 460792, "maximized": true, "pressed": {"ctrl": false, "shift": false, "alt": false, "win_l": false, "win_r": false, "q": false}}
+{"phase": "after_focus", "time": 1788875461.3527832, "hwnd": 531642, "foreground": 531642, "maximized": true, "pressed": {"ctrl": false, "shift": false, "alt": false, "win_l": false, "win_r": false, "q": false}}
+{"phase": "after_ctrl_q", "time": 1788875461.5078936, "hwnd": 531642, "foreground": 531642, "maximized": true, "pressed": {"ctrl": false, "shift": false, "alt": false, "win_l": false, "win_r": false, "q": false}}

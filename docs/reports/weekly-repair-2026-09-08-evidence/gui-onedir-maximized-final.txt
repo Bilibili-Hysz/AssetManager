@@ -1,0 +1,18 @@
+bundle: onedir (D:\~Vibe-Coding\Projects\AssetsManager_old-bak\artifacts\weekly-repair-2026-09-08-103f119\AssetManager\AssetManager.exe)
+runtime: C:\Users\86177\AppData\Local\Temp\w6-func-ioe2ff7f\runtime
+library: C:\Users\86177\AppData\Local\Temp\w6-func-ioe2ff7f\library (12 files)
+lan: http://127.0.0.1:7884 (password auth)
+settings seeded: C:\Users\86177\AppData\Local\Temp\w6-func-ioe2ff7f\runtime\Shared\settings.json
+AUTO-OPEN: will focus the sole seeded StartupWindow and press Enter once
+launched pid=52312
+exe sha256: 6afcf6635c59119f321e9e441972bb991f3cb3678110669401f87d5c72578f12
+info OK: share_name='W6-Functional' auth='password'
+window OK: hwnd=38867196 pid=52312 class='Qt6110QWindowIcon' maximized=True
+login OK (lan_token cookie issued)
+font OK (48256 bytes, byte-identical to webui/dist)
+thumbnail single OK (178 bytes WEBP)
+thumbnail batch OK (12/12)
+notes/rating OK (saved via LAN, read back identical)
+live change OK (live_added.png listed in /api/files)
+close: {'normal_exit_timeout_observation': {'process_poll': None, 'window_visible': True, 'window_maximized': False, 'foreground_is_target': False, 'api_info_status': 200}}
+INVALID: normal Ctrl+Q exit did not complete within 30.0s

@@ -1,0 +1,21 @@
+bundle: onefile (D:\~Vibe-Coding\Projects\AssetsManager_old-bak\artifacts\weekly-repair-2026-09-08-103f119\AssetManager.exe)
+runtime: C:\Users\86177\AppData\Local\Temp\w6-func-vns6nypr\runtime
+library: C:\Users\86177\AppData\Local\Temp\w6-func-vns6nypr\library (12 files)
+lan: http://127.0.0.1:4594 (password auth)
+settings seeded: C:\Users\86177\AppData\Local\Temp\w6-func-vns6nypr\runtime\Shared\settings.json
+AUTO-OPEN: will focus the sole seeded StartupWindow and press Enter once
+launched pid=51956
+exe sha256: 1d568fb80ef6dcb78f9d8001ea68c521367638938a3463cf2964e51960372c5a
+info OK: share_name='W6-Functional' auth='password'
+window OK: hwnd=5052178 pid=24892 class='Qt6110QWindowIcon' maximized=True
+login OK (lan_token cookie issued)
+font OK (48256 bytes, byte-identical to webui/dist)
+thumbnail single OK (178 bytes WEBP)
+thumbnail batch OK (12/12)
+notes/rating OK (saved via LAN, read back identical)
+live change OK (live_added.png listed in /api/files)
+close: {'input_delivery': {'entry': 'Ctrl+Q', 'expected_maximized': True, 'stages': [{'stage': 'before_ctrl_down', 'monotonic_s': 167980.513631, 'foreground_is_target': True, 'window_visible': True, 'window_enabled': True, 'window_maximized': True, 'window_minimized': False, 'gui_thread_info': {'query_success': True, 'target_thread': 40368, 'cb_size': 72, 'flags': 0, 'active': 5052178, 'focus': 5052178, 'capture': 0, 'menu_owner': 0, 'move_size': 0, 'caret': 0}, 'modifiers': {'Ctrl': False, 'Alt': False, 'Shift': False, 'Win': False}, 'q_was_preheld': False}, {'stage': 'after_ctrl_down_before_q', 'monotonic_s': 167980.51482, 'foreground_is_target': True, 'window_visible': True, 'window_enabled': True, 'window_maximized': True, 'window_minimized': False, 'gui_thread_info': {'query_success': True, 'target_thread': 40368, 'cb_size': 72, 'flags': 0, 'active': 5052178, 'focus': 5052178, 'capture': 0, 'menu_owner': 0, 'move_size': 0, 'caret': 0}, 'modifiers': {'Ctrl': True, 'Alt': False, 'Shift': False, 'Win': False}}, {'stage': 'after_q_down', 'monotonic_s': 167980.515724, 'foreground_is_target': True, 'window_visible': True, 'window_enabled': True, 'window_maximized': True, 'window_minimized': False, 'gui_thread_info': {'query_success': True, 'target_thread': 40368, 'cb_size': 72, 'flags': 0, 'active': 5052178, 'focus': 5052178, 'capture': 0, 'menu_owner': 0, 'move_size': 0, 'caret': 0}, 'modifiers': {'Ctrl': True, 'Alt': False, 'Shift': False, 'Win': False}}, {'stage': 'after_probe_key_release', 'monotonic_s': 167980.516859, 'foreground_is_target': True, 'window_visible': True, 'window_enabled': True, 'window_maximized': True, 'window_minimized': False, 'gui_thread_info': {'query_success': True, 'target_thread': 40368, 'cb_size': 72, 'flags': 0, 'active': 5052178, 'focus': 5052178, 'capture': 0, 'menu_owner': 0, 'move_size': 0, 'caret': 0}, 'modifiers': {'Ctrl': False, 'Alt': False, 'Shift': False, 'Win': False}}], 'outcome': 'q_sent_with_target_foreground', 'released_probe_keys': {'Ctrl': True, 'Q': True}}, 'normal_exit': {'entry': 'Ctrl+Q', 'exit_code': 0}, 'hide_observation': 'not_run (use --observe-hide; diagnostic only)'}
+geometry persisted: {'window_maximized': True, 'has_geometry': True}
+AUTO-OPEN: reopening the sole seeded library card
+restart OK (window state + notes/rating persisted)
+W6 FUNCTIONAL (onefile maximized): PASS

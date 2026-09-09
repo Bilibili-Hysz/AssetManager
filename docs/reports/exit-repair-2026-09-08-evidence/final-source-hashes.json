@@ -1,0 +1,22 @@
+[
+  {
+    "Path": "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\scripts\\perf\\w6_package_functional.py",
+    "Hash": "BD8142231FE874B7DB4FCD90E70CAD8D1EF6D71092353709297D932986237441"
+  },
+  {
+    "Path": "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\tests\\performance\\test_w6_package_functional_probe.py",
+    "Hash": "636A0F473BB16AB1F7888FDC019474A3BDF15FC296E8300C4F04CD24AC4A42DE"
+  },
+  {
+    "Path": "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\AssetsManager\\app.py",
+    "Hash": "3E1B21510C3B1BCE136725A0131FB70B7B3D1324253786F9F6BD0507FD6CB78F"
+  },
+  {
+    "Path": "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\artifacts\\weekly-repair-2026-09-08-103f119\\AssetManager.exe",
+    "Hash": "1D568FB80EF6DCB78F9D8001EA68C521367638938A3463CF2964E51960372C5A"
+  },
+  {
+    "Path": "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\artifacts\\weekly-repair-2026-09-08-103f119\\AssetManager\\AssetManager.exe",
+    "Hash": "6AFCF6635C59119F321E9E441972BB991F3CB3678110669401F87D5C72578F12"
+  }
+]

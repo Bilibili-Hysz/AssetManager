@@ -1,0 +1,60 @@
+{
+ "mode": "onefile",
+ "exe_sha256": "1d568fb80ef6dcb78f9d8001ea68c521367638938a3463cf2964e51960372c5a",
+ "pid": 52580,
+ "port": 9555,
+ "maximized": true,
+ "checks": {
+  "info": {
+   "share_name": "W6-Functional",
+   "auth_mode": "password",
+   "thumbnail_cache_namespace": true
+  },
+  "login": "ok",
+  "font": "48256 bytes, byte-identical",
+  "thumbnail_single": "178 bytes WEBP",
+  "thumbnail_batch": "12/12",
+  "notes_rating": "saved and read back (notes + rating=4)",
+  "live_change": "live_added.png listed",
+  "geometry_persisted": {
+   "window_maximized": true,
+   "has_geometry": true
+  }
+ },
+ "window_initial": {
+  "hwnd": 5836128,
+  "pid": 53996,
+  "title": "AssetManager — C:\\Users\\86177\\AppData\\Local\\Temp\\w6-func-qod4825s\\library",
+  "class": "Qt6110QWindowIcon",
+  "owner": 0,
+  "visible": true,
+  "maximized": true,
+  "ready_predicates": {
+   "own_process_tree": true,
+   "sole_visible_unowned_window": true,
+   "title_suffix": " — C:\\Users\\86177\\AppData\\Local\\Temp\\w6-func-qod4825s\\library",
+   "stable_observations": 2
+  }
+ },
+ "close": {
+  "normal_exit": {
+   "entry": "Ctrl+Q",
+   "exit_code": 0
+  },
+  "hide_observation": "not_run (use --observe-hide; diagnostic only)"
+ },
+ "restart": {
+  "pid": 35468
+ },
+ "invalid_run_cleanup": [
+  {
+   "process": "restart",
+   "pid": 35468,
+   "returncode": 0
+  }
+ ],
+ "valid": false,
+ "failures": [
+  "no stable MainWindow title ending ' — C:\\\\Users\\\\86177\\\\AppData\\\\Local\\\\Temp\\\\w6-func-qod4825s\\\\library' for PID tree 35468; last window={'hwnd': 5967200, 'pid': 53472, 'title': 'AssetManager', 'class': 'Qt6110QWindowIcon', 'owner': 0, 'visible': True, 'maximized': False}"
+ ]
+}

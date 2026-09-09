@@ -1,0 +1,775 @@
+{"pid": 36232, "time": 1788874211.723614, "record_type": "plugin", "phase": "registered", "application": {"class": "QApplication"}}
+{"pid": 36232, "time": 1788874212.2303016, "record_type": "event", "event": "FocusIn", "target": {"class": "QWindow"}}
+{"pid": 36232, "time": 1788874212.232534, "record_type": "event", "event": "WindowActivate", "target": {"class": "StartupWindow", "title": "AssetManager — Open Library", "hwnd": 43257906}}
+{"pid": 36232, "time": 1788874212.2332437, "record_type": "event", "event": "WindowActivate", "target": {"class": "QMenuBar", "title": ""}}
+{"pid": 36232, "time": 1788874212.2338147, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.2355213, "record_type": "event", "event": "WindowActivate", "target": {"class": "QFrame", "title": ""}}
+{"pid": 36232, "time": 1788874212.2360926, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.2365813, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.2370422, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.2375495, "record_type": "event", "event": "WindowActivate", "target": {"class": "_DetailPanel", "title": ""}}
+{"pid": 36232, "time": 1788874212.2381618, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.238695, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.2391589, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.2396228, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.2400768, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.2405517, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.2410007, "record_type": "event", "event": "WindowActivate", "target": {"class": "QFrame", "title": ""}}
+{"pid": 36232, "time": 1788874212.2414637, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.241933, "record_type": "event", "event": "WindowActivate", "target": {"class": "QScrollArea", "title": ""}}
+{"pid": 36232, "time": 1788874212.2424138, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.2428653, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.2433352, "record_type": "event", "event": "WindowActivate", "target": {"class": "_LibraryCard", "title": ""}}
+{"pid": 36232, "time": 1788874212.2438068, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.2442875, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.24474, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.2451994, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.2456546, "record_type": "event", "event": "WindowActivate", "target": {"class": "QScrollBar", "title": ""}}
+{"pid": 36232, "time": 1788874212.2461748, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.2483847, "record_type": "event", "event": "FocusIn", "target": {"class": "_LibraryCard", "title": ""}}
+{"pid": 36232, "time": 1788874212.2561264, "record_type": "event", "event": "FocusIn", "target": {"class": "QCommonStyle"}}
+{"pid": 36232, "time": 1788874212.621426, "record_type": "event", "event": "WindowStateChange", "target": {"class": "MainWindow", "title": "AssetManager", "hwnd": 27070858}}
+{"pid": 36232, "time": 1788874212.6608381, "record_type": "event", "event": "FocusOut", "target": {"class": "QWindow"}}
+{"pid": 36232, "time": 1788874212.6627429, "record_type": "event", "event": "FocusIn", "target": {"class": "QWindow"}}
+{"pid": 36232, "time": 1788874212.6636596, "record_type": "event", "event": "WindowActivate", "target": {"class": "MainWindow", "title": "AssetManager", "hwnd": 27070858}}
+{"pid": 36232, "time": 1788874212.664284, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.6649723, "record_type": "event", "event": "WindowActivate", "target": {"class": "QMenuBar", "title": ""}}
+{"pid": 36232, "time": 1788874212.6656544, "record_type": "event", "event": "WindowActivate", "target": {"class": "WorkspaceSection", "title": ""}}
+{"pid": 36232, "time": 1788874212.6664054, "record_type": "event", "event": "WindowActivate", "target": {"class": "QFrame", "title": ""}}
+{"pid": 36232, "time": 1788874212.667097, "record_type": "event", "event": "WindowActivate", "target": {"class": "WorkspaceBar", "title": ""}}
+{"pid": 36232, "time": 1788874212.6677346, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.6683125, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.6689494, "record_type": "event", "event": "WindowActivate", "target": {"class": "FileListPanel", "title": ""}}
+{"pid": 36232, "time": 1788874212.6695087, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.670023, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.6706345, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.6712055, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.6720936, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.6729002, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.6735063, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.6740706, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.6747139, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.6752791, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.6758707, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.6764288, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.6770582, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.677658, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLineEdit", "title": ""}}
+{"pid": 36232, "time": 1788874212.678411, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.6790936, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.6797352, "record_type": "event", "event": "WindowActivate", "target": {"class": "QComboBox", "title": ""}}
+{"pid": 36232, "time": 1788874212.6803172, "record_type": "event", "event": "WindowActivate", "target": {"class": "QComboBox", "title": ""}}
+{"pid": 36232, "time": 1788874212.6809838, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.681535, "record_type": "event", "event": "WindowActivate", "target": {"class": "QComboBox", "title": ""}}
+{"pid": 36232, "time": 1788874212.682179, "record_type": "event", "event": "WindowActivate", "target": {"class": "QComboBox", "title": ""}}
+{"pid": 36232, "time": 1788874212.68273, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.6833196, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.683915, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.6844923, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.6850734, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.6856275, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.6862414, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.6869025, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.6877365, "record_type": "event", "event": "WindowActivate", "target": {"class": "FileListGridWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.6884286, "record_type": "event", "event": "WindowActivate", "target": {"class": "QScrollBar", "title": ""}}
+{"pid": 36232, "time": 1788874212.6890023, "record_type": "event", "event": "WindowActivate", "target": {"class": "QDockWidget", "title": "Sidebar"}}
+{"pid": 36232, "time": 1788874212.689597, "record_type": "event", "event": "WindowActivate", "target": {"class": "SidebarPanel", "title": ""}}
+{"pid": 36232, "time": 1788874212.6902127, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.6908088, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLineEdit", "title": ""}}
+{"pid": 36232, "time": 1788874212.6914053, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.6920326, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.6926837, "record_type": "event", "event": "WindowActivate", "target": {"class": "QTreeWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.6933353, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.694003, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.6945775, "record_type": "event", "event": "WindowActivate", "target": {"class": "QScrollBar", "title": ""}}
+{"pid": 36232, "time": 1788874212.6951663, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.6956673, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.6961396, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.6966302, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.6972399, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.6978698, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.6984277, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.6990533, "record_type": "event", "event": "WindowActivate", "target": {"class": "QDockWidget", "title": "Info"}}
+{"pid": 36232, "time": 1788874212.6997113, "record_type": "event", "event": "WindowActivate", "target": {"class": "InfoPanel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7003267, "record_type": "event", "event": "WindowActivate", "target": {"class": "QSplitter", "title": ""}}
+{"pid": 36232, "time": 1788874212.7008724, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.7016451, "record_type": "event", "event": "WindowActivate", "target": {"class": "MicroTabBar", "title": ""}}
+{"pid": 36232, "time": 1788874212.7023535, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.703107, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.70373, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.7044237, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.7050393, "record_type": "event", "event": "WindowActivate", "target": {"class": "QScrollArea", "title": ""}}
+{"pid": 36232, "time": 1788874212.7056186, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.7064264, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.7070904, "record_type": "event", "event": "WindowActivate", "target": {"class": "QGroupBox", "title": ""}}
+{"pid": 36232, "time": 1788874212.7077227, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7083974, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.7092526, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7098923, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.7106168, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.7112339, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.7117689, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.7123027, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.7129471, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.7136312, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7143729, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.715056, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.715612, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7162678, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7168028, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.7174618, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7181036, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7187147, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.719263, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.719961, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.720788, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.721449, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7220683, "record_type": "event", "event": "WindowActivate", "target": {"class": "_DragLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7229216, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.7237496, "record_type": "event", "event": "WindowActivate", "target": {"class": "QGroupBox", "title": ""}}
+{"pid": 36232, "time": 1788874212.7244318, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.7249732, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.7255177, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.7261283, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.7267287, "record_type": "event", "event": "WindowActivate", "target": {"class": "QGroupBox", "title": ""}}
+{"pid": 36232, "time": 1788874212.7274323, "record_type": "event", "event": "WindowActivate", "target": {"class": "QTextEdit", "title": ""}}
+{"pid": 36232, "time": 1788874212.7280545, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.7286303, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.729196, "record_type": "event", "event": "WindowActivate", "target": {"class": "QScrollBar", "title": ""}}
+{"pid": 36232, "time": 1788874212.7298262, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.730478, "record_type": "event", "event": "WindowActivate", "target": {"class": "EmptyStateWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.7311072, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.731641, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7321925, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7329252, "record_type": "event", "event": "WindowActivate", "target": {"class": "QSplitterHandle", "title": ""}}
+{"pid": 36232, "time": 1788874212.733639, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.7343738, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.7350788, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.7357364, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.7363212, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7368908, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.7375808, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.7382028, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.7388604, "record_type": "event", "event": "WindowActivate", "target": {"class": "QStatusBar", "title": ""}}
+{"pid": 36232, "time": 1788874212.7397144, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7404363, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "StartupWindow", "title": "AssetManager — Open Library", "hwnd": 43257906}}
+{"pid": 36232, "time": 1788874212.7411249, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QMenuBar", "title": ""}}
+{"pid": 36232, "time": 1788874212.7417598, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.7424803, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QFrame", "title": ""}}
+{"pid": 36232, "time": 1788874212.7431235, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7437277, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7445023, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7451308, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "_DetailPanel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7457902, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7463658, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7469215, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.747539, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7482374, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.7488427, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.7493963, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QFrame", "title": ""}}
+{"pid": 36232, "time": 1788874212.7499788, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7506897, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QScrollArea", "title": ""}}
+{"pid": 36232, "time": 1788874212.7515047, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.7521133, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.7528093, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "_LibraryCard", "title": ""}}
+{"pid": 36232, "time": 1788874212.7534702, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7540317, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7546456, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874212.7552493, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874212.7558722, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QScrollBar", "title": ""}}
+{"pid": 36232, "time": 1788874212.7564485, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874212.7588305, "record_type": "event", "event": "FocusOut", "target": {"class": "_LibraryCard", "title": ""}}
+{"pid": 36232, "time": 1788874212.7598526, "record_type": "event", "event": "FocusOut", "target": {"class": "QCommonStyle"}}
+{"pid": 36232, "time": 1788874212.7604868, "record_type": "event", "event": "FocusIn", "target": {"class": "WorkspaceBar", "title": ""}}
+{"pid": 36232, "time": 1788874212.7611568, "record_type": "event", "event": "FocusIn", "target": {"class": "QCommonStyle"}}
+{"pid": 36232, "time": 1788874212.7653463, "record_type": "event", "event": "WindowStateChange", "target": {"class": "QWindow"}}
+{"pid": 36232, "time": 1788874214.0305796, "record_type": "heartbeat", "tick": 1, "active_window": {"class": "MainWindow", "title": "AssetManager — D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\exit-repair-20260908\\observed-01\\synthetic\\library", "hwnd": 27070858}, "focus_widget": {"class": "WorkspaceBar", "title": ""}, "top_level_count": 17, "top_levels": [{"class": "QFrame", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QFrame", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "StartupWindow", "title": "AssetManager — Open Library", "hwnd": 16454480}, {"class": "QMenu", "title": ""}, {"class": "QFrame", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "MainWindow", "title": "AssetManager — D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\exit-repair-20260908\\observed-01\\synthetic\\library", "hwnd": 27070858}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QDialog", "title": ""}]}
+{"pid": 36232, "time": 1788874214.7216394, "record_type": "heartbeat", "tick": 2, "active_window": {"class": "MainWindow", "title": "AssetManager — D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\exit-repair-20260908\\observed-01\\synthetic\\library", "hwnd": 27070858}, "focus_widget": {"class": "WorkspaceBar", "title": ""}, "top_level_count": 17, "top_levels": [{"class": "QFrame", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QFrame", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "StartupWindow", "title": "AssetManager — Open Library", "hwnd": 16454480}, {"class": "QMenu", "title": ""}, {"class": "QFrame", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "MainWindow", "title": "AssetManager — D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\exit-repair-20260908\\observed-01\\synthetic\\library", "hwnd": 27070858}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QDialog", "title": ""}]}
+{"pid": 36232, "time": 1788874219.7520583, "record_type": "heartbeat", "tick": 3, "active_window": {"class": "MainWindow", "title": "AssetManager — D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\exit-repair-20260908\\observed-01\\synthetic\\library", "hwnd": 27070858}, "focus_widget": {"class": "WorkspaceBar", "title": ""}, "top_level_count": 17, "top_levels": [{"class": "QFrame", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QFrame", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "StartupWindow", "title": "AssetManager — Open Library", "hwnd": 16454480}, {"class": "QMenu", "title": ""}, {"class": "QFrame", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "MainWindow", "title": "AssetManager — D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\exit-repair-20260908\\observed-01\\synthetic\\library", "hwnd": 27070858}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QDialog", "title": ""}]}
+{"pid": 36232, "time": 1788874220.3589664, "record_type": "event", "event": "ShortcutOverride", "target": {"class": "QWindow"}, "key": 16777249, "modifiers": 67108864}
+{"pid": 36232, "time": 1788874220.3598506, "record_type": "event", "event": "ShortcutOverride", "target": {"class": "WorkspaceBar", "title": ""}, "key": 16777249, "modifiers": 67108864}
+{"pid": 36232, "time": 1788874220.3605137, "record_type": "event", "event": "ShortcutOverride", "target": {"class": "WorkspaceSection", "title": ""}, "key": 16777249, "modifiers": 67108864}
+{"pid": 36232, "time": 1788874220.361119, "record_type": "event", "event": "ShortcutOverride", "target": {"class": "QWidget", "title": ""}, "key": 16777249, "modifiers": 67108864}
+{"pid": 36232, "time": 1788874220.3617413, "record_type": "event", "event": "ShortcutOverride", "target": {"class": "MainWindow", "title": "AssetManager — D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\exit-repair-20260908\\observed-01\\synthetic\\library", "hwnd": 27070858}, "key": 16777249, "modifiers": 67108864}
+{"pid": 36232, "time": 1788874220.3624163, "record_type": "event", "event": "KeyPress", "target": {"class": "QWindow"}, "key": 16777249, "modifiers": 67108864}
+{"pid": 36232, "time": 1788874220.3631053, "record_type": "event", "event": "KeyPress", "target": {"class": "WorkspaceBar", "title": ""}, "key": 16777249, "modifiers": 67108864}
+{"pid": 36232, "time": 1788874220.3637993, "record_type": "event", "event": "KeyPress", "target": {"class": "WorkspaceSection", "title": ""}, "key": 16777249, "modifiers": 67108864}
+{"pid": 36232, "time": 1788874220.3643608, "record_type": "event", "event": "KeyPress", "target": {"class": "QWidget", "title": ""}, "key": 16777249, "modifiers": 67108864}
+{"pid": 36232, "time": 1788874220.3649757, "record_type": "event", "event": "KeyPress", "target": {"class": "MainWindow", "title": "AssetManager — D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\exit-repair-20260908\\observed-01\\synthetic\\library", "hwnd": 27070858}, "key": 16777249, "modifiers": 67108864}
+{"pid": 36232, "time": 1788874220.389336, "record_type": "event", "event": "ShortcutOverride", "target": {"class": "QWindow"}, "key": 81, "modifiers": 67108864}
+{"pid": 36232, "time": 1788874220.3900306, "record_type": "event", "event": "ShortcutOverride", "target": {"class": "WorkspaceBar", "title": ""}, "key": 81, "modifiers": 67108864}
+{"pid": 36232, "time": 1788874220.3905582, "record_type": "event", "event": "ShortcutOverride", "target": {"class": "WorkspaceSection", "title": ""}, "key": 81, "modifiers": 67108864}
+{"pid": 36232, "time": 1788874220.3910758, "record_type": "event", "event": "ShortcutOverride", "target": {"class": "QWidget", "title": ""}, "key": 81, "modifiers": 67108864}
+{"pid": 36232, "time": 1788874220.3916137, "record_type": "event", "event": "ShortcutOverride", "target": {"class": "MainWindow", "title": "AssetManager — D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\exit-repair-20260908\\observed-01\\synthetic\\library", "hwnd": 27070858}, "key": 81, "modifiers": 67108864}
+{"pid": 36232, "time": 1788874220.3922215, "record_type": "event", "event": "Shortcut", "target": {"class": "QAction"}, "key": "Ctrl+Q", "modifiers": null, "is_ambiguous": false}
+{"pid": 36232, "time": 1788874220.3929567, "record_type": "call", "phase": "enter", "method": "MainWindow.request_exit", "target": {"class": "MainWindow", "title": "AssetManager — D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\exit-repair-20260908\\observed-01\\synthetic\\library", "hwnd": 27070858}}
+{"pid": 36232, "time": 1788874220.3938699, "record_type": "call", "phase": "enter", "method": "MainWindow.closeEvent", "target": {"class": "MainWindow", "title": "AssetManager — D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\exit-repair-20260908\\observed-01\\synthetic\\library", "hwnd": 27070858}}
+{"pid": 36232, "time": 1788874220.3945827, "record_type": "call", "phase": "enter", "method": "MainWindow._shutdown_resources", "target": {"class": "MainWindow", "title": "AssetManager — D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\exit-repair-20260908\\observed-01\\synthetic\\library", "hwnd": 27070858}}
+{"pid": 36232, "time": 1788874220.395181, "record_type": "call", "phase": "enter", "method": "WindowLifecycleCoordinator.shutdown_resources", "target": {"class": "WindowLifecycleCoordinator"}}
+{"pid": 36232, "time": 1788874220.7918208, "record_type": "call", "phase": "return", "method": "WindowLifecycleCoordinator.shutdown_resources", "target": {"class": "WindowLifecycleCoordinator"}}
+{"pid": 36232, "time": 1788874220.7987974, "record_type": "event", "event": "WindowStateChange", "target": {"class": "MainWindow", "title": "AssetManager — D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\exit-repair-20260908\\observed-01\\synthetic\\library", "hwnd": 27070858}}
+{"pid": 36232, "time": 1788874220.802415, "record_type": "call", "phase": "return", "method": "MainWindow._shutdown_resources", "target": {"class": "MainWindow", "title": "AssetManager — D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\exit-repair-20260908\\observed-01\\synthetic\\library", "hwnd": 27070858}}
+{"pid": 36232, "time": 1788874220.816214, "record_type": "call", "phase": "return", "method": "MainWindow.closeEvent", "target": {"class": "MainWindow", "title": "AssetManager — D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\exit-repair-20260908\\observed-01\\synthetic\\library", "hwnd": 27070858}}
+{"pid": 36232, "time": 1788874220.8169832, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "MainWindow", "title": "AssetManager — D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\exit-repair-20260908\\observed-01\\synthetic\\library", "hwnd": 27070858}}
+{"pid": 36232, "time": 1788874220.8178089, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8186703, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QMenuBar", "title": ""}}
+{"pid": 36232, "time": 1788874220.8192854, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "WorkspaceSection", "title": ""}}
+{"pid": 36232, "time": 1788874220.8200278, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QFrame", "title": ""}}
+{"pid": 36232, "time": 1788874220.8206394, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "WorkspaceBar", "title": ""}}
+{"pid": 36232, "time": 1788874220.821293, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QAbstractButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8219228, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.822463, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.823093, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "FileListPanel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8238757, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8250613, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8260975, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8268948, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8276052, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8281565, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8287013, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8292737, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8299074, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.830519, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8311474, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8317125, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8322701, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8329268, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8336222, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8343232, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8349075, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8354793, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8361087, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.836759, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLineEdit", "title": ""}}
+{"pid": 36232, "time": 1788874220.8373845, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8379493, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8384929, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QComboBox", "title": ""}}
+{"pid": 36232, "time": 1788874220.8390071, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QComboBox", "title": ""}}
+{"pid": 36232, "time": 1788874220.8395429, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8400533, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QComboBox", "title": ""}}
+{"pid": 36232, "time": 1788874220.8405702, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QComboBox", "title": ""}}
+{"pid": 36232, "time": 1788874220.841119, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8417017, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8425653, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.843149, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8437276, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.844283, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8449566, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.845623, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.84616, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "FileListGridWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8467467, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QScrollBar", "title": ""}}
+{"pid": 36232, "time": 1788874220.847449, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QDockWidget", "title": "Sidebar"}}
+{"pid": 36232, "time": 1788874220.848125, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "SidebarPanel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8488195, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8493974, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLineEdit", "title": ""}}
+{"pid": 36232, "time": 1788874220.8499877, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8506112, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.851158, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QTreeWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.851846, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8526094, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8532803, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8538554, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8543718, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8550193, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8556645, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8561747, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8567011, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QDockWidget", "title": "Info"}}
+{"pid": 36232, "time": 1788874220.8575137, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "InfoPanel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8580716, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QSplitter", "title": ""}}
+{"pid": 36232, "time": 1788874220.858637, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8591688, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "MicroTabBar", "title": ""}}
+{"pid": 36232, "time": 1788874220.8597414, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8603168, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8608499, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8614044, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8619275, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QScrollArea", "title": ""}}
+{"pid": 36232, "time": 1788874220.8625524, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8631456, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.86368, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QGroupBox", "title": ""}}
+{"pid": 36232, "time": 1788874220.864251, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8648353, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8653452, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.865922, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.866507, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8671672, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8677015, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8682919, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8689668, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8695357, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8700595, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8706574, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8712018, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.87176, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8724716, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.873092, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8736494, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.874168, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8747427, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.875512, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.876278, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8768706, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8773882, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "_DragLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8780348, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8785741, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QGroupBox", "title": ""}}
+{"pid": 36232, "time": 1788874220.8791625, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8796995, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8802252, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8808186, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8813407, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QGroupBox", "title": ""}}
+{"pid": 36232, "time": 1788874220.8819525, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QTextEdit", "title": ""}}
+{"pid": 36232, "time": 1788874220.8825588, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8831751, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8838353, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "EmptyStateWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.884361, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8849227, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8854144, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8859494, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QSplitterHandle", "title": ""}}
+{"pid": 36232, "time": 1788874220.88651, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8870351, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8875837, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.888153, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 36232, "time": 1788874220.8886979, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.889306, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.889909, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8905008, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 36232, "time": 1788874220.8910372, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QStatusBar", "title": ""}}
+{"pid": 36232, "time": 1788874220.891605, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QSizeGrip", "title": ""}}
+{"pid": 36232, "time": 1788874220.8921301, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 36232, "time": 1788874220.8927908, "record_type": "event", "event": "FocusOut", "target": {"class": "WorkspaceBar", "title": ""}}
+{"pid": 36232, "time": 1788874220.8933735, "record_type": "event", "event": "FocusOut", "target": {"class": "QCommonStyle"}}
+{"pid": 36232, "time": 1788874220.9145901, "record_type": "application", "signal": "lastWindowClosed"}
+{"pid": 36232, "time": 1788874220.915711, "record_type": "call", "phase": "return", "method": "MainWindow.request_exit", "target": {"class": "MainWindow", "title": "AssetManager — D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\exit-repair-20260908\\observed-01\\synthetic\\library", "hwnd": 27070858}}
+{"pid": 36232, "time": 1788874220.917348, "record_type": "event", "event": "WindowStateChange", "target": {"class": "QWindow"}}
+{"pid": 36232, "time": 1788874220.9654152, "record_type": "heartbeat", "tick": 4, "active_window": null, "focus_widget": null, "top_level_count": 17, "top_levels": [{"class": "QFrame", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QFrame", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "StartupWindow", "title": "AssetManager — Open Library", "hwnd": 16454480}, {"class": "QMenu", "title": ""}, {"class": "QFrame", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "MainWindow", "title": "AssetManager — D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\exit-repair-20260908\\observed-01\\synthetic\\library", "hwnd": 27136394}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QDialog", "title": ""}]}
+{"pid": 36232, "time": 1788874220.9706428, "record_type": "application", "signal": "aboutToQuit"}
+{"pid": 44648, "time": 1788874226.888799, "record_type": "plugin", "phase": "registered", "application": {"class": "QApplication"}}
+{"pid": 44648, "time": 1788874227.457342, "record_type": "event", "event": "FocusIn", "target": {"class": "QWindow"}}
+{"pid": 44648, "time": 1788874227.4596236, "record_type": "event", "event": "WindowActivate", "target": {"class": "StartupWindow", "title": "AssetManager — Open Library", "hwnd": 11212460}}
+{"pid": 44648, "time": 1788874227.4603977, "record_type": "event", "event": "WindowActivate", "target": {"class": "QMenuBar", "title": ""}}
+{"pid": 44648, "time": 1788874227.4610815, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874227.4617367, "record_type": "event", "event": "WindowActivate", "target": {"class": "QFrame", "title": ""}}
+{"pid": 44648, "time": 1788874227.462427, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874227.463039, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874227.463575, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874227.4641047, "record_type": "event", "event": "WindowActivate", "target": {"class": "_DetailPanel", "title": ""}}
+{"pid": 44648, "time": 1788874227.464612, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874227.4651413, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874227.4656723, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874227.4661918, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874227.4667609, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874227.4672883, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874227.4678326, "record_type": "event", "event": "WindowActivate", "target": {"class": "QFrame", "title": ""}}
+{"pid": 44648, "time": 1788874227.4684446, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874227.4689662, "record_type": "event", "event": "WindowActivate", "target": {"class": "QScrollArea", "title": ""}}
+{"pid": 44648, "time": 1788874227.469503, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874227.47008, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874227.4706454, "record_type": "event", "event": "WindowActivate", "target": {"class": "_LibraryCard", "title": ""}}
+{"pid": 44648, "time": 1788874227.47117, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874227.4717138, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874227.4722393, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874227.472794, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874227.4734683, "record_type": "event", "event": "WindowActivate", "target": {"class": "QScrollBar", "title": ""}}
+{"pid": 44648, "time": 1788874227.4740338, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874227.4760463, "record_type": "event", "event": "FocusIn", "target": {"class": "_LibraryCard", "title": ""}}
+{"pid": 44648, "time": 1788874227.4854553, "record_type": "event", "event": "FocusIn", "target": {"class": "QCommonStyle"}}
+{"pid": 44648, "time": 1788874228.4329662, "record_type": "event", "event": "WindowStateChange", "target": {"class": "MainWindow", "title": "AssetManager", "hwnd": 16651236}}
+{"pid": 44648, "time": 1788874228.4733057, "record_type": "event", "event": "FocusOut", "target": {"class": "QWindow"}}
+{"pid": 44648, "time": 1788874228.4755335, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "StartupWindow", "title": "AssetManager — Open Library", "hwnd": 11212460}}
+{"pid": 44648, "time": 1788874228.476316, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QMenuBar", "title": ""}}
+{"pid": 44648, "time": 1788874228.4773333, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.4784322, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QFrame", "title": ""}}
+{"pid": 44648, "time": 1788874228.4793205, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.4800177, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.4805934, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.4811375, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "_DetailPanel", "title": ""}}
+{"pid": 44648, "time": 1788874228.4816628, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.482542, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.4832556, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.4838784, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.4845064, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.4850657, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.4857006, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QFrame", "title": ""}}
+{"pid": 44648, "time": 1788874228.4863734, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.4869733, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QScrollArea", "title": ""}}
+{"pid": 44648, "time": 1788874228.487606, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.48826, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.4887486, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "_LibraryCard", "title": ""}}
+{"pid": 44648, "time": 1788874228.4892852, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.4898896, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.490439, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.491148, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.4917607, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QScrollBar", "title": ""}}
+{"pid": 44648, "time": 1788874228.492272, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.4927804, "record_type": "event", "event": "FocusOut", "target": {"class": "_LibraryCard", "title": ""}}
+{"pid": 44648, "time": 1788874228.4933763, "record_type": "event", "event": "FocusOut", "target": {"class": "QCommonStyle"}}
+{"pid": 44648, "time": 1788874228.4939985, "record_type": "event", "event": "FocusIn", "target": {"class": "QWindow"}}
+{"pid": 44648, "time": 1788874228.4947975, "record_type": "event", "event": "WindowActivate", "target": {"class": "StartupWindow", "title": "AssetManager — Open Library", "hwnd": 11212460}}
+{"pid": 44648, "time": 1788874228.4954917, "record_type": "event", "event": "WindowActivate", "target": {"class": "QMenuBar", "title": ""}}
+{"pid": 44648, "time": 1788874228.4964185, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.4972775, "record_type": "event", "event": "WindowActivate", "target": {"class": "QFrame", "title": ""}}
+{"pid": 44648, "time": 1788874228.4979308, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.4987016, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.4993794, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5001283, "record_type": "event", "event": "WindowActivate", "target": {"class": "_DetailPanel", "title": ""}}
+{"pid": 44648, "time": 1788874228.500758, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5012496, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5017245, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5023942, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5031495, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5038145, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5045435, "record_type": "event", "event": "WindowActivate", "target": {"class": "QFrame", "title": ""}}
+{"pid": 44648, "time": 1788874228.5052114, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5057883, "record_type": "event", "event": "WindowActivate", "target": {"class": "QScrollArea", "title": ""}}
+{"pid": 44648, "time": 1788874228.5063262, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5068662, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5074098, "record_type": "event", "event": "WindowActivate", "target": {"class": "_LibraryCard", "title": ""}}
+{"pid": 44648, "time": 1788874228.5080268, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5085533, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5091636, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5097623, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5104175, "record_type": "event", "event": "WindowActivate", "target": {"class": "QScrollBar", "title": ""}}
+{"pid": 44648, "time": 1788874228.5111437, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.51178, "record_type": "event", "event": "FocusIn", "target": {"class": "_LibraryCard", "title": ""}}
+{"pid": 44648, "time": 1788874228.512405, "record_type": "event", "event": "FocusIn", "target": {"class": "QCommonStyle"}}
+{"pid": 44648, "time": 1788874228.5142825, "record_type": "event", "event": "FocusOut", "target": {"class": "QWindow"}}
+{"pid": 44648, "time": 1788874228.5163174, "record_type": "event", "event": "FocusIn", "target": {"class": "QWindow"}}
+{"pid": 44648, "time": 1788874228.5173295, "record_type": "event", "event": "WindowActivate", "target": {"class": "MainWindow", "title": "AssetManager", "hwnd": 16651236}}
+{"pid": 44648, "time": 1788874228.5180373, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5186365, "record_type": "event", "event": "WindowActivate", "target": {"class": "QMenuBar", "title": ""}}
+{"pid": 44648, "time": 1788874228.519229, "record_type": "event", "event": "WindowActivate", "target": {"class": "WorkspaceSection", "title": ""}}
+{"pid": 44648, "time": 1788874228.519799, "record_type": "event", "event": "WindowActivate", "target": {"class": "QFrame", "title": ""}}
+{"pid": 44648, "time": 1788874228.5204682, "record_type": "event", "event": "WindowActivate", "target": {"class": "WorkspaceBar", "title": ""}}
+{"pid": 44648, "time": 1788874228.5213602, "record_type": "event", "event": "WindowActivate", "target": {"class": "QAbstractButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5219946, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.523131, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5237298, "record_type": "event", "event": "WindowActivate", "target": {"class": "FileListPanel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5242581, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.524821, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.525548, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5260673, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.526619, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5272117, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5277586, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.528491, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5291905, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.529871, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5304215, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5310192, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5315974, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.532081, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5325503, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5330284, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5334933, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5339577, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5344546, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.535103, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5357454, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5362473, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.536727, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5372047, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5377293, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5384037, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.539014, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.539688, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5403228, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5409894, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5417826, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.542306, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5427783, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5432456, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5437136, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5441902, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLineEdit", "title": ""}}
+{"pid": 44648, "time": 1788874228.5446875, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5453522, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5460317, "record_type": "event", "event": "WindowActivate", "target": {"class": "QComboBox", "title": ""}}
+{"pid": 44648, "time": 1788874228.5466037, "record_type": "event", "event": "WindowActivate", "target": {"class": "QComboBox", "title": ""}}
+{"pid": 44648, "time": 1788874228.5471, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5475912, "record_type": "event", "event": "WindowActivate", "target": {"class": "QComboBox", "title": ""}}
+{"pid": 44648, "time": 1788874228.5480752, "record_type": "event", "event": "WindowActivate", "target": {"class": "QComboBox", "title": ""}}
+{"pid": 44648, "time": 1788874228.548672, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5492914, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5498998, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.550497, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5510051, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5517168, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.552336, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5529044, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5535822, "record_type": "event", "event": "WindowActivate", "target": {"class": "FileListGridWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.554262, "record_type": "event", "event": "WindowActivate", "target": {"class": "QScrollBar", "title": ""}}
+{"pid": 44648, "time": 1788874228.5548007, "record_type": "event", "event": "WindowActivate", "target": {"class": "QDockWidget", "title": "Sidebar"}}
+{"pid": 44648, "time": 1788874228.555288, "record_type": "event", "event": "WindowActivate", "target": {"class": "SidebarPanel", "title": ""}}
+{"pid": 44648, "time": 1788874228.555767, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5562823, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLineEdit", "title": ""}}
+{"pid": 44648, "time": 1788874228.556808, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5572915, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5578158, "record_type": "event", "event": "WindowActivate", "target": {"class": "QTreeWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5583303, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5589156, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5594606, "record_type": "event", "event": "WindowActivate", "target": {"class": "QScrollBar", "title": ""}}
+{"pid": 44648, "time": 1788874228.5599933, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5604558, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.560944, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5615304, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5621536, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.562699, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.563186, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.563661, "record_type": "event", "event": "WindowActivate", "target": {"class": "QDockWidget", "title": "Info"}}
+{"pid": 44648, "time": 1788874228.5641532, "record_type": "event", "event": "WindowActivate", "target": {"class": "InfoPanel", "title": ""}}
+{"pid": 44648, "time": 1788874228.564668, "record_type": "event", "event": "WindowActivate", "target": {"class": "QSplitter", "title": ""}}
+{"pid": 44648, "time": 1788874228.5651639, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5656273, "record_type": "event", "event": "WindowActivate", "target": {"class": "MicroTabBar", "title": ""}}
+{"pid": 44648, "time": 1788874228.5661447, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5666652, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5673547, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5678425, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.568356, "record_type": "event", "event": "WindowActivate", "target": {"class": "QScrollArea", "title": ""}}
+{"pid": 44648, "time": 1788874228.5688381, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5693302, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.569851, "record_type": "event", "event": "WindowActivate", "target": {"class": "QGroupBox", "title": ""}}
+{"pid": 44648, "time": 1788874228.57034, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5708117, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5713866, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5718694, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.572359, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5728724, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5733492, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5738852, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5743425, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.57482, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5753217, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5759091, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5766764, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5773911, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5779283, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5786948, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5794716, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5800917, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5805738, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5811126, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5823243, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5829468, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5835595, "record_type": "event", "event": "WindowActivate", "target": {"class": "_DragLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5842543, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5848074, "record_type": "event", "event": "WindowActivate", "target": {"class": "QGroupBox", "title": ""}}
+{"pid": 44648, "time": 1788874228.5854242, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5861642, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5870738, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5877557, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.5883868, "record_type": "event", "event": "WindowActivate", "target": {"class": "QGroupBox", "title": ""}}
+{"pid": 44648, "time": 1788874228.589083, "record_type": "event", "event": "WindowActivate", "target": {"class": "QTextEdit", "title": ""}}
+{"pid": 44648, "time": 1788874228.5899997, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.590968, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.591764, "record_type": "event", "event": "WindowActivate", "target": {"class": "QScrollBar", "title": ""}}
+{"pid": 44648, "time": 1788874228.592692, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5936081, "record_type": "event", "event": "WindowActivate", "target": {"class": "EmptyStateWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.594445, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.595226, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5959785, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.5967507, "record_type": "event", "event": "WindowActivate", "target": {"class": "QSplitterHandle", "title": ""}}
+{"pid": 44648, "time": 1788874228.5976875, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.5987148, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.599698, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.6005838, "record_type": "event", "event": "WindowActivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.6012642, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.601876, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.6026652, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.6033165, "record_type": "event", "event": "WindowActivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.603978, "record_type": "event", "event": "WindowActivate", "target": {"class": "QStatusBar", "title": ""}}
+{"pid": 44648, "time": 1788874228.604626, "record_type": "event", "event": "WindowActivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.605182, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "StartupWindow", "title": "AssetManager — Open Library", "hwnd": 11212460}}
+{"pid": 44648, "time": 1788874228.606191, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QMenuBar", "title": ""}}
+{"pid": 44648, "time": 1788874228.6069787, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.6076806, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QFrame", "title": ""}}
+{"pid": 44648, "time": 1788874228.608317, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.608847, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.6093364, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.6098044, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "_DetailPanel", "title": ""}}
+{"pid": 44648, "time": 1788874228.6102662, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.610773, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.6112547, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.6117291, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.612613, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.6133964, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.6140485, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QFrame", "title": ""}}
+{"pid": 44648, "time": 1788874228.614768, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.6154501, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QScrollArea", "title": ""}}
+{"pid": 44648, "time": 1788874228.616088, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.6167862, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.6174412, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "_LibraryCard", "title": ""}}
+{"pid": 44648, "time": 1788874228.6179688, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.6185577, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.6190677, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874228.61962, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874228.6202497, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QScrollBar", "title": ""}}
+{"pid": 44648, "time": 1788874228.6208827, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874228.622933, "record_type": "event", "event": "FocusOut", "target": {"class": "_LibraryCard", "title": ""}}
+{"pid": 44648, "time": 1788874228.6237366, "record_type": "event", "event": "FocusOut", "target": {"class": "QCommonStyle"}}
+{"pid": 44648, "time": 1788874228.6242661, "record_type": "event", "event": "FocusIn", "target": {"class": "WorkspaceBar", "title": ""}}
+{"pid": 44648, "time": 1788874228.6248367, "record_type": "event", "event": "FocusIn", "target": {"class": "QCommonStyle"}}
+{"pid": 44648, "time": 1788874228.6273453, "record_type": "event", "event": "WindowStateChange", "target": {"class": "QWindow"}}
+{"pid": 44648, "time": 1788874229.672006, "record_type": "heartbeat", "tick": 1, "active_window": {"class": "MainWindow", "title": "AssetManager", "hwnd": 16651236}, "focus_widget": {"class": "WorkspaceBar", "title": ""}, "top_level_count": 17, "top_levels": [{"class": "QMenu", "title": ""}, {"class": "QFrame", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "MainWindow", "title": "AssetManager", "hwnd": 16651236}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QFrame", "title": ""}, {"class": "QFrame", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "StartupWindow", "title": "AssetManager — Open Library", "hwnd": 7474178}, {"class": "QDialog", "title": ""}, {"class": "QFrame", "title": ""}]}
+{"pid": 44648, "time": 1788874229.8927047, "record_type": "heartbeat", "tick": 2, "active_window": {"class": "MainWindow", "title": "AssetManager", "hwnd": 16651236}, "focus_widget": {"class": "WorkspaceBar", "title": ""}, "top_level_count": 17, "top_levels": [{"class": "QMenu", "title": ""}, {"class": "QFrame", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "MainWindow", "title": "AssetManager", "hwnd": 16651236}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QFrame", "title": ""}, {"class": "QFrame", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "StartupWindow", "title": "AssetManager — Open Library", "hwnd": 7474178}, {"class": "QDialog", "title": ""}, {"class": "QFrame", "title": ""}]}
+{"pid": 44648, "time": 1788874235.2508204, "record_type": "heartbeat", "tick": 3, "active_window": {"class": "MainWindow", "title": "AssetManager", "hwnd": 16651236}, "focus_widget": {"class": "WorkspaceBar", "title": ""}, "top_level_count": 17, "top_levels": [{"class": "QMenu", "title": ""}, {"class": "QFrame", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "MainWindow", "title": "AssetManager", "hwnd": 16651236}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QFrame", "title": ""}, {"class": "QFrame", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "StartupWindow", "title": "AssetManager — Open Library", "hwnd": 7474178}, {"class": "QDialog", "title": ""}, {"class": "QFrame", "title": ""}]}
+{"pid": 44648, "time": 1788874235.254465, "record_type": "event", "event": "ShortcutOverride", "target": {"class": "QWindow"}, "key": 16777249, "modifiers": 67108864}
+{"pid": 44648, "time": 1788874235.2551482, "record_type": "event", "event": "ShortcutOverride", "target": {"class": "WorkspaceBar", "title": ""}, "key": 16777249, "modifiers": 67108864}
+{"pid": 44648, "time": 1788874235.2556717, "record_type": "event", "event": "ShortcutOverride", "target": {"class": "WorkspaceSection", "title": ""}, "key": 16777249, "modifiers": 67108864}
+{"pid": 44648, "time": 1788874235.256181, "record_type": "event", "event": "ShortcutOverride", "target": {"class": "QWidget", "title": ""}, "key": 16777249, "modifiers": 67108864}
+{"pid": 44648, "time": 1788874235.2566936, "record_type": "event", "event": "ShortcutOverride", "target": {"class": "MainWindow", "title": "AssetManager", "hwnd": 16651236}, "key": 16777249, "modifiers": 67108864}
+{"pid": 44648, "time": 1788874235.2572143, "record_type": "event", "event": "KeyPress", "target": {"class": "QWindow"}, "key": 16777249, "modifiers": 67108864}
+{"pid": 44648, "time": 1788874235.2577078, "record_type": "event", "event": "KeyPress", "target": {"class": "WorkspaceBar", "title": ""}, "key": 16777249, "modifiers": 67108864}
+{"pid": 44648, "time": 1788874235.2582343, "record_type": "event", "event": "KeyPress", "target": {"class": "WorkspaceSection", "title": ""}, "key": 16777249, "modifiers": 67108864}
+{"pid": 44648, "time": 1788874235.2588933, "record_type": "event", "event": "KeyPress", "target": {"class": "QWidget", "title": ""}, "key": 16777249, "modifiers": 67108864}
+{"pid": 44648, "time": 1788874235.259878, "record_type": "event", "event": "KeyPress", "target": {"class": "MainWindow", "title": "AssetManager", "hwnd": 16651236}, "key": 16777249, "modifiers": 67108864}
+{"pid": 44648, "time": 1788874235.260917, "record_type": "event", "event": "ShortcutOverride", "target": {"class": "QWindow"}, "key": 81, "modifiers": 67108864}
+{"pid": 44648, "time": 1788874235.2617877, "record_type": "event", "event": "ShortcutOverride", "target": {"class": "WorkspaceBar", "title": ""}, "key": 81, "modifiers": 67108864}
+{"pid": 44648, "time": 1788874235.2626445, "record_type": "event", "event": "ShortcutOverride", "target": {"class": "WorkspaceSection", "title": ""}, "key": 81, "modifiers": 67108864}
+{"pid": 44648, "time": 1788874235.2635012, "record_type": "event", "event": "ShortcutOverride", "target": {"class": "QWidget", "title": ""}, "key": 81, "modifiers": 67108864}
+{"pid": 44648, "time": 1788874235.264108, "record_type": "event", "event": "ShortcutOverride", "target": {"class": "MainWindow", "title": "AssetManager", "hwnd": 16651236}, "key": 81, "modifiers": 67108864}
+{"pid": 44648, "time": 1788874235.2649784, "record_type": "event", "event": "Shortcut", "target": {"class": "QAction"}, "key": "Ctrl+Q", "modifiers": null, "is_ambiguous": false}
+{"pid": 44648, "time": 1788874235.265564, "record_type": "call", "phase": "enter", "method": "MainWindow.request_exit", "target": {"class": "MainWindow", "title": "AssetManager", "hwnd": 16651236}}
+{"pid": 44648, "time": 1788874235.266157, "record_type": "call", "phase": "enter", "method": "MainWindow.closeEvent", "target": {"class": "MainWindow", "title": "AssetManager", "hwnd": 16651236}}
+{"pid": 44648, "time": 1788874235.2666962, "record_type": "call", "phase": "enter", "method": "MainWindow._shutdown_resources", "target": {"class": "MainWindow", "title": "AssetManager", "hwnd": 16651236}}
+{"pid": 44648, "time": 1788874235.267194, "record_type": "call", "phase": "enter", "method": "WindowLifecycleCoordinator.shutdown_resources", "target": {"class": "WindowLifecycleCoordinator"}}
+{"pid": 44648, "time": 1788874236.2741444, "record_type": "call", "phase": "return", "method": "WindowLifecycleCoordinator.shutdown_resources", "target": {"class": "WindowLifecycleCoordinator"}}
+{"pid": 44648, "time": 1788874236.2802877, "record_type": "event", "event": "WindowStateChange", "target": {"class": "MainWindow", "title": "AssetManager", "hwnd": 16651236}}
+{"pid": 44648, "time": 1788874236.2842603, "record_type": "call", "phase": "return", "method": "MainWindow._shutdown_resources", "target": {"class": "MainWindow", "title": "AssetManager", "hwnd": 16651236}}
+{"pid": 44648, "time": 1788874236.2930796, "record_type": "call", "phase": "return", "method": "MainWindow.closeEvent", "target": {"class": "MainWindow", "title": "AssetManager", "hwnd": 16651236}}
+{"pid": 44648, "time": 1788874236.2938197, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "MainWindow", "title": "AssetManager", "hwnd": 16651236}}
+{"pid": 44648, "time": 1788874236.2944775, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.295031, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QMenuBar", "title": ""}}
+{"pid": 44648, "time": 1788874236.2956038, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "WorkspaceSection", "title": ""}}
+{"pid": 44648, "time": 1788874236.2961147, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QFrame", "title": ""}}
+{"pid": 44648, "time": 1788874236.2966883, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "WorkspaceBar", "title": ""}}
+{"pid": 44648, "time": 1788874236.2973652, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QAbstractButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.2979567, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.2985198, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.2990365, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "FileListPanel", "title": ""}}
+{"pid": 44648, "time": 1788874236.2995923, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.300134, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3007393, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3014345, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3021383, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.3028421, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3035765, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.3042579, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3048048, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3054054, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.306144, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.306789, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3075116, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3080752, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3086658, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3092315, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3097594, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3103094, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3108695, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3114145, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLineEdit", "title": ""}}
+{"pid": 44648, "time": 1788874236.3119926, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3125422, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.3132102, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QComboBox", "title": ""}}
+{"pid": 44648, "time": 1788874236.3138268, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QComboBox", "title": ""}}
+{"pid": 44648, "time": 1788874236.314417, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3150012, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QComboBox", "title": ""}}
+{"pid": 44648, "time": 1788874236.3155448, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QComboBox", "title": ""}}
+{"pid": 44648, "time": 1788874236.3160594, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3166196, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3171446, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.3176582, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3181825, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.319033, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3196, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3202188, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3207803, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "FileListGridWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.3214211, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QScrollBar", "title": ""}}
+{"pid": 44648, "time": 1788874236.3219638, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QDockWidget", "title": "Sidebar"}}
+{"pid": 44648, "time": 1788874236.3225586, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "SidebarPanel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3231754, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.323787, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLineEdit", "title": ""}}
+{"pid": 44648, "time": 1788874236.3244662, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3252456, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3258996, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QTreeWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.326524, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.3271744, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.3277247, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3282576, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.32888, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.329537, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.330091, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.330644, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3312216, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QDockWidget", "title": "Info"}}
+{"pid": 44648, "time": 1788874236.3317955, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "InfoPanel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3323479, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QSplitter", "title": ""}}
+{"pid": 44648, "time": 1788874236.332927, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.333499, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "MicroTabBar", "title": ""}}
+{"pid": 44648, "time": 1788874236.334087, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.334737, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.335507, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3361318, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3367424, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QScrollArea", "title": ""}}
+{"pid": 44648, "time": 1788874236.3373156, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.3379436, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.3386571, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QGroupBox", "title": ""}}
+{"pid": 44648, "time": 1788874236.339266, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.339925, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.340506, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.341092, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3416803, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3422039, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3427925, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.34333, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.343884, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.3444457, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3449314, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3454874, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.3459978, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3464687, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3470428, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.3478146, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3485732, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3492694, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.3499653, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3511174, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3517194, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.352332, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3529847, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "_DragLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3536172, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.3542368, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QGroupBox", "title": ""}}
+{"pid": 44648, "time": 1788874236.3548255, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.3553846, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3560104, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3566248, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3573396, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QGroupBox", "title": ""}}
+{"pid": 44648, "time": 1788874236.3582623, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QTextEdit", "title": ""}}
+{"pid": 44648, "time": 1788874236.359047, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.359952, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.3607697, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "EmptyStateWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.361676, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3626087, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3635263, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.3643618, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QSplitterHandle", "title": ""}}
+{"pid": 44648, "time": 1788874236.365275, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.3660975, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3669841, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.367948, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QWidget", "title": ""}}
+{"pid": 44648, "time": 1788874236.3688223, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.36976, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3704119, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.3711767, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QPushButton", "title": ""}}
+{"pid": 44648, "time": 1788874236.37198, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QStatusBar", "title": ""}}
+{"pid": 44648, "time": 1788874236.3726466, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QSizeGrip", "title": ""}}
+{"pid": 44648, "time": 1788874236.373494, "record_type": "event", "event": "WindowDeactivate", "target": {"class": "QLabel", "title": ""}}
+{"pid": 44648, "time": 1788874236.374364, "record_type": "event", "event": "FocusOut", "target": {"class": "WorkspaceBar", "title": ""}}
+{"pid": 44648, "time": 1788874236.3752115, "record_type": "event", "event": "FocusOut", "target": {"class": "QCommonStyle"}}
+{"pid": 44648, "time": 1788874236.405475, "record_type": "application", "signal": "lastWindowClosed"}
+{"pid": 44648, "time": 1788874236.4068778, "record_type": "call", "phase": "return", "method": "MainWindow.request_exit", "target": {"class": "MainWindow", "title": "AssetManager", "hwnd": 16651236}}
+{"pid": 44648, "time": 1788874236.4080236, "record_type": "event", "event": "KeyRelease", "target": {"class": "QWindow"}, "key": 81, "modifiers": 67108864}
+{"pid": 44648, "time": 1788874236.4092512, "record_type": "event", "event": "KeyRelease", "target": {"class": "WorkspaceBar", "title": ""}, "key": 81, "modifiers": 67108864}
+{"pid": 44648, "time": 1788874236.410546, "record_type": "event", "event": "KeyRelease", "target": {"class": "WorkspaceSection", "title": ""}, "key": 81, "modifiers": 67108864}
+{"pid": 44648, "time": 1788874236.4124286, "record_type": "event", "event": "KeyRelease", "target": {"class": "QWidget", "title": ""}, "key": 81, "modifiers": 67108864}
+{"pid": 44648, "time": 1788874236.4493728, "record_type": "event", "event": "KeyRelease", "target": {"class": "MainWindow", "title": "AssetManager", "hwnd": 8720250}, "key": 81, "modifiers": 67108864}
+{"pid": 44648, "time": 1788874236.4508853, "record_type": "event", "event": "KeyRelease", "target": {"class": "QWindow"}, "key": 16777249, "modifiers": 0}
+{"pid": 44648, "time": 1788874236.4524994, "record_type": "event", "event": "KeyRelease", "target": {"class": "WorkspaceBar", "title": ""}, "key": 16777249, "modifiers": 0}
+{"pid": 44648, "time": 1788874236.4534953, "record_type": "event", "event": "KeyRelease", "target": {"class": "WorkspaceSection", "title": ""}, "key": 16777249, "modifiers": 0}
+{"pid": 44648, "time": 1788874236.4546585, "record_type": "event", "event": "KeyRelease", "target": {"class": "QWidget", "title": ""}, "key": 16777249, "modifiers": 0}
+{"pid": 44648, "time": 1788874236.4555109, "record_type": "event", "event": "KeyRelease", "target": {"class": "MainWindow", "title": "AssetManager", "hwnd": 8720250}, "key": 16777249, "modifiers": 0}
+{"pid": 44648, "time": 1788874236.456474, "record_type": "event", "event": "WindowStateChange", "target": {"class": "QWindow"}}
+{"pid": 44648, "time": 1788874236.4608378, "record_type": "heartbeat", "tick": 4, "active_window": null, "focus_widget": null, "top_level_count": 17, "top_levels": [{"class": "QMenu", "title": ""}, {"class": "QFrame", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "MainWindow", "title": "AssetManager", "hwnd": 8720250}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QFrame", "title": ""}, {"class": "QFrame", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "QMenu", "title": ""}, {"class": "StartupWindow", "title": "AssetManager — Open Library", "hwnd": 7474178}, {"class": "QDialog", "title": ""}, {"class": "QFrame", "title": ""}]}
+{"pid": 44648, "time": 1788874236.466645, "record_type": "application", "signal": "aboutToQuit"}

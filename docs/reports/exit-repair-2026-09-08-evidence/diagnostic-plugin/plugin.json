@@ -1,0 +1,10 @@
+{
+  "id": "exit-diagnostic-observer",
+  "name": "Exit Diagnostic Observer",
+  "version": "0.1.0",
+  "entry": "observer:register",
+  "description": "Temporary Qt exit-path observer for onefile diagnosis.",
+  "kind": "command",
+  "enabled_by_default": true,
+  "permissions": []
+}

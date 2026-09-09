@@ -1,0 +1,105 @@
+[
+  {
+    "command": [
+      "python",
+      "-m",
+      "ruff",
+      "check",
+      "AssetsManager",
+      "tests",
+      "scripts",
+      "run.py",
+      "build.py",
+      "main.py"
+    ],
+    "exit_code": 0,
+    "stdout": "All checks passed!\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "python",
+      "-m",
+      "pyright"
+    ],
+    "exit_code": 0,
+    "stdout": "0 errors, 0 warnings, 0 informations\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "python",
+      "-m",
+      "pyright",
+      "scripts/perf/n1_active_download_close.py"
+    ],
+    "exit_code": 0,
+    "stdout": "0 errors, 0 warnings, 0 informations\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "python",
+      "scripts/check_doc_stats.py"
+    ],
+    "exit_code": 0,
+    "stdout": "README stats are current\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "python",
+      "scripts/check_documents.py"
+    ],
+    "exit_code": 0,
+    "stdout": "document maintenance state is current\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "python",
+      "scripts/check_boundaries.py"
+    ],
+    "exit_code": 0,
+    "stdout": "boundary checks passed (gates 1/2/3/5 + layer DAG)\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "python",
+      "scripts/check_route_capabilities.py"
+    ],
+    "exit_code": 0,
+    "stdout": "check_route_capabilities: 0 violation(s)\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "python",
+      "scripts/check_layers.py"
+    ],
+    "exit_code": 0,
+    "stdout": "layer DAG checks passed\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "python",
+      "scripts/gen_ts_types.py",
+      "--check"
+    ],
+    "exit_code": 0,
+    "stdout": "contracts.ts is up to date\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "python",
+      "scripts/gen_web_tokens.py",
+      "--check"
+    ],
+    "exit_code": 0,
+    "stdout": "themes.generated.css is up to date\nthemes.manifest.generated.ts is up to date\n",
+    "stderr": ""
+  }
+]

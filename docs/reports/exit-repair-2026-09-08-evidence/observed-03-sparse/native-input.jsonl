@@ -1,0 +1,4 @@
+{"phase": "before_ctrl_q", "time": 1788874516.9171886, "hwnd": 18223578, "foreground": 18223578, "maximized": true, "pressed": {"ctrl": false, "shift": false, "alt": false, "win_l": false, "win_r": false, "q": false}}
+{"phase": "after_ctrl_q", "time": 1788874517.1310856, "hwnd": 18223578, "foreground": 18223578, "maximized": true, "pressed": {"ctrl": false, "shift": false, "alt": false, "win_l": false, "win_r": false, "q": false}}
+{"phase": "before_ctrl_q", "time": 1788874529.3821137, "hwnd": 5313704, "foreground": 5313704, "maximized": true, "pressed": {"ctrl": false, "shift": false, "alt": false, "win_l": false, "win_r": false, "q": false}}
+{"phase": "after_ctrl_q", "time": 1788874529.5964415, "hwnd": 5313704, "foreground": 5313704, "maximized": true, "pressed": {"ctrl": false, "shift": false, "alt": false, "win_l": false, "win_r": false, "q": false}}

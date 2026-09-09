@@ -1,0 +1,21 @@
+bundle: onedir (D:\~Vibe-Coding\Projects\AssetsManager_old-bak\artifacts\weekly-repair-2026-09-08-103f119\AssetManager\AssetManager.exe)
+runtime: D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\exit-repair-20260908\observed-06-old-focus\synthetic\runtime
+library: D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\exit-repair-20260908\observed-06-old-focus\synthetic\library (12 files)
+lan: http://127.0.0.1:7894 (password auth)
+settings seeded: D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\exit-repair-20260908\observed-06-old-focus\synthetic\runtime\Shared\settings.json
+AUTO-OPEN: will focus the sole seeded StartupWindow and press Enter once
+launched pid=27568
+exe sha256: 6afcf6635c59119f321e9e441972bb991f3cb3678110669401f87d5c72578f12
+info OK: share_name='W6-Functional' auth='password'
+window OK: hwnd=1707586 pid=27568 class='Qt6110QWindowIcon' maximized=True
+login OK (lan_token cookie issued)
+font OK (48256 bytes, byte-identical to webui/dist)
+thumbnail single OK (178 bytes WEBP)
+thumbnail batch OK (12/12)
+notes/rating OK (saved via LAN, read back identical)
+live change OK (live_added.png listed in /api/files)
+close: {'input_delivery': {'entry': 'Ctrl+Q', 'stages': [{'stage': 'before_ctrl_down', 'monotonic_s': 165573.265303, 'foreground_is_target': True, 'window_visible': True, 'window_maximized': True, 'modifiers': {'Ctrl': False, 'Alt': False, 'Shift': False, 'Win': False}, 'q_was_preheld': False}, {'stage': 'after_ctrl_down_before_q', 'monotonic_s': 165573.266054, 'foreground_is_target': True, 'window_visible': True, 'window_maximized': True, 'modifiers': {'Ctrl': True, 'Alt': False, 'Shift': False, 'Win': False}}, {'stage': 'after_q_down', 'monotonic_s': 165573.266404, 'foreground_is_target': True, 'window_visible': True, 'window_maximized': True, 'modifiers': {'Ctrl': True, 'Alt': False, 'Shift': False, 'Win': False}}, {'stage': 'after_probe_key_release', 'monotonic_s': 165573.26732, 'foreground_is_target': True, 'window_visible': True, 'window_maximized': True, 'modifiers': {'Ctrl': False, 'Alt': False, 'Shift': False, 'Win': False}}], 'outcome': 'q_sent_with_target_foreground', 'released_probe_keys': {'Ctrl': True, 'Q': True}}, 'normal_exit': {'entry': 'Ctrl+Q', 'exit_code': 0}, 'hide_observation': 'not_run (use --observe-hide; diagnostic only)'}
+geometry persisted: {'window_maximized': True, 'has_geometry': True}
+AUTO-OPEN: reopening the sole seeded library card
+restart OK (window state + notes/rating persisted)
+W6 FUNCTIONAL (onedir maximized): PASS

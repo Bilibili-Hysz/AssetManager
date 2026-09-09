@@ -1,0 +1,480 @@
+{
+ "mode": "onefile",
+ "exe_sha256": "1d568fb80ef6dcb78f9d8001ea68c521367638938a3463cf2964e51960372c5a",
+ "pid": 23252,
+ "port": 5217,
+ "maximized": true,
+ "checks": {
+  "info": {
+   "share_name": "W6-Functional",
+   "auth_mode": "password",
+   "thumbnail_cache_namespace": true
+  },
+  "login": "ok",
+  "font": "48256 bytes, byte-identical",
+  "thumbnail_single": "178 bytes WEBP",
+  "thumbnail_batch": "12/12",
+  "notes_rating": "saved and read back (notes + rating=4)",
+  "live_change": "live_added.png listed",
+  "geometry_persisted": {
+   "window_maximized": true,
+   "has_geometry": true
+  }
+ },
+ "window_initial_api_precondition": {
+  "endpoint": "/api/info",
+  "status": 200
+ },
+ "window_initial": {
+  "hwnd": 3672592,
+  "pid": 45908,
+  "title": "AssetManager — C:\\Users\\86177\\AppData\\Local\\Temp\\w6-func-p5parp2n\\library",
+  "class": "Qt6110QWindowIcon",
+  "owner": 0,
+  "visible": true,
+  "enabled": true,
+  "maximized": true,
+  "minimized": false,
+  "ready_predicates": {
+   "own_process_tree": true,
+   "sole_visible_unowned_window": true,
+   "stable_hwnd_pid_title_maximized": true,
+   "stable_observations": 2
+  }
+ },
+ "close": {
+  "input_delivery": {
+   "entry": "Ctrl+Q",
+   "expected_maximized": true,
+   "stages": [
+    {
+     "stage": "before_ctrl_down",
+     "monotonic_s": 168190.031932,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "gui_thread_info": {
+      "query_success": true,
+      "target_thread": 39128,
+      "cb_size": 72,
+      "flags": 0,
+      "active": 3672592,
+      "focus": 3672592,
+      "capture": 0,
+      "menu_owner": 0,
+      "move_size": 0,
+      "caret": 0
+     },
+     "modifiers": {
+      "Ctrl": false,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     },
+     "q_was_preheld": false
+    },
+    {
+     "stage": "after_ctrl_down_before_q",
+     "monotonic_s": 168190.033046,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "gui_thread_info": {
+      "query_success": true,
+      "target_thread": 39128,
+      "cb_size": 72,
+      "flags": 0,
+      "active": 3672592,
+      "focus": 3672592,
+      "capture": 0,
+      "menu_owner": 0,
+      "move_size": 0,
+      "caret": 0
+     },
+     "modifiers": {
+      "Ctrl": true,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     }
+    },
+    {
+     "stage": "after_q_down",
+     "monotonic_s": 168190.033739,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "gui_thread_info": {
+      "query_success": true,
+      "target_thread": 39128,
+      "cb_size": 72,
+      "flags": 0,
+      "active": 3672592,
+      "focus": 3672592,
+      "capture": 0,
+      "menu_owner": 0,
+      "move_size": 0,
+      "caret": 0
+     },
+     "modifiers": {
+      "Ctrl": true,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     }
+    },
+    {
+     "stage": "after_probe_key_release",
+     "monotonic_s": 168190.035123,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "gui_thread_info": {
+      "query_success": true,
+      "target_thread": 39128,
+      "cb_size": 72,
+      "flags": 0,
+      "active": 3672592,
+      "focus": 3672592,
+      "capture": 0,
+      "menu_owner": 0,
+      "move_size": 0,
+      "caret": 0
+     },
+     "modifiers": {
+      "Ctrl": false,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     }
+    }
+   ],
+   "outcome": "q_sent_with_target_foreground",
+   "released_probe_keys": {
+    "Ctrl": true,
+    "Q": true
+   }
+  },
+  "normal_exit": {
+   "entry": "Ctrl+Q",
+   "exit_code": 0
+  },
+  "hide_observation": "not_run (use --observe-hide; diagnostic only)"
+ },
+ "restart": {
+  "pid": 54204,
+  "window_api_precondition": {
+   "endpoint": "/api/info",
+   "status": 200
+  },
+  "window": {
+   "hwnd": 1451318,
+   "pid": 49256,
+   "title": "AssetManager",
+   "class": "Qt6110QWindowIcon",
+   "owner": 0,
+   "visible": true,
+   "enabled": true,
+   "maximized": true,
+   "minimized": false,
+   "ready_predicates": {
+    "own_process_tree": true,
+    "sole_visible_unowned_window": true,
+    "stable_hwnd_pid_title_maximized": true,
+    "stable_observations": 2
+   }
+  },
+  "notes_rating": {
+   "path": "pkg_000.png",
+   "tags": [],
+   "notes": "W6 functional note",
+   "urls": [],
+   "rating": 4
+  },
+  "input_delivery": {
+   "entry": "Ctrl+Q",
+   "expected_maximized": true,
+   "stages": [
+    {
+     "stage": "before_ctrl_down",
+     "monotonic_s": 168203.330975,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "gui_thread_info": {
+      "query_success": true,
+      "target_thread": 53232,
+      "cb_size": 72,
+      "flags": 0,
+      "active": 1451318,
+      "focus": 1451318,
+      "capture": 0,
+      "menu_owner": 0,
+      "move_size": 0,
+      "caret": 0
+     },
+     "modifiers": {
+      "Ctrl": false,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     },
+     "q_was_preheld": false
+    },
+    {
+     "stage": "after_ctrl_down_before_q",
+     "monotonic_s": 168203.335121,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "gui_thread_info": {
+      "query_success": true,
+      "target_thread": 53232,
+      "cb_size": 72,
+      "flags": 0,
+      "active": 1451318,
+      "focus": 1451318,
+      "capture": 0,
+      "menu_owner": 0,
+      "move_size": 0,
+      "caret": 0
+     },
+     "modifiers": {
+      "Ctrl": true,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     }
+    },
+    {
+     "stage": "after_q_down",
+     "monotonic_s": 168203.335802,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "gui_thread_info": {
+      "query_success": true,
+      "target_thread": 53232,
+      "cb_size": 72,
+      "flags": 0,
+      "active": 1451318,
+      "focus": 1451318,
+      "capture": 0,
+      "menu_owner": 0,
+      "move_size": 0,
+      "caret": 0
+     },
+     "modifiers": {
+      "Ctrl": true,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     }
+    },
+    {
+     "stage": "after_probe_key_release",
+     "monotonic_s": 168203.336985,
+     "foreground_is_target": true,
+     "window_visible": true,
+     "window_enabled": true,
+     "window_maximized": true,
+     "window_minimized": false,
+     "gui_thread_info": {
+      "query_success": true,
+      "target_thread": 53232,
+      "cb_size": 72,
+      "flags": 0,
+      "active": 1451318,
+      "focus": 1451318,
+      "capture": 0,
+      "menu_owner": 0,
+      "move_size": 0,
+      "caret": 0
+     },
+     "modifiers": {
+      "Ctrl": false,
+      "Alt": false,
+      "Shift": false,
+      "Win": false
+     }
+    }
+   ],
+   "outcome": "q_sent_with_target_foreground",
+   "released_probe_keys": {
+    "Ctrl": true,
+    "Q": true
+   }
+  },
+  "normal_exit_timeout_observation": {
+   "process_poll": null,
+   "focused_native_handle": 1451318,
+   "window_visible": true,
+   "window_enabled": true,
+   "window_maximized": false,
+   "window_minimized": true,
+   "foreground_is_target": false,
+   "foreground_pid": 4212,
+   "gui_thread_info": {
+    "query_success": true,
+    "target_thread": 53232,
+    "cb_size": 72,
+    "flags": 0,
+    "active": 0,
+    "focus": 0,
+    "capture": 0,
+    "menu_owner": 0,
+    "move_size": 0,
+    "caret": 0
+   },
+   "own_process_windows": [
+    {
+     "hwnd": 5446110,
+     "pid": 49256,
+     "title": "_q_titlebar",
+     "class": "_q_titlebar",
+     "owner": 0,
+     "visible": false,
+     "enabled": true,
+     "maximized": false,
+     "minimized": false
+    },
+    {
+     "hwnd": 2958744,
+     "pid": 49256,
+     "title": "__wglDummyWindowFodder",
+     "class": "NVOpenGLPbuffer",
+     "owner": 0,
+     "visible": false,
+     "enabled": true,
+     "maximized": false,
+     "minimized": false
+    },
+    {
+     "hwnd": 3546004,
+     "pid": 49256,
+     "title": "NVOGLDC invisible",
+     "class": "NVOpenGLPbuffer",
+     "owner": 0,
+     "visible": false,
+     "enabled": true,
+     "maximized": false,
+     "minimized": false
+    },
+    {
+     "hwnd": 5053640,
+     "pid": 49256,
+     "title": "QTrayIconMessageWindow",
+     "class": "Qt6110TrayIconMessageWindowClass",
+     "owner": 0,
+     "visible": false,
+     "enabled": true,
+     "maximized": false,
+     "minimized": false
+    },
+    {
+     "hwnd": 2303202,
+     "pid": 54204,
+     "title": "PyInstaller Onefile Hidden Window",
+     "class": "PyInstallerOnefileHiddenWindow",
+     "owner": 0,
+     "visible": false,
+     "enabled": true,
+     "maximized": false,
+     "minimized": false
+    },
+    {
+     "hwnd": 1451318,
+     "pid": 49256,
+     "title": "AssetManager",
+     "class": "Qt6110QWindowIcon",
+     "owner": 0,
+     "visible": true,
+     "enabled": true,
+     "maximized": false,
+     "minimized": true
+    },
+    {
+     "hwnd": 3738128,
+     "pid": 49256,
+     "title": "Default IME",
+     "class": "IME",
+     "owner": 2958744,
+     "visible": false,
+     "enabled": false,
+     "maximized": false,
+     "minimized": false
+    },
+    {
+     "hwnd": 2696596,
+     "pid": 49256,
+     "title": "Default IME",
+     "class": "IME",
+     "owner": 3546004,
+     "visible": false,
+     "enabled": false,
+     "maximized": false,
+     "minimized": false
+    },
+    {
+     "hwnd": 2499838,
+     "pid": 54204,
+     "title": "Default IME",
+     "class": "IME",
+     "owner": 2303202,
+     "visible": false,
+     "enabled": false,
+     "maximized": false,
+     "minimized": false
+    },
+    {
+     "hwnd": 2041054,
+     "pid": 49256,
+     "title": "MSCTFIME UI",
+     "class": "MSCTFIME UI",
+     "owner": 1582402,
+     "visible": false,
+     "enabled": false,
+     "maximized": false,
+     "minimized": false
+    },
+    {
+     "hwnd": 1582402,
+     "pid": 49256,
+     "title": "Default IME",
+     "class": "IME",
+     "owner": 1451318,
+     "visible": false,
+     "enabled": false,
+     "maximized": false,
+     "minimized": false
+    }
+   ],
+   "api_info_status": 200
+  }
+ },
+ "invalid_run_cleanup": [
+  {
+   "process": "restart",
+   "pid": 54204,
+   "returncode": 0
+  }
+ ],
+ "valid": false,
+ "failures": [
+  "normal Ctrl+Q exit did not complete within 30.0s"
+ ]
+}

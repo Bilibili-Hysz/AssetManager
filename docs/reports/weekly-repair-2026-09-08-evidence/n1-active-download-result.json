@@ -1,0 +1,21 @@
+{
+  "download": {
+    "barrier_ready": true,
+    "bytes_consumed": 1048576,
+    "content_length": 201326592,
+    "elapsed_s": 18.38,
+    "error": "ConnectionResetError: [WinError 10054] 远程主机强迫关闭了一个现有的连接。",
+    "expected_source_bytes": 201326592,
+    "http_status": 200,
+    "initial_bytes": 1048576,
+    "terminal": "disconnect"
+  },
+  "exit": {
+    "code": 0,
+    "elapsed_s": 18.34,
+    "within_60s": true
+  },
+  "reason": "exit code, partial-transfer barrier, abort, and worker termination verified",
+  "verdict": "PASS",
+  "worker_terminated": true
+}

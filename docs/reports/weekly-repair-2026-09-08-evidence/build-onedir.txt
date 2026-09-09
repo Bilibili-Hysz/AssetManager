@@ -1,0 +1,122 @@
+injected_runtime_paths 0
+725 INFO: PyInstaller: 6.19.0, contrib hooks: 2026.4
+725 INFO: Python: 3.14.3
+775 INFO: Platform: Windows-11-10.0.26220-SP0
+775 INFO: Python environment: C:\Users\86177\AppData\Local\Programs\Python\Python314
+808 INFO: Removing temporary files and cleaning cache in C:\Users\86177\AppData\Local\pyinstaller
+816 INFO: Module search paths (PYTHONPATH):
+['',
+ 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\python314.zip',
+ 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\DLLs',
+ 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib',
+ 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314',
+ 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages',
+ 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\win32',
+ 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\win32\\lib',
+ 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\pythonwin',
+ 'D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\final-repair-103f119\\source']
+3392 INFO: Appending 'datas' from .spec
+3405 INFO: checking Analysis
+3405 INFO: Building Analysis because Analysis-00.toc is non existent
+3405 INFO: Looking for Python shared library...
+3405 INFO: Using Python shared library: C:\Users\86177\AppData\Local\Programs\Python\Python314\python314.dll
+3405 INFO: Running Analysis Analysis-00.toc
+3405 INFO: Target bytecode optimization level: 0
+3405 INFO: Initializing module dependency graph...
+3412 INFO: Initializing module graph hook caches...
+3532 INFO: Analyzing modules for base_library.zip ...
+9094 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+11499 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+12676 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+12717 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+21220 INFO: Caching module dependency graph...
+21380 INFO: Analyzing D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\final-repair-103f119\source\run.py
+21407 INFO: Processing standard module hook 'hook-PySide6.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+22282 INFO: Processing standard module hook 'hook-shiboken6.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+22975 INFO: Processing standard module hook 'hook-PySide6.QtNetwork.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+29627 INFO: Processing standard module hook 'hook-PySide6.QtCore.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+39002 INFO: Processing standard module hook 'hook-PySide6.QtWidgets.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+49156 INFO: Processing standard module hook 'hook-PySide6.QtGui.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+107626 INFO: Processing standard module hook 'hook-PySide6.QtSvg.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+109498 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+109608 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+109638 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+109967 INFO: Processing standard module hook 'hook-pythoncom.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+110478 INFO: Processing standard module hook 'hook-pywintypes.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+110895 INFO: Processing pre-safe-import-module hook 'hook-win32com.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\pre_safe_import_module'
+112067 INFO: Processing standard module hook 'hook-win32com.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+113906 INFO: Processing pre-safe-import-module hook 'hook-gi.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+114131 INFO: Processing standard module hook 'hook-sqlite3.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+118248 INFO: Processing standard module hook 'hook-PIL.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+118528 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+120062 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+120178 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+120913 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+123953 INFO: Processing standard module hook 'hook-urllib3.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+124248 INFO: Processing pre-safe-import-module hook 'hook-backports.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+124255 INFO: SetuptoolsInfo: initializing cached setuptools info...
+127670 INFO: Setuptools: 'backports' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.backports'!
+127706 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+128438 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+132664 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+133156 INFO: Processing standard module hook 'hook-cryptography.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+138238 INFO: hook-cryptography: cryptography does not seem to be using dynamically linked OpenSSL.
+139736 INFO: Processing standard module hook 'hook-certifi.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+142455 INFO: Processing standard module hook 'hook-PySide6.QtOpenGLWidgets.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+152304 INFO: Processing standard module hook 'hook-PySide6.QtOpenGL.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+160988 INFO: Processing pre-safe-import-module hook 'hook-importlib_metadata.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+160991 INFO: Setuptools: 'importlib_metadata' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.importlib_metadata'!
+162013 INFO: Processing standard module hook 'hook-pydantic.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+164778 INFO: Processing standard module hook 'hook-rich.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+171867 INFO: Processing standard module hook 'hook-zoneinfo.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+184778 INFO: Processing pre-safe-import-module hook 'hook-distutils.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+190640 INFO: Analyzing hidden import 'PIL._webp'
+190650 INFO: Analyzing hidden import 'AssetsManager.domain.library'
+190657 INFO: Processing module hooks (post-graph stage)...
+191265 INFO: Processing pre-safe-import-module hook 'hook-tomli.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+191269 INFO: Setuptools: 'tomli' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.tomli'!
+192661 WARNING: Hidden import "tzdata" not found!
+193795 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+194142 INFO: Performing binary vs. data reclassification (195 entries)
+195323 INFO: Looking for ctypes DLLs
+195637 INFO: Analyzing run-time hooks ...
+195646 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+195665 INFO: Including run-time hook 'pyi_rth_cryptography_openssl.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
+195670 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+195682 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+195688 INFO: Including run-time hook 'pyi_rth_pyside6.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+195706 INFO: Processing pre-find-module-path hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+195730 INFO: Processing standard module hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+195765 INFO: Including run-time hook 'pyi_rth_pywintypes.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
+195769 INFO: Including run-time hook 'pyi_rth_pythoncom.py' from 'C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
+195822 INFO: Creating base_library.zip...
+195860 INFO: Looking for dynamic libraries
+205233 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\shiboken6']
+205233 INFO: Extra DLL search directories (PATH): ['C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PySide6']
+215605 INFO: Warnings written to D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\final-repair-103f119\source\artifacts\package-build\AssetManager\warn-AssetManager.txt
+215825 INFO: Graph cross-reference written to D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\final-repair-103f119\source\artifacts\package-build\AssetManager\xref-AssetManager.html
+215972 INFO: checking PYZ
+215973 INFO: Building PYZ because PYZ-00.toc is non existent
+215973 INFO: Building PYZ (ZlibArchive) D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\final-repair-103f119\source\artifacts\package-build\AssetManager\PYZ-00.pyz
+217188 INFO: Building PYZ (ZlibArchive) D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\final-repair-103f119\source\artifacts\package-build\AssetManager\PYZ-00.pyz completed successfully.
+217237 INFO: checking PKG
+217237 INFO: Building PKG because PKG-00.toc is non existent
+217237 INFO: Building PKG (CArchive) AssetManager.pkg
+217319 INFO: Building PKG (CArchive) AssetManager.pkg completed successfully.
+217321 INFO: Bootloader C:\Users\86177\AppData\Local\Programs\Python\Python314\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+217322 INFO: checking EXE
+217322 INFO: Building EXE because EXE-00.toc is non existent
+217322 INFO: Building EXE from EXE-00.toc
+217323 INFO: Copying bootloader EXE to D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\final-repair-103f119\source\artifacts\package-build\AssetManager\AssetManager.exe
+217505 INFO: Copying icon to EXE
+217625 INFO: Copying version information to EXE
+217752 INFO: Copying 0 resources to EXE
+217752 INFO: Embedding manifest in EXE
+217862 INFO: Appending PKG archive to EXE
+217975 INFO: Fixing EXE headers
+219177 INFO: Building EXE from EXE-00.toc completed successfully.
+219182 INFO: checking COLLECT
+219182 INFO: Building COLLECT because COLLECT-00.toc is non existent
+219183 INFO: Building COLLECT COLLECT-00.toc
+221280 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+221291 INFO: Build complete! The results are available in: D:\~Vibe-Coding\Projects\AssetsManager_old-bak\.pytest-tmp-lead-snapshots\final-repair-103f119\source\artifacts\candidate

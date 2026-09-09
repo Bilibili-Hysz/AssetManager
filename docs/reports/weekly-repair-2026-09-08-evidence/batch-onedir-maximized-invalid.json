@@ -1,0 +1,59 @@
+{
+ "mode": "onedir",
+ "exe_sha256": "6afcf6635c59119f321e9e441972bb991f3cb3678110669401f87d5c72578f12",
+ "pid": 52312,
+ "port": 7884,
+ "maximized": true,
+ "checks": {
+  "info": {
+   "share_name": "W6-Functional",
+   "auth_mode": "password",
+   "thumbnail_cache_namespace": true
+  },
+  "login": "ok",
+  "font": "48256 bytes, byte-identical",
+  "thumbnail_single": "178 bytes WEBP",
+  "thumbnail_batch": "12/12",
+  "notes_rating": "saved and read back (notes + rating=4)",
+  "live_change": "live_added.png listed"
+ },
+ "window_initial_api_precondition": {
+  "endpoint": "/api/info",
+  "status": 200
+ },
+ "window_initial": {
+  "hwnd": 38867196,
+  "pid": 52312,
+  "title": "AssetManager — C:\\Users\\86177\\AppData\\Local\\Temp\\w6-func-ioe2ff7f\\library",
+  "class": "Qt6110QWindowIcon",
+  "owner": 0,
+  "visible": true,
+  "maximized": true,
+  "ready_predicates": {
+   "own_process_tree": true,
+   "sole_visible_unowned_window": true,
+   "stable_hwnd_pid_title_maximized": true,
+   "stable_observations": 2
+  }
+ },
+ "close": {
+  "normal_exit_timeout_observation": {
+   "process_poll": null,
+   "window_visible": true,
+   "window_maximized": false,
+   "foreground_is_target": false,
+   "api_info_status": 200
+  }
+ },
+ "invalid_run_cleanup": [
+  {
+   "process": "initial",
+   "pid": 52312,
+   "returncode": 0
+  }
+ ],
+ "valid": false,
+ "failures": [
+  "normal Ctrl+Q exit did not complete within 30.0s"
+ ]
+}

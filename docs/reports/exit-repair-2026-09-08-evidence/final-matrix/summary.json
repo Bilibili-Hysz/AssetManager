@@ -1,0 +1,39 @@
+[
+  {
+    "case": "onedir-normal",
+    "command": [
+      "C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\python.exe",
+      "-u",
+      "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\exit-repair-20260908\\source\\scripts\\perf\\w6_package_functional.py",
+      "--exe",
+      "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\artifacts\\weekly-repair-2026-09-08-103f119\\AssetManager\\AssetManager.exe",
+      "--mode",
+      "onedir",
+      "--auto-open"
+    ],
+    "exit_code": 0,
+    "elapsed_s": 26.05,
+    "helper_sha256": "c9ff7d2d301a4b9dd2961b30331370055849395bb77982e3575c53a421f05b7e",
+    "exe_sha256": "6afcf6635c59119f321e9e441972bb991f3cb3678110669401f87d5c72578f12",
+    "valid": true
+  },
+  {
+    "case": "onedir-maximized",
+    "command": [
+      "C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\python.exe",
+      "-u",
+      "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\exit-repair-20260908\\source\\scripts\\perf\\w6_package_functional.py",
+      "--exe",
+      "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\artifacts\\weekly-repair-2026-09-08-103f119\\AssetManager\\AssetManager.exe",
+      "--mode",
+      "onedir",
+      "--auto-open",
+      "--maximized"
+    ],
+    "exit_code": 1,
+    "elapsed_s": 43.99,
+    "helper_sha256": "c9ff7d2d301a4b9dd2961b30331370055849395bb77982e3575c53a421f05b7e",
+    "exe_sha256": "6afcf6635c59119f321e9e441972bb991f3cb3678110669401f87d5c72578f12",
+    "valid": false
+  }
+]

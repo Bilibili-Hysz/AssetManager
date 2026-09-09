@@ -1,0 +1,12 @@
+{
+  "candidate": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak/artifacts/weekly-repair-2026-09-08-103f119/AssetManager.exe",
+  "exit_code": 1,
+  "observer_files": {
+    "observer-full-history.py": "0491012f10825fc9f07c572edd7b8a06db5c009c21b5974d5bd8093e375730f8",
+    "observer-lazy-wrappers.py": "5c84cf7faf7734c38dfe10405e3cdb911c2d44cfda80c72b7ba0937a0752e8cb",
+    "observer-sparse-early-import.py": "2756ec043db63c8d7a4fb9e6cc335443bfa7541b93a390f8ede7b05afdd09389",
+    "observer.py": "71f0cae073d9df42cb569d97fed7ff692c4c2e96dbe90fb2df140eb75207a9eb",
+    "plugin.json": "0a5c28b872de61946058288bc515581708a24a759506dc62ce5d686c47c85e26"
+  },
+  "w6_sha256": "42e7af34ee3e7914a84e0c7e897961d3b4ba4267fc726ca89a013072575e760e"
+}
