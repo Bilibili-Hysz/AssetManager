@@ -1,0 +1,597 @@
+{
+ "batch": "batch-02-matrix",
+ "preregistration": "../batch-01-prep/preregistration.md（已获主代理批准）",
+ "blocks_executed": "1→2→3→4（预登记顺序）",
+ "total_cycles": 12,
+ "total_exits": 24,
+ "stop_condition_triggered": null,
+ "budget": {
+  "limit_min": 90,
+  "started_epoch_ms": 1788912397350,
+  "elapsed_min_at_last_cycle_end": 42.8
+ },
+ "per_condition": {
+  "o0": {
+   "cycles": 4,
+   "pass": 4,
+   "fail": 0,
+   "invalid": 0
+  },
+  "o1": {
+   "cycles": 4,
+   "pass": 4,
+   "fail": 0,
+   "invalid": 0
+  },
+  "o2": {
+   "cycles": 4,
+   "pass": 4,
+   "fail": 0,
+   "invalid": 0
+  }
+ },
+ "cycles": [
+  {
+   "cycle": 1,
+   "block": 1,
+   "condition": "o0",
+   "status": "PASS",
+   "reasons": [
+    "driver exit 0; both Ctrl+Q exits code 0"
+   ],
+   "driver_exit": 0,
+   "exit_codes": [
+    0,
+    0
+   ],
+   "evidence_dir": "docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-02-matrix\\runs\\cycle-01-o0",
+   "log_completeness": "not_applicable_by_design",
+   "note_o0": "O0: no in-app logging by design; driver-side 4-stage input sampling in driver-stdout.log is the input-receipt evidence",
+   "foreground_changed_during_cycle": false,
+   "foreground_before": {
+    "foreground_pid": 16228,
+    "foreground_image": "ChatGPT.exe",
+    "foreground_title": "ChatGPT"
+   },
+   "budget_elapsed_min_at_cycle_end": 0.9
+  },
+  {
+   "cycle": 2,
+   "block": 1,
+   "condition": "o1",
+   "status": "PASS",
+   "reasons": [
+    "driver exit 0; both Ctrl+Q exits code 0"
+   ],
+   "driver_exit": 0,
+   "exit_codes": [
+    0,
+    0
+   ],
+   "evidence_dir": "docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-02-matrix\\runs\\cycle-02-o1",
+   "phases": [
+    {
+     "pid": 4688,
+     "merged_count": 238,
+     "seq_continuous": true,
+     "dropped": 0,
+     "error_count": 0,
+     "observer_terminated_cleanly": true,
+     "exported": true
+    },
+    {
+     "pid": 47480,
+     "merged_count": 229,
+     "seq_continuous": true,
+     "dropped": 0,
+     "error_count": 0,
+     "observer_terminated_cleanly": true,
+     "exported": true
+    }
+   ],
+   "chain_all_phases": {
+    "phases_with_chain": 2,
+    "qt_key_or_override_all": true,
+    "qt_shortcut_all": true,
+    "native_ctrl_q_all": true,
+    "request_exit_enter_all": true,
+    "exit_call_methods": [
+     "MainWindow._shutdown_resources",
+     "MainWindow.closeEvent",
+     "MainWindow.request_exit"
+    ],
+    "application_signals": [
+     "aboutToQuit",
+     "lastWindowClosed"
+    ]
+   },
+   "foreground_changed_during_cycle": false,
+   "foreground_before": {
+    "foreground_pid": 16228,
+    "foreground_image": "ChatGPT.exe",
+    "foreground_title": "ChatGPT"
+   },
+   "budget_elapsed_min_at_cycle_end": 4.9
+  },
+  {
+   "cycle": 3,
+   "block": 1,
+   "condition": "o2",
+   "status": "PASS",
+   "reasons": [
+    "driver exit 0; both Ctrl+Q exits code 0"
+   ],
+   "driver_exit": 0,
+   "exit_codes": [
+    0,
+    0
+   ],
+   "evidence_dir": "docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-02-matrix\\runs\\cycle-03-o2",
+   "phases": [
+    {
+     "pid": 31956,
+     "merged_count": 256,
+     "seq_continuous": true,
+     "dropped": 0,
+     "error_count": 0,
+     "observer_terminated_cleanly": false,
+     "exported": null
+    },
+    {
+     "pid": 32780,
+     "merged_count": 265,
+     "seq_continuous": true,
+     "dropped": 0,
+     "error_count": 0,
+     "observer_terminated_cleanly": false,
+     "exported": null
+    }
+   ],
+   "chain_all_phases": {
+    "phases_with_chain": 2,
+    "qt_key_or_override_all": true,
+    "qt_shortcut_all": true,
+    "native_ctrl_q_all": true,
+    "request_exit_enter_all": true,
+    "exit_call_methods": [
+     "MainWindow._shutdown_resources",
+     "MainWindow.closeEvent",
+     "MainWindow.request_exit"
+    ],
+    "application_signals": [
+     "aboutToQuit",
+     "lastWindowClosed"
+    ]
+   },
+   "foreground_changed_during_cycle": false,
+   "foreground_before": {
+    "foreground_pid": 16228,
+    "foreground_image": "ChatGPT.exe",
+    "foreground_title": "ChatGPT"
+   },
+   "budget_elapsed_min_at_cycle_end": 10.7
+  },
+  {
+   "cycle": 4,
+   "block": 2,
+   "condition": "o1",
+   "status": "PASS",
+   "reasons": [
+    "driver exit 0; both Ctrl+Q exits code 0"
+   ],
+   "driver_exit": 0,
+   "exit_codes": [
+    0,
+    0
+   ],
+   "evidence_dir": "docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-02-matrix\\runs\\cycle-04-o1",
+   "phases": [
+    {
+     "pid": 7200,
+     "merged_count": 238,
+     "seq_continuous": true,
+     "dropped": 0,
+     "error_count": 0,
+     "observer_terminated_cleanly": true,
+     "exported": true
+    },
+    {
+     "pid": 12724,
+     "merged_count": 222,
+     "seq_continuous": true,
+     "dropped": 0,
+     "error_count": 0,
+     "observer_terminated_cleanly": true,
+     "exported": true
+    }
+   ],
+   "chain_all_phases": {
+    "phases_with_chain": 2,
+    "qt_key_or_override_all": true,
+    "qt_shortcut_all": true,
+    "native_ctrl_q_all": true,
+    "request_exit_enter_all": true,
+    "exit_call_methods": [
+     "MainWindow._shutdown_resources",
+     "MainWindow.closeEvent",
+     "MainWindow.request_exit"
+    ],
+    "application_signals": [
+     "aboutToQuit",
+     "lastWindowClosed"
+    ]
+   },
+   "foreground_changed_during_cycle": false,
+   "foreground_before": {
+    "foreground_pid": 16228,
+    "foreground_image": "ChatGPT.exe",
+    "foreground_title": "ChatGPT"
+   },
+   "budget_elapsed_min_at_cycle_end": 13.6
+  },
+  {
+   "cycle": 5,
+   "block": 2,
+   "condition": "o2",
+   "status": "PASS",
+   "reasons": [
+    "driver exit 0; both Ctrl+Q exits code 0"
+   ],
+   "driver_exit": 0,
+   "exit_codes": [
+    0,
+    0
+   ],
+   "evidence_dir": "docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-02-matrix\\runs\\cycle-05-o2",
+   "phases": [
+    {
+     "pid": 26212,
+     "merged_count": 249,
+     "seq_continuous": true,
+     "dropped": 0,
+     "error_count": 0,
+     "observer_terminated_cleanly": false,
+     "exported": null
+    },
+    {
+     "pid": 30280,
+     "merged_count": 265,
+     "seq_continuous": true,
+     "dropped": 0,
+     "error_count": 0,
+     "observer_terminated_cleanly": false,
+     "exported": null
+    }
+   ],
+   "chain_all_phases": {
+    "phases_with_chain": 2,
+    "qt_key_or_override_all": true,
+    "qt_shortcut_all": true,
+    "native_ctrl_q_all": true,
+    "request_exit_enter_all": true,
+    "exit_call_methods": [
+     "MainWindow._shutdown_resources",
+     "MainWindow.closeEvent",
+     "MainWindow.request_exit"
+    ],
+    "application_signals": [
+     "aboutToQuit",
+     "lastWindowClosed"
+    ]
+   },
+   "foreground_changed_during_cycle": false,
+   "foreground_before": {
+    "foreground_pid": 16228,
+    "foreground_image": "ChatGPT.exe",
+    "foreground_title": "ChatGPT"
+   },
+   "budget_elapsed_min_at_cycle_end": 16.2
+  },
+  {
+   "cycle": 6,
+   "block": 2,
+   "condition": "o0",
+   "status": "PASS",
+   "reasons": [
+    "driver exit 0; both Ctrl+Q exits code 0"
+   ],
+   "driver_exit": 0,
+   "exit_codes": [
+    0,
+    0
+   ],
+   "evidence_dir": "docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-02-matrix\\runs\\cycle-06-o0",
+   "log_completeness": "not_applicable_by_design",
+   "note_o0": "O0: no in-app logging by design; driver-side 4-stage input sampling in driver-stdout.log is the input-receipt evidence",
+   "foreground_changed_during_cycle": false,
+   "foreground_before": {
+    "foreground_pid": 16228,
+    "foreground_image": "ChatGPT.exe",
+    "foreground_title": "ChatGPT"
+   },
+   "budget_elapsed_min_at_cycle_end": 18.3
+  },
+  {
+   "cycle": 7,
+   "block": 3,
+   "condition": "o2",
+   "status": "PASS",
+   "reasons": [
+    "driver exit 0; both Ctrl+Q exits code 0"
+   ],
+   "driver_exit": 0,
+   "exit_codes": [
+    0,
+    0
+   ],
+   "evidence_dir": "docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-02-matrix\\runs\\cycle-07-o2",
+   "phases": [
+    {
+     "pid": 32816,
+     "merged_count": 249,
+     "seq_continuous": true,
+     "dropped": 0,
+     "error_count": 0,
+     "observer_terminated_cleanly": false,
+     "exported": null
+    },
+    {
+     "pid": 34716,
+     "merged_count": 265,
+     "seq_continuous": true,
+     "dropped": 0,
+     "error_count": 0,
+     "observer_terminated_cleanly": false,
+     "exported": null
+    }
+   ],
+   "chain_all_phases": {
+    "phases_with_chain": 2,
+    "qt_key_or_override_all": true,
+    "qt_shortcut_all": true,
+    "native_ctrl_q_all": true,
+    "request_exit_enter_all": true,
+    "exit_call_methods": [
+     "MainWindow._shutdown_resources",
+     "MainWindow.closeEvent",
+     "MainWindow.request_exit"
+    ],
+    "application_signals": [
+     "aboutToQuit",
+     "lastWindowClosed"
+    ]
+   },
+   "foreground_changed_during_cycle": false,
+   "foreground_before": {
+    "foreground_pid": 16228,
+    "foreground_image": "ChatGPT.exe",
+    "foreground_title": "ChatGPT"
+   },
+   "budget_elapsed_min_at_cycle_end": 21.1
+  },
+  {
+   "cycle": 8,
+   "block": 3,
+   "condition": "o0",
+   "status": "PASS",
+   "reasons": [
+    "driver exit 0; both Ctrl+Q exits code 0"
+   ],
+   "driver_exit": 0,
+   "exit_codes": [
+    0,
+    0
+   ],
+   "evidence_dir": "docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-02-matrix\\runs\\cycle-08-o0",
+   "log_completeness": "not_applicable_by_design",
+   "note_o0": "O0: no in-app logging by design; driver-side 4-stage input sampling in driver-stdout.log is the input-receipt evidence",
+   "foreground_changed_during_cycle": false,
+   "foreground_before": {
+    "foreground_pid": 16228,
+    "foreground_image": "ChatGPT.exe",
+    "foreground_title": "ChatGPT"
+   },
+   "budget_elapsed_min_at_cycle_end": 24.0
+  },
+  {
+   "cycle": 9,
+   "block": 3,
+   "condition": "o1",
+   "status": "PASS",
+   "reasons": [
+    "driver exit 0; both Ctrl+Q exits code 0"
+   ],
+   "driver_exit": 0,
+   "exit_codes": [
+    0,
+    0
+   ],
+   "evidence_dir": "docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-02-matrix\\runs\\cycle-09-o1",
+   "phases": [
+    {
+     "pid": 31784,
+     "merged_count": 238,
+     "seq_continuous": true,
+     "dropped": 0,
+     "error_count": 0,
+     "observer_terminated_cleanly": true,
+     "exported": true
+    },
+    {
+     "pid": 47936,
+     "merged_count": 222,
+     "seq_continuous": true,
+     "dropped": 0,
+     "error_count": 0,
+     "observer_terminated_cleanly": true,
+     "exported": true
+    }
+   ],
+   "chain_all_phases": {
+    "phases_with_chain": 2,
+    "qt_key_or_override_all": true,
+    "qt_shortcut_all": true,
+    "native_ctrl_q_all": true,
+    "request_exit_enter_all": true,
+    "exit_call_methods": [
+     "MainWindow._shutdown_resources",
+     "MainWindow.closeEvent",
+     "MainWindow.request_exit"
+    ],
+    "application_signals": [
+     "aboutToQuit",
+     "lastWindowClosed"
+    ]
+   },
+   "foreground_changed_during_cycle": false,
+   "foreground_before": {
+    "foreground_pid": 16228,
+    "foreground_image": "ChatGPT.exe",
+    "foreground_title": "ChatGPT"
+   },
+   "budget_elapsed_min_at_cycle_end": 27.4
+  },
+  {
+   "cycle": 10,
+   "block": 4,
+   "condition": "o0",
+   "status": "PASS",
+   "reasons": [
+    "driver exit 0; both Ctrl+Q exits code 0"
+   ],
+   "driver_exit": 0,
+   "exit_codes": [
+    0,
+    0
+   ],
+   "evidence_dir": "docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-02-matrix\\runs\\cycle-10-o0",
+   "log_completeness": "not_applicable_by_design",
+   "note_o0": "O0: no in-app logging by design; driver-side 4-stage input sampling in driver-stdout.log is the input-receipt evidence",
+   "foreground_changed_during_cycle": false,
+   "foreground_before": {
+    "foreground_pid": 16228,
+    "foreground_image": "ChatGPT.exe",
+    "foreground_title": "ChatGPT"
+   },
+   "budget_elapsed_min_at_cycle_end": 33.1
+  },
+  {
+   "cycle": 11,
+   "block": 4,
+   "condition": "o2",
+   "status": "PASS",
+   "reasons": [
+    "driver exit 0; both Ctrl+Q exits code 0"
+   ],
+   "driver_exit": 0,
+   "exit_codes": [
+    0,
+    0
+   ],
+   "evidence_dir": "docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-02-matrix\\runs\\cycle-11-o2",
+   "phases": [
+    {
+     "pid": 13208,
+     "merged_count": 265,
+     "seq_continuous": true,
+     "dropped": 0,
+     "error_count": 0,
+     "observer_terminated_cleanly": false,
+     "exported": null
+    },
+    {
+     "pid": 43200,
+     "merged_count": 256,
+     "seq_continuous": true,
+     "dropped": 0,
+     "error_count": 0,
+     "observer_terminated_cleanly": false,
+     "exported": null
+    }
+   ],
+   "chain_all_phases": {
+    "phases_with_chain": 2,
+    "qt_key_or_override_all": true,
+    "qt_shortcut_all": true,
+    "native_ctrl_q_all": true,
+    "request_exit_enter_all": true,
+    "exit_call_methods": [
+     "MainWindow._shutdown_resources",
+     "MainWindow.closeEvent",
+     "MainWindow.request_exit"
+    ],
+    "application_signals": [
+     "aboutToQuit",
+     "lastWindowClosed"
+    ]
+   },
+   "foreground_changed_during_cycle": false,
+   "foreground_before": {
+    "foreground_pid": 16228,
+    "foreground_image": "ChatGPT.exe",
+    "foreground_title": "ChatGPT"
+   },
+   "budget_elapsed_min_at_cycle_end": 37.3
+  },
+  {
+   "cycle": 12,
+   "block": 4,
+   "condition": "o1",
+   "status": "PASS",
+   "reasons": [
+    "driver exit 0; both Ctrl+Q exits code 0"
+   ],
+   "driver_exit": 0,
+   "exit_codes": [
+    0,
+    0
+   ],
+   "evidence_dir": "docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-02-matrix\\runs\\cycle-12-o1",
+   "phases": [
+    {
+     "pid": 45124,
+     "merged_count": 238,
+     "seq_continuous": true,
+     "dropped": 0,
+     "error_count": 0,
+     "observer_terminated_cleanly": true,
+     "exported": true
+    },
+    {
+     "pid": 51832,
+     "merged_count": 229,
+     "seq_continuous": true,
+     "dropped": 0,
+     "error_count": 0,
+     "observer_terminated_cleanly": true,
+     "exported": true
+    }
+   ],
+   "chain_all_phases": {
+    "phases_with_chain": 2,
+    "qt_key_or_override_all": true,
+    "qt_shortcut_all": true,
+    "native_ctrl_q_all": true,
+    "request_exit_enter_all": true,
+    "exit_call_methods": [
+     "MainWindow._shutdown_resources",
+     "MainWindow.closeEvent",
+     "MainWindow.request_exit"
+    ],
+    "application_signals": [
+     "aboutToQuit",
+     "lastWindowClosed"
+    ]
+   },
+   "foreground_changed_during_cycle": false,
+   "foreground_before": {
+    "foreground_pid": 16228,
+    "foreground_image": "ChatGPT.exe",
+    "foreground_title": "ChatGPT"
+   },
+   "budget_elapsed_min_at_cycle_end": 42.8
+  }
+ ],
+ "not_run": [],
+ "conclusion_statement": "本批次未复现：12 周期 24 次退出（O0/O1/O2 各 8 次退出）全部 code 0。不宣称观察器无影响、输入原因排除或故障率为零（预登记 §4 措辞纪律）。"
+}

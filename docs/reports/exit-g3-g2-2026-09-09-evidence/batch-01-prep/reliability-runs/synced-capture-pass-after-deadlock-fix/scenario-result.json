@@ -1,0 +1,32 @@
+{
+ "scenario": "synced-capture",
+ "driver_pid": 49328,
+ "mode": "synced",
+ "buffer_limit": 20000,
+ "clock_check": {
+  "wall_epoch_s": 1788906791.1260648,
+  "perf_counter_s": 196915.7399329,
+  "monotonic_s": 196915.7399337,
+  "same_source": true,
+  "note": "perf_counter 与 monotonic 同为 QPC 单调源；跨进程时间戳按同源单调钟比较，误差为采样间隔（亚毫秒级），先验证后使用。"
+ },
+ "register_trace": [],
+ "events": {
+  "count": 0,
+  "record_types": {},
+  "seq_min": null,
+  "seq_max": null,
+  "seq_continuous": false,
+  "has_startup": false,
+  "has_shutdown": false,
+  "has_install": false,
+  "has_partial_marker": false
+ },
+ "last_events": [],
+ "verdict": {
+  "driver_exit": null,
+  "last_event_kinds": [],
+  "invalid_reason_if_any": null,
+  "note": "synced-mode capture to locate hang point"
+ }
+}

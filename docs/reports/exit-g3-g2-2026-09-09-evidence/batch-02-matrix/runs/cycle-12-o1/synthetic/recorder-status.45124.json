@@ -1,0 +1,1 @@
+{"run_id": "matrix-cycle12-o1", "phase": "first-exit", "pid": 45124, "mode": "buffered", "seq": 238, "buffered_count": 238, "dropped": 0, "error_count": 0, "alive": false, "terminated": true, "exported": true, "monotonic_ms": 205032063.422}

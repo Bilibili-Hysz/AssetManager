@@ -1,0 +1,9 @@
+{
+  "id": "amg3-hang-after-q",
+  "name": "Reliability hang injector",
+  "version": "0.1.0",
+  "entry": "hang:register",
+  "kind": "command",
+  "enabled_by_default": true,
+  "permissions": []
+}

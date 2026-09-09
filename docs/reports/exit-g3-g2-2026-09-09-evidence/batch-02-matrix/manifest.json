@@ -1,0 +1,81 @@
+{
+ "batch": "batch-02-matrix",
+ "date": "2026-09-09",
+ "authorization": "主代理批准预登记（含两条附加纪律 a/b）；独占 GUI 时段 90 分钟从周期 1 启动计",
+ "purpose": "O0/O1/O2 观察干扰对照正式矩阵：12 周期 24 退出",
+ "preregistration": {
+  "path": "../batch-01-prep/preregistration.md",
+  "sha256": "b2e9e2998de6bb2c4de8a98d9292bf2d9dfcb685e6315f2e1d9a846d809d7a5f",
+  "blocks": "1→2→3→4",
+  "limits": "12 cycles / 24 exits / 90 min"
+ },
+ "baselines": {
+  "candidate_onefile_exe": {
+   "path": "artifacts/weekly-repair-2026-09-08-103f119/AssetManager.exe",
+   "sha256": "1d568fb80ef6dcb78f9d8001ea68c521367638938a3463cf2964e51960372c5a",
+   "expected": "1d568fb80ef6dcb78f9d8001ea68c521367638938a3463cf2964e51960372c5a"
+  },
+  "official_w6_driver_untouched": {
+   "path": "scripts/perf/w6_package_functional.py",
+   "sha256": "bd8142231fe874b7db4fcd90e70cad8d1ef6d71092353709297d932986237441",
+   "expected": "bd8142231fe874b7db4fcd90e70cad8d1ef6d71092353709297d932986237441"
+  },
+  "diagnostic_driver_f989_copy": {
+   "path": "scripts/perf/w6_g2g3_diagnostic.py",
+   "sha256": "f989e271d1a6c7546b76f8a1aed513ae1cd87fcaca4616f8705380b60f435d6e",
+   "expected": "f989e271d1a6c7546b76f8a1aed513ae1cd87fcaca4616f8705380b60f435d6e",
+   "note": "矩阵周期执行前 runner 逐轮核对（哈希不符即拒跑）"
+  }
+ },
+ "batch02_artifacts": {
+  "observer_plugin": {
+   "path": "observer-plugin/observer.py",
+   "sha256": "a61dd4f586796666e369a13ac8d6a2028ab9894e986d4ba4ce0e62b9804c9252",
+   "note": "batch-02 修订版：PID 后缀分相保全 + atexit 终止快照；相对 batch-01 版本的全部改动见 observer-delta-batch02.patch"
+  },
+  "observer_delta_vs_batch01": {
+   "path": "observer-delta-batch02.patch",
+   "sha256": "9818c28c1e2c6282c3ed9d91914d012e5459ffebc507b1fc210b61be4d9aa33f"
+  },
+  "matrix_runner": {
+   "path": "run_matrix_cycle.py",
+   "sha256": "b6309905c9cfd3786226ff8000231ab21efed794fb4d3120dad0636ef1fcbfd8",
+   "note": "含纪律 a 前台快照、PASS/FAIL/INVALID 分类、O1 导出通道、分相收集（按 GUI pid）"
+  },
+  "summary": {
+   "path": "summary.json",
+   "sha256": "db018bfd483b3aedd5fe0436e20e53b01c1ae8b55557d8077cd3f0087e22c276"
+  },
+  "analysis": {
+   "path": "analysis.md",
+   "sha256": "9ce882aa0df03d1d0e50683dc38eb95f27489cd44f6a078da4cab11391aa8cd5"
+  }
+ },
+ "commands": {
+  "cycle": "python docs/reports/exit-g3-g2-2026-09-09-evidence/batch-02-matrix/run_matrix_cycle.py --block <1..4> --cond <o0|o1|o2> --cycle <1..12>",
+  "cycle_layout": "runs/cycle-NN-<cond>/{cycle-result.json,foreground-before.json,foreground-after.json,synthetic/{driver-stdout.log, recorder-status.<pid>.json,qt-events.<pid>.jsonl(O2), events-final-flush.<pid>.jsonl(O1),events-export.<pid>.jsonl + export-ack.<pid>.json(O1),pypath-shim/, synthetic/{library,runtime}}}"
+ },
+ "environment": {
+  "python": "3.14.3",
+  "platform": "Windows-11-10.0.26220-SP0",
+  "foreground_at_cycle_starts": "ChatGPT.exe (all 12 cycles); foreground_changed=False all cycles; QQ.exe PID 4212 present in visible set (historical occupant, did not take foreground this batch)",
+  "phase_field_limitation": "AM_G3_PHASE fixed per-cycle → both exe phases record first-exit; phase attribution by GUI pid + mtime ordering (analysis §6)",
+  "budget": "~42.8 min used of 90 min limit"
+ },
+ "results": {
+  "total_cycles": 12,
+  "total_exits": 24,
+  "exit_codes_all_zero": true,
+  "per_condition": {
+   "o0": "4 cycles PASS",
+   "o1": "4 cycles PASS",
+   "o2": "4 cycles PASS"
+  },
+  "stop_condition_triggered": null,
+  "log_completeness": "16/16 observed phases seq-continuous, dropped=0, error_count=0; O2 via synced log body, O1 via final-flush/export union",
+  "chain_first_landing": "all 16 phases: native WM_KEY → Qt ShortcutOverride/KeyPress → Shortcut → request_exit → closeEvent → shutdown_resources → lastWindowClosed → aboutToQuit → exit 0",
+  "conclusion": "本批次未复现（预登记措辞纪律）"
+ },
+ "main_workspace_touched": false,
+ "git_operations": "无"
+}

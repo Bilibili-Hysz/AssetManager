@@ -1,0 +1,47 @@
+{
+ "scenario": "active-timeout",
+ "driver_pid": 48428,
+ "mode": "buffered",
+ "buffer_limit": 20000,
+ "clock_check": {
+  "wall_epoch_s": 1788908119.0062382,
+  "perf_counter_s": 198243.6201059,
+  "monotonic_s": 198243.6201065,
+  "same_source": true,
+  "note": "perf_counter 与 monotonic 同为 QPC 单调源；跨进程时间戳按同源单调钟比较，误差为采样间隔（亚毫秒级），先验证后使用。"
+ },
+ "hang_flag_seen": true,
+ "export_ack": {
+  "ack": "stale_request_exists",
+  "log_incomplete": true
+ },
+ "export_requested_at_timeout": true,
+ "driver_exit": 1,
+ "failure_cleanup": [],
+ "driver_stdout_tail": "abled': True, 'maximized': False, 'minimized': False}, {'hwnd': 2362152, 'pid': 33924, 'title': 'AssetManager — Open Library', 'class': 'Qt6110QWindowIcon', 'owner': 0, 'visible': False, 'enabled': True, 'maximized': False, 'minimized': False}, {'hwnd': 4527184, 'pid': 33924, 'title': '__wglDummyWindowFodder', 'class': 'NVOpenGLPbuffer', 'owner': 0, 'visible': False, 'enabled': True, 'maximized': False, 'minimized': False}, {'hwnd': 4854378, 'pid': 33924, 'title': 'NVOGLDC invisible', 'class': 'NVOpenGLPbuffer', 'owner': 0, 'visible': False, 'enabled': True, 'maximized': False, 'minimized': False}, {'hwnd': 4393750, 'pid': 33924, 'title': 'QTrayIconMessageWindow', 'class': 'Qt6110TrayIconMessageWindowClass', 'owner': 0, 'visible': False, 'enabled': True, 'maximized': False, 'minimized': False}, {'hwnd': 5247672, 'pid': 45816, 'title': 'PyInstaller Onefile Hidden Window', 'class': 'PyInstallerOnefileHiddenWindow', 'owner': 0, 'visible': False, 'enabled': True, 'maximized': False, 'minimized': False}, {'hwnd': 2426956, 'pid': 33924, 'title': 'Default IME', 'class': 'IME', 'owner': 4003294, 'visible': False, 'enabled': False, 'maximized': False, 'minimized': False}, {'hwnd': 7015982, 'pid': 33924, 'title': 'MSCTFIME UI', 'class': 'MSCTFIME UI', 'owner': 2426956, 'visible': False, 'enabled': False, 'maximized': False, 'minimized': False}, {'hwnd': 6886834, 'pid': 33924, 'title': 'Default IME', 'class': 'IME', 'owner': 4527184, 'visible': False, 'enabled': False, 'maximized': False, 'minimized': False}, {'hwnd': 4527058, 'pid': 33924, 'title': 'Default IME', 'class': 'IME', 'owner': 4854378, 'visible': False, 'enabled': False, 'maximized': False, 'minimized': False}, {'hwnd': 1378716, 'pid': 45816, 'title': 'Default IME', 'class': 'IME', 'owner': 5247672, 'visible': False, 'enabled': False, 'maximized': False, 'minimized': False}], 'api_info_error': 'URLError: <urlopen error [WinError 10061] 由于目标计算机积极拒绝，无法连接。>'}}\nINVALID: normal Ctrl+Q exit did not complete within 30.0s\n",
+ "driver_reported_timeout": true,
+ "exported_events": {
+  "count": 0,
+  "record_types": {},
+  "seq_min": null,
+  "seq_max": null,
+  "seq_continuous": false,
+  "has_startup": false,
+  "has_shutdown": false,
+  "has_install": false,
+  "has_partial_marker": false
+ },
+ "timeout_verdict_unchanged_by_grace": true,
+ "cleanup": [
+  {
+   "pid": 48428,
+   "already_exited": true
+  }
+ ],
+ "verdict": {
+  "timeout_reported_before_export_grace": true,
+  "export_succeeded_without_qt_thread": false,
+  "request_exit_chain_captured": false,
+  "pid_tree_cleaned": true
+ }
+}

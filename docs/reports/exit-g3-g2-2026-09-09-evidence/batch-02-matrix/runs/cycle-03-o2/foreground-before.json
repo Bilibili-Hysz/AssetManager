@@ -1,0 +1,31 @@
+{
+ "taken_monotonic_ms": 203085945.489,
+ "taken_wall_s": 1788912961.3316321,
+ "foreground_hwnd": 6557266,
+ "foreground_pid": 16228,
+ "foreground_image": "ChatGPT.exe",
+ "foreground_title": "ChatGPT",
+ "visible_window_pids": {
+  "3548": "chrome.exe",
+  "4212": "QQ.exe",
+  "5448": "OpenCode.exe",
+  "7564": "clash-verge.exe",
+  "12220": "steamwebhelper.exe",
+  "13024": "msedge.exe",
+  "14316": "explorer.exe",
+  "16228": "ChatGPT.exe",
+  "22736": "TextInputHost.exe",
+  "23772": "ApplicationFrameHost.exe",
+  "23776": "Nahimic3.exe",
+  "28524": "Antigravity.exe",
+  "28544": "SLBrowser.exe",
+  "37912": "lxwp.exe",
+  "39072": "explorer.exe",
+  "42424": "Notepad.exe",
+  "42796": "antigravity-tools.exe",
+  "43444": "cc-switch.exe",
+  "50752": "ZCode.exe",
+  "51596": "DSH Desktop.exe",
+  "51684": "Taskmgr.exe"
+ }
+}

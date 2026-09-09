@@ -1,0 +1,1 @@
+{"run_id": "reliability-normal-exit", "phase": "first-exit", "pid": 50360, "mode": "buffered", "seq": 180, "buffered_count": 180, "dropped": 0, "error_count": 0, "alive": true, "monotonic_ms": 197352017.198}

@@ -1,0 +1,1 @@
+{"run_id": "reliability-synced-capture", "phase": "first-exit", "pid": 36712, "tid": 47964, "seq": 1, "monotonic_ms": 196712372.189, "dropped_so_far": 0, "record_type": "recorder_startup", "mode": "synced", "buffer_limit": 20000, "observer_version": "g3-batch01-0.2"}

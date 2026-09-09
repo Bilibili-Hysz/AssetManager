@@ -1,0 +1,22 @@
+{
+ "scenario": "bisect-stage-1",
+ "driver_pid": 13968,
+ "mode": "buffered",
+ "buffer_limit": 20000,
+ "clock_check": {
+  "wall_epoch_s": 1788905091.4414487,
+  "perf_counter_s": 195216.0553179,
+  "monotonic_s": 195216.0553185,
+  "same_source": true,
+  "note": "perf_counter 与 monotonic 同为 QPC 单调源；跨进程时间戳按同源单调钟比较，误差为采样间隔（亚毫秒级），先验证后使用。"
+ },
+ "verdict": {
+  "stage": "1",
+  "driver_exit": null,
+  "bisect_status": {
+   "error": "FileNotFoundError(2, 'No such file or directory')"
+  },
+  "invalid_reason_if_any": null,
+  "note": "hang-point bisect; diagnostic only"
+ }
+}

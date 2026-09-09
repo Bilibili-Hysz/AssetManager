@@ -1,0 +1,106 @@
+{
+ "batch": "batch-01-prep",
+ "purpose": "方案 §4 记录可靠性先验收（五场景）；正式 O0/O1/O2 矩阵未运行",
+ "scenarios": {
+  "S1 normal-exit": {
+   "result": "PASS — 事件流完整落盘",
+   "driver_exit": 0,
+   "detail": {
+    "startup_recorded": true,
+    "install_state_recorded": true,
+    "seq_continuous": true,
+    "exit_chain_events_present": true,
+    "qt_input_events_present": true,
+    "native_message_events_present": true,
+    "application_signals_present": true,
+    "shutdown_recorded_or_flushed": true
+   },
+   "merged_events": {
+    "count": 238,
+    "record_types": {
+     "recorder_startup": 1,
+     "plugin": 2,
+     "native_event": 126,
+     "event": 101,
+     "call": 6,
+     "application": 2
+    },
+    "seq_min": 1,
+    "seq_max": 238,
+    "seq_continuous": true,
+    "has_startup": true,
+    "has_shutdown": false,
+    "has_install": true,
+    "has_partial_marker": false
+   },
+   "evidence_dir": "docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-01-prep\\reliability-runs\\normal-exit"
+  },
+  "S2 active-timeout": {
+   "result": "PASS（按方案 §4 语义）— 30s 超时判定先于导出宽限；请求在清理前发出；导出因守护线程随 PID 树清理而不可达，明确标注 log_incomplete（不据此认定事件没有发生）",
+   "driver_exit": 1,
+   "timeout_reported_before_export_grace": true,
+   "export_ack": {
+    "ack": null,
+    "error": "export request not acknowledged within timeout",
+    "log_incomplete": true,
+    "note": "export requested before cleanup; observer daemon unavailable (killed with PID tree); log marked incomplete per plan §4, NOT zero-event proof"
+   },
+   "evidence_dir": "docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-01-prep\\reliability-runs\\active-timeout-final"
+  },
+  "S3 buffer-overflow": {
+   "result": "PASS — 容量上限触发：丢弃计数正确、保最新弃最旧、状态文件兜底判读",
+   "verdict": {
+    "dropped_counted": true,
+    "dropped": 53,
+    "dropped_source": "recorder_status_file",
+    "buffered_at_limit_from_status": 60,
+    "exported_count": 0,
+    "headroom_kept_at_limit": true,
+    "dropped_recorded_per_event": false
+   },
+   "evidence_dir": "docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-01-prep\\reliability-runs\\buffer-overflow-final"
+  },
+  "S4 recorder-error": {
+   "result": "PASS — 记录器失败时结果明确标注日志不完整（error_count=1），与零事件（seq==0 且 error_count==0）可区分",
+   "verdict": {
+    "status_alive": true,
+    "status_seq": 180,
+    "status_error_count": 1,
+    "log_incomplete_flag": true,
+    "distinguishable_from_zero_events": true,
+    "note": "记录器失败→状态文件 error_count>0 + fallback partial 行；零事件会是 seq==0 且 error_count==0，两者判读不同。"
+   },
+   "evidence_dir": "docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-01-prep\\reliability-runs\\recorder-error-final"
+  },
+  "S5 target-early-exit": {
+   "result": "PASS（控制器收尾已验证）— 控制器捕获 launched pid=54176 并尝试提前结束（taskkill rc=128：PID 在注入时刻已不可寻，注入未实际杀死进程），随后驱动完整收尾（exit 0）、控制器正确结束等待、无残留 PID 树，final flush 保全 238 条事件；事后导出请求超时被标注 log_incomplete。注入时序（sleep 8s 后 kill 竞争窗口）待主矩阵批次改进为窗口就绪即杀。",
+   "exe_pid": 54176,
+   "target_kill_rc": 128,
+   "events": {
+    "count": 238,
+    "record_types": {
+     "recorder_startup": 1,
+     "plugin": 2,
+     "native_event": 126,
+     "event": 101,
+     "call": 6,
+     "application": 2
+    },
+    "seq_min": 1,
+    "seq_max": 238,
+    "seq_continuous": true,
+    "has_startup": true,
+    "has_shutdown": false,
+    "has_install": true,
+    "has_partial_marker": false
+   },
+   "verdict": "controller-concluded-on-target-early-exit; final flush preserved buffered events",
+   "evidence_dir": "docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-01-prep\\reliability-runs\\target-early-exit-final"
+  }
+ },
+ "notes": {
+  "observer_deadlock_history": "attempt-4/5/6 曾因 emit() 持锁调用 _maybe_status→status() 非重入锁导致 exe GUI 挂死；已修复并经 synced-capture / S1-S5 全部场景回归验证",
+  "attempt_archive": "失败尝试保留于 attempt-1-plugin-path-bug/（不改写历史）",
+  "o0_control": "无观察插件对照另见 attempt-1-plugin-path-bug/o0-control-run1-load-passed-key-minimized：负载全通过，发键阶段窗口被桌面环境最小化（QQ.exe PID 4212 在场，与历史失败现场前台占用者一致）→ 驱动按合同安全拒绝发送"
+ }
+}

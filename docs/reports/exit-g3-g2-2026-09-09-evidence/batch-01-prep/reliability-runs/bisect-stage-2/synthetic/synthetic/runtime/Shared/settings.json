@@ -1,0 +1,80 @@
+{
+  "_cfg_version": 2,
+  "_legacy_migrated": true,
+  "recent_libraries": [
+    "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\g3-ops\\docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-01-prep\\reliability-runs\\bisect-stage-2\\synthetic\\synthetic\\library"
+  ],
+  "theme": "Navy",
+  "window_maximized": true,
+  "lan_auto_start": true,
+  "lan_auth_mode": "password",
+  "lan_password": "W6-Functional-Password!",
+  "lan_port": 11247,
+  "lan_bind": "127.0.0.1",
+  "lan_share_name": "W6-Functional",
+  "lan_share_safety_ack_version": 1,
+  "lan_trusted_network_confirmed": false,
+  "library_records": {
+    "d6eb92924a46": {
+      "name": "library",
+      "path": "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\g3-ops\\docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-01-prep\\reliability-runs\\bisect-stage-2\\synthetic\\synthetic\\library",
+      "last_opened": 1788905334.035946,
+      "created": 1788905320.1049201
+    }
+  },
+  "lan_share_last_successful_bind": "127.0.0.1",
+  "lan_share_last_successful_auth": {
+    "enabled": true,
+    "mode": "password"
+  },
+  "info_panel_layout": {
+    "sections": {
+      "preview": true,
+      "meta": true,
+      "tags": true,
+      "notes": true,
+      "actions": true
+    },
+    "splitter": [
+      248,
+      620
+    ]
+  },
+  "window_dock_state": "000000ff00000000fd000000020000000000000100000003b3fc0200000001fb000000180064006f0063006b005f0073006900640065006200610072010000001c000003b30000009200ffffff0000000100000161000003b3fc0200000001fb000000120064006f0063006b005f0069006e0066006f010000001c000003b30000011c00ffffff0000043e000003b300000004000000040000000800000008fc00000000",
+  "dock_widths": {
+    "sizes": [
+      256,
+      353
+    ]
+  },
+  "file_list_view_state": {
+    "current": "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\g3-ops\\docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-01-prep\\reliability-runs\\bisect-stage-2\\synthetic\\synthetic\\library",
+    "view": "Grid",
+    "sort": "name",
+    "ascending": true,
+    "filter": "",
+    "category": "all",
+    "hidden": false,
+    "toolbar_visible": true,
+    "view_memory": {
+      "C:\\Users\\86177\\Documents": "Grid",
+      "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\g3-ops\\docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-01-prep\\reliability-runs\\bisect-stage-2\\synthetic\\synthetic\\library": "Grid"
+    }
+  },
+  "sidebar_depth_cfg": {
+    "depth": 2,
+    "branch_depths": {},
+    "show_favs": true,
+    "show_recs": true,
+    "show_filter": true,
+    "fav_expanded": null,
+    "rec_expanded": null
+  },
+  "workspace_tabs": {
+    "tabs": [
+      "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\g3-ops\\docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-01-prep\\reliability-runs\\bisect-stage-2\\synthetic\\synthetic\\library"
+    ],
+    "active": 0
+  },
+  "window_geometry": "01d9d0cb0003000000000000fffffff9000006aa000003fa0000000000000017000006aa000003fa000000000000000006ab0000000000000017000006aa000003fa"
+}

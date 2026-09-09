@@ -1,0 +1,56 @@
+{
+ "scenario": "normal-exit",
+ "driver_pid": 50964,
+ "mode": "buffered",
+ "buffer_limit": 20000,
+ "clock_check": {
+  "wall_epoch_s": 1788900325.849535,
+  "perf_counter_s": 190450.4634029,
+  "monotonic_s": 190450.4634033,
+  "same_source": true,
+  "note": "perf_counter 与 monotonic 同为 QPC 单调源；跨进程时间戳按同源单调钟比较，误差为采样间隔（亚毫秒级），先验证后使用。"
+ },
+ "driver_exit": 1,
+ "driver_stdout_tail": "Traceback (most recent call last):\n  File \"D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\g3-ops\\scripts\\perf\\w6_g2g3_diagnostic.py\", line 1007, in <module>\n    sys.exit(main())\n             ~~~~^^\n  File \"D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\g3-ops\\scripts\\perf\\w6_g2g3_diagnostic.py\", line 670, in main\n    lib = _build_library(tmp)\n  File \"D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\g3-ops\\scripts\\perf\\w6_g2g3_diagnostic.py\", line 598, in _build_library\n    lib.mkdir(parents=True)\n    ~~~~~~~~~^^^^^^^^^^^^^^\n  File \"C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\pathlib\\__init__.py\", line 1011, in mkdir\n    os.mkdir(self, mode)\n    ~~~~~~~~^^^^^^^^^^^^\nFileExistsError: [WinError 183] 当文件已存在时，无法创建该文件。: 'D:\\\\~Vibe-Coding\\\\Projects\\\\AssetsManager_old-bak\\\\.pytest-tmp-lead-snapshots\\\\g3-ops\\\\docs\\\\reports\\\\exit-g3-g2-2026-09-09-evidence\\\\batch-01-prep\\\\reliability-runs\\\\normal-exit\\\\synthetic\\\\synthetic\\\\library'\n",
+ "driver_reported_timeout": false,
+ "export_ack": {
+  "ack": null,
+  "error": "export request not acknowledged within timeout",
+  "log_incomplete": true
+ },
+ "exported_events": {
+  "count": 0,
+  "record_types": {},
+  "seq_min": null,
+  "seq_max": null,
+  "seq_continuous": false,
+  "has_startup": false,
+  "has_shutdown": false,
+  "has_install": false,
+  "has_partial_marker": false
+ },
+ "final_flush_events": {
+  "count": 0,
+  "record_types": {},
+  "seq_min": null,
+  "seq_max": null,
+  "seq_continuous": false,
+  "has_startup": false,
+  "has_shutdown": false,
+  "has_install": false,
+  "has_partial_marker": false
+ },
+ "recorder_status": {
+  "error": "FileNotFoundError(2, 'No such file or directory')"
+ },
+ "verdict": {
+  "startup_recorded": false,
+  "install_state_recorded": false,
+  "seq_continuous": false,
+  "exit_chain_events_present": false,
+  "qt_input_events_present": false,
+  "native_message_events_present": false,
+  "application_signals_present": false,
+  "shutdown_recorded_or_flushed": false
+ }
+}

@@ -1,0 +1,1 @@
+{"run_id": "reliability-target-early-exit", "phase": "first-exit", "pid": 4876, "mode": "buffered", "seq": 180, "buffered_count": 180, "dropped": 0, "error_count": 0, "alive": true, "monotonic_ms": 200312707.739}

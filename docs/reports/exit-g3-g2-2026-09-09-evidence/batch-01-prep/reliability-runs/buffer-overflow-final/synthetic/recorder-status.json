@@ -1,0 +1,1 @@
+{"run_id": "reliability-buffer-overflow", "phase": "first-exit", "pid": 34216, "mode": "buffered", "seq": 113, "buffered_count": 60, "dropped": 53, "error_count": 0, "alive": true, "monotonic_ms": 199241178.746}

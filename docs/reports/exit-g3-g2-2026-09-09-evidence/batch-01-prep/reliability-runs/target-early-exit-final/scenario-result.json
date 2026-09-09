@@ -1,0 +1,42 @@
+{
+ "scenario": "target-early-exit",
+ "driver_pid": 12368,
+ "mode": "buffered",
+ "buffer_limit": 20000,
+ "clock_check": {
+  "wall_epoch_s": 1788910160.2653084,
+  "perf_counter_s": 200284.8791762,
+  "monotonic_s": 200284.8791768,
+  "same_source": true,
+  "note": "perf_counter 与 monotonic 同为 QPC 单调源；跨进程时间戳按同源单调钟比较，误差为采样间隔（亚毫秒级），先验证后使用。"
+ },
+ "exe_pid": 54176,
+ "target_kill_rc": 128,
+ "driver_exit": 0,
+ "post_mortem_export": {
+  "ack": null,
+  "error": "export request not acknowledged within timeout",
+  "log_incomplete": true,
+  "note": "export requested before cleanup; observer daemon unavailable (killed with PID tree); log marked incomplete per plan §4, NOT zero-event proof"
+ },
+ "events": {
+  "count": 238,
+  "record_types": {
+   "recorder_startup": 1,
+   "plugin": 2,
+   "native_event": 126,
+   "event": 101,
+   "call": 6,
+   "application": 2
+  },
+  "seq_min": 1,
+  "seq_max": 238,
+  "seq_continuous": true,
+  "has_startup": true,
+  "has_shutdown": false,
+  "has_install": true,
+  "has_partial_marker": false
+ },
+ "log_exists": false,
+ "verdict": "controller-concluded-on-target-early-exit; final flush preserved buffered events"
+}

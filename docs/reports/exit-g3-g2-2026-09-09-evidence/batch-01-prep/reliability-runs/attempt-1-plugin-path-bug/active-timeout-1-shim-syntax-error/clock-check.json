@@ -1,0 +1,7 @@
+{
+ "wall_epoch_s": 1788907394.8840501,
+ "perf_counter_s": 197519.4979182,
+ "monotonic_s": 197519.4979188,
+ "same_source": true,
+ "note": "perf_counter 与 monotonic 同为 QPC 单调源；跨进程时间戳按同源单调钟比较，误差为采样间隔（亚毫秒级），先验证后使用。"
+}

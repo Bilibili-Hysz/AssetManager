@@ -1,0 +1,70 @@
+--- a/batch-01-prep/observer-plugin/observer.py
++++ b/batch-02-matrix/observer-plugin/observer.py
+@@ -50,11 +50,24 @@
+ _MODE = os.environ.get("AM_G3_OBSERVE_MODE", "buffered")  # buffered | synced
+ _BUFFER_LIMIT = max(1, int(os.environ.get("AM_G3_BUFFER_LIMIT",
+                                           str(_DEFAULT_BUFFER_LIMIT))))
+-_LOG_PATH = os.environ.get("AM_EXIT_DIAGNOSTIC_LOG", "").strip()
+-_EXPORT_REQUEST = os.environ.get("AM_G3_EXPORT_REQUEST", "").strip()
+-_EXPORT_ACK = os.environ.get("AM_G3_EXPORT_ACK", "").strip()
+-_FINAL_FLUSH = os.environ.get("AM_G3_FINAL_FLUSH", "").strip()
+-_STATUS_FILE = os.environ.get("AM_G3_STATUS_FILE", "").strip()
++def _suffixed(path: str) -> str:
++    """路径末尾插入 PID，分相保全：同周期首退/重启两个 exe 进程共享
++    环境变量路径，不加后缀会在导出/落盘时互相覆盖（batch-01 S1 已
++    证明 phase-1 事件被 phase-2 flush 覆盖丢失）。"""
++    p = path.strip()
++    if not p:
++        return p
++    stem, dot, ext = p.rpartition(".")
++    if dot and len(stem) > 0 and "/" not in ext and "\\" not in ext and len(ext) <= 5:
++        return f"{stem}.{os.getpid()}.{ext}"
++    return f"{p}.{os.getpid()}"
++
++
++_LOG_PATH = _suffixed(os.environ.get("AM_EXIT_DIAGNOSTIC_LOG", ""))
++_EXPORT_REQUEST = _suffixed(os.environ.get("AM_G3_EXPORT_REQUEST", ""))
++_EXPORT_ACK = _suffixed(os.environ.get("AM_G3_EXPORT_ACK", ""))
++_FINAL_FLUSH = _suffixed(os.environ.get("AM_G3_FINAL_FLUSH", ""))
++_STATUS_FILE = _suffixed(os.environ.get("AM_G3_STATUS_FILE", ""))
+ 
+ _EVENTS = {
+     QEvent.Type.ShortcutOverride: "ShortcutOverride",
+@@ -199,7 +212,12 @@
+             }
+ 
+     def final_flush(self) -> None:
+-        """atexit 后备：请求从未出现时的最后保全（含结束状态头）。"""
++        """atexit 后备：请求从未出现时的最后保全（含结束状态头）。
++
++        batch-02 修订：即使无 FINAL_FLUSH 路径，也把状态文件更新为
++        终止快照（terminated=True + 末次计数），保证 buffered 进程
++        正常退出时控制器至少能从状态文件判读该相的完整性与序号上限。
++        """
+         try:
+             if self._closed:
+                 return
+@@ -213,6 +231,23 @@
+                 self._fallback_line("recorder_error",
+                                     "no final flush path configured; "
+                                     "buffered events may be lost")
++            # 终止快照（与导出/请求路径无关，总是更新）
++            if _STATUS_FILE:
++                try:
++                    Path(_STATUS_FILE).write_text(
++                        json.dumps({"run_id": _RUN_ID, "phase": _PHASE,
++                                    "pid": os.getpid(), "mode": self.mode,
++                                    "seq": self.seq,
++                                    "buffered_count": len(self.buffer),
++                                    "dropped": self.dropped,
++                                    "error_count": self.error_count,
++                                    "alive": False, "terminated": True,
++                                    "exported": self._exported,
++                                    "monotonic_ms": round(
++                                        time.monotonic() * 1000.0, 3)},
++                                   ensure_ascii=False), encoding="utf-8")
++                except Exception:
++                    pass
+             self._closed = True
+             if self._file is not None:
+                 try:

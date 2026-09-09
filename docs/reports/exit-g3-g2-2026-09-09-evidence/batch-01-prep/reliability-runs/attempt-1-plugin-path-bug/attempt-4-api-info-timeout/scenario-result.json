@@ -1,0 +1,56 @@
+{
+ "scenario": "normal-exit",
+ "driver_pid": 50856,
+ "mode": "buffered",
+ "buffer_limit": 20000,
+ "clock_check": {
+  "wall_epoch_s": 1788901708.383769,
+  "perf_counter_s": 191832.9976373,
+  "monotonic_s": 191832.9976379,
+  "same_source": true,
+  "note": "perf_counter 与 monotonic 同为 QPC 单调源；跨进程时间戳按同源单调钟比较，误差为采样间隔（亚毫秒级），先验证后使用。"
+ },
+ "driver_exit": 1,
+ "driver_stdout_tail": "Exception in thread Thread-1 (_readerthread):\nTraceback (most recent call last):\n  File \"C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\threading.py\", line 1082, in _bootstrap_inner\n    self._context.run(self.run)\n    ~~~~~~~~~~~~~~~~~^^^^^^^^^^\n  File \"C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\threading.py\", line 1024, in run\n    self._target(*self._args, **self._kwargs)\n    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\subprocess.py\", line 1613, in _readerthread\n    buffer.append(fh.read())\n                  ~~~~~~~^^\n  File \"<frozen codecs>\", line 325, in decode\nUnicodeDecodeError: 'utf-8' codec can't decode byte 0xb3 in position 0: invalid start byte\nbundle: onefile (D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\g3-ops\\artifacts\\weekly-repair-2026-09-08-103f119\\AssetManager.exe)\nruntime: D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\g3-ops\\docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-01-prep\\reliability-runs\\normal-exit\\synthetic\\synthetic\\runtime\nlibrary: D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\g3-ops\\docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-01-prep\\reliability-runs\\normal-exit\\synthetic\\synthetic\\library (12 files)\nlan: http://127.0.0.1:6277 (password auth)\nsettings seeded: D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\g3-ops\\docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-01-prep\\reliability-runs\\normal-exit\\synthetic\\synthetic\\runtime\\Shared\\settings.json\nAUTO-OPEN: will focus the sole seeded StartupWindow and press Enter once\nlaunched pid=27140\nexe sha256: 1d568fb80ef6dcb78f9d8001ea68c521367638938a3463cf2964e51960372c5a\nclose: {'status': 'not_attempted_after_prior_failure'}\nINVALID: /api/info never returned 200 (last None) within 180.0s\n",
+ "driver_reported_timeout": false,
+ "export_ack": {
+  "ack": null,
+  "error": "export request not acknowledged within timeout",
+  "log_incomplete": true
+ },
+ "exported_events": {
+  "count": 0,
+  "record_types": {},
+  "seq_min": null,
+  "seq_max": null,
+  "seq_continuous": false,
+  "has_startup": false,
+  "has_shutdown": false,
+  "has_install": false,
+  "has_partial_marker": false
+ },
+ "final_flush_events": {
+  "count": 0,
+  "record_types": {},
+  "seq_min": null,
+  "seq_max": null,
+  "seq_continuous": false,
+  "has_startup": false,
+  "has_shutdown": false,
+  "has_install": false,
+  "has_partial_marker": false
+ },
+ "recorder_status": {
+  "error": "FileNotFoundError(2, 'No such file or directory')"
+ },
+ "verdict": {
+  "startup_recorded": false,
+  "install_state_recorded": false,
+  "seq_continuous": false,
+  "exit_chain_events_present": false,
+  "qt_input_events_present": false,
+  "native_message_events_present": false,
+  "application_signals_present": false,
+  "shutdown_recorded_or_flushed": false
+ }
+}

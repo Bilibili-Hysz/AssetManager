@@ -1,0 +1,6 @@
+{"seq": 1, "time": 1788905096.546902, "kind": "bisect_register_enter", "run_id": "reliability-bisect-stage-1", "phase": "first-exit", "stage": 1}
+{"seq": 2, "time": 1788905096.5484507, "kind": "recorder_startup", "run_id": "reliability-bisect-stage-1", "phase": "first-exit", "stage": 1, "log": "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\g3-ops\\docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-01-prep\\reliability-runs\\bisect-stage-1\\synthetic\\qt-events.jsonl"}
+{"seq": 3, "time": 1788905096.5496385, "kind": "bisect_register_done", "run_id": "reliability-bisect-stage-1", "phase": "first-exit", "stage": 1}
+{"seq": 1, "time": 1788905112.4462607, "kind": "bisect_register_enter", "run_id": "reliability-bisect-stage-1", "phase": "first-exit", "stage": 1}
+{"seq": 2, "time": 1788905112.4474988, "kind": "recorder_startup", "run_id": "reliability-bisect-stage-1", "phase": "first-exit", "stage": 1, "log": "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\g3-ops\\docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-01-prep\\reliability-runs\\bisect-stage-1\\synthetic\\qt-events.jsonl"}
+{"seq": 3, "time": 1788905112.4492028, "kind": "bisect_register_done", "run_id": "reliability-bisect-stage-1", "phase": "first-exit", "stage": 1}

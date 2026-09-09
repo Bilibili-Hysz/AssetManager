@@ -1,0 +1,99 @@
+{
+ "batch": "batch-01-prep",
+ "date": "2026-09-09",
+ "purpose": "G3 观察干扰对照准备：冻结基线、O0/O1/O2 观察器实现、记录器可靠性五场景验证、预登记草案。正式矩阵未运行。",
+ "workspace": {
+  "snapshot_root": "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\g3-ops",
+  "main_workspace_touched": false,
+  "git_operations": "无（不提交、不推送）"
+ },
+ "baselines": {
+  "candidate_onefile_exe": {
+   "path": "artifacts/weekly-repair-2026-09-08-103f119/AssetManager.exe",
+   "sha256": "1d568fb80ef6dcb78f9d8001ea68c521367638938a3463cf2964e51960372c5a",
+   "expected": "1d568fb80ef6dcb78f9d8001ea68c521367638938a3463cf2964e51960372c5a",
+   "filename_preserved": true
+  },
+  "official_w6_driver_untouched": {
+   "path": "scripts/perf/w6_package_functional.py",
+   "sha256": "bd8142231fe874b7db4fcd90e70cad8d1ef6d71092353709297d932986237441",
+   "expected": "bd8142231fe874b7db4fcd90e70cad8d1ef6d71092353709297d932986237441"
+  },
+  "f989_reference_driver_main_workspace": {
+   "path": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak/docs/reports/exit-repair-2026-09-08-evidence/final-matrix-native-focus/w6_package_functional.py",
+   "sha256": "f989e271d1a6c7546b76f8a1aed513ae1cd87fcaca4616f8705380b60f435d6e",
+   "expected": "f989e271d1a6c7546b76f8a1aed513ae1cd87fcaca4616f8705380b60f435d6e"
+  },
+  "observed08_reference": {
+   "path": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak/docs/reports/exit-repair-2026-09-08-evidence/observed-08-monitoring/observer-monitoring-08.py",
+   "sha256": "71f0cae073d9df42cb569d97fed7ff692c4c2e96dbe90fb2df140eb75207a9eb",
+   "expected": "71f0cae073d9df42cb569d97fed7ff692c4c2e96dbe90fb2df140eb75207a9eb"
+  },
+  "observed14_reference": {
+   "path": "D:/~Vibe-Coding/Projects/AssetsManager_old-bak/docs/reports/exit-repair-2026-09-08-evidence/observed-14-sendinput/observer.py",
+   "sha256": "faf0acc97ce3845b610d035ec8dba5a4b9ab00dfc96e04b8a1aa949ef5cf77c2",
+   "expected": "faf0acc97ce3845b610d035ec8dba5a4b9ab00dfc96e04b8a1aa949ef5cf77c2"
+  }
+ },
+ "derived_artifacts": {
+  "diagnostic_driver_f989_copy": {
+   "path": "scripts/perf/w6_g2g3_diagnostic.py",
+   "sha256": "f989e271d1a6c7546b76f8a1aed513ae1cd87fcaca4616f8705380b60f435d6e",
+   "note": "f989 逐字节副本（零 diff）；诊断组唯一驱动基底"
+  },
+  "observer_plugin": {
+   "path": "docs/reports/exit-g3-g2-2026-09-09-evidence/batch-01-prep/observer-plugin/observer.py",
+   "sha256": "49f91dc499a40c54f2a9ab561608c4aacbb8470e26518eefa89f56f769160ccb",
+   "plugin_json_sha256": "79c52ba082680e60409428d902c34402d22e812417b5ecf069b964df97c98ad9",
+   "modes": "AM_G3_OBSERVE_MODE=buffered(O1)/synced(O2)；模式只改 _Recorder 出口"
+  },
+  "observer_bisect_variant_diagnostic_only": {
+   "path": "docs/reports/exit-g3-g2-2026-09-09-evidence/batch-01-prep/observer-bisect/observer.py",
+   "sha256": "cfc6e53ee2b59b3974254e8b53d69d110b22cdc68cbc218e7a2425cb12c99b8d",
+   "note": "挂死点定位变体，仅用于诊断，不进入正式矩阵"
+  },
+  "reliability_controller": {
+   "path": "docs/reports/exit-g3-g2-2026-09-09-evidence/batch-01-prep/verify_recorder_reliability.py",
+   "sha256": "7bc5e51ca3561bfcce11b8d5d0c20341841bb122a830ee74921437d85c14915c",
+   "scenarios": [
+    "normal-exit",
+    "active-timeout",
+    "buffer-overflow",
+    "recorder-error",
+    "target-early-exit",
+    "o0-control(诊断辅助)",
+    "hang-isolation(诊断辅助)",
+    "bisect-stage-1..5(诊断辅助)",
+    "synced-capture(诊断辅助)"
+   ]
+  },
+  "preregistration": {
+   "path": "docs/reports/exit-g3-g2-2026-09-09-evidence/batch-01-prep/preregistration.md",
+   "sha256": "b2e9e2998de6bb2c4de8a98d9292bf2d9dfcb685e6315f2e1d9a846d809d7a5f"
+  },
+  "source_diff": {
+   "path": "docs/reports/exit-g3-g2-2026-09-09-evidence/batch-01-prep/source-diff.patch",
+   "sha256": "60d0555886d1465da74e1de166802969cb43ec62b49db141ca745cd15a60376f"
+  }
+ },
+ "commands": {
+  "reliability_scenario": "python docs/reports/exit-g3-g2-2026-09-09-evidence/batch-01-prep/verify_recorder_reliability.py <scenario>",
+  "scenario_dir_layout": "reliability-runs/<scenario>/synthetic/{driver-stdout.log,qt-events.jsonl,recorder-status.json,export-request.txt,events-final-flush.jsonl,pypath-shim/,synthetic/{library,runtime}}",
+  "driver_invocation": "python scripts/perf/w6_g2g3_diagnostic.py --exe artifacts/weekly-repair-2026-09-08-103f119/AssetManager.exe --mode onefile --maximized --auto-open",
+  "plugin_install_mechanism": "mkdtemp 重定向 shim（sitecustomize 于 PYTHONPATH）在驱动种子运行域的同时把观察插件复制到 runtime/Shared/plugins/exit-observer——发生在驱动 Popen exe 之前，与应用插件发现机制（PluginManagerService discover_plugins → load_all_enabled）兼容，与历史 diagnose.py 路径约定一致"
+ },
+ "environment": {
+  "python": "3.14.3",
+  "platform": "Windows-11-10.0.26220-SP0",
+  "PySide6": "6.11.0（宿主 Python 环境；exe 内为打包运行时）",
+  "clock": "perf_counter 与 monotonic 同源 QPC；跨进程误差亚毫秒级（各场景 clock-check.json）",
+  "desktop_noise_observed": "QQ.exe PID 4212、Steam、多浏览器/资源管理器在前台竞争；O0 对照轮出现发键前窗口最小化",
+  "onefile_parent_child": "驱动 Popen 的 onefile 父进程与 GUI 子进程分开记录（launched pid 与窗口 pid 不同）"
+ },
+ "dependencies": {
+  "driver_runtime": "PIL（合成库图片）、标准库 urllib/ctypes",
+  "observer": "PySide6（宿主运行时内）、ctypes（Win32 采样）、sys.monitoring（CPython 3.12+；本机 3.14）"
+ },
+ "reliability_results_summary": "见 reliability-runs/summary.json（五场景 PASS；S2/S5 导出竞态按方案 §4 标注 log_incomplete）",
+ "formal_matrix_status": "NOT_RUN —— 预登记待主代理批准后执行"
+}

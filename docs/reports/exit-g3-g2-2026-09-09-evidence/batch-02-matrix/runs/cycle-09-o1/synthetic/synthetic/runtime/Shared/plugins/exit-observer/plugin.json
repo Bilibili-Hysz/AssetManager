@@ -1,0 +1,10 @@
+{
+  "id": "exit-diagnostic-observer",
+  "name": "Exit Diagnostic Observer (G3/G2 O1/O2)",
+  "version": "0.2.0",
+  "entry": "observer:register",
+  "description": "G3/G2 exit-path observer; O1 buffered / O2 synced via AM_G3_OBSERVE_MODE.",
+  "kind": "command",
+  "enabled_by_default": true,
+  "permissions": []
+}

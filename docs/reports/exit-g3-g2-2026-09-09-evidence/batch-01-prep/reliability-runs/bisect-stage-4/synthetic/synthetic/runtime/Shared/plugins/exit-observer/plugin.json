@@ -1,0 +1,10 @@
+{
+  "id": "exit-diagnostic-observer",
+  "name": "Exit Diagnostic Observer (G3 bisect)",
+  "version": "0.1.0-bisect",
+  "entry": "observer:register",
+  "description": "G3 hang-point bisect variant; diagnostic only.",
+  "kind": "command",
+  "enabled_by_default": true,
+  "permissions": []
+}

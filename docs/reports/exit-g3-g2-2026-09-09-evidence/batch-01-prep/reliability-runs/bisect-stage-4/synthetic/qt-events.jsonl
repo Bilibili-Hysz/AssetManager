@@ -1,0 +1,245 @@
+{"seq": 1, "time": 1788905606.9381814, "kind": "bisect_register_enter", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "stage": 4}
+{"seq": 2, "time": 1788905606.9401886, "kind": "recorder_startup", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "stage": 4, "log": "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\g3-ops\\docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-01-prep\\reliability-runs\\bisect-stage-4\\synthetic\\qt-events.jsonl"}
+{"seq": 3, "time": 1788905606.9420464, "kind": "stage2_qt_filter_installed", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "stage": 4}
+{"seq": 4, "time": 1788905606.9446666, "kind": "stage3_native_filter_installed", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "stage": 4}
+{"seq": 5, "time": 1788905606.957082, "kind": "stage4_import_hook_installed", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "stage": 4}
+{"seq": 6, "time": 1788905606.9592075, "kind": "bisect_register_done", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "stage": 4}
+{"seq": 7, "time": 1788905607.410909, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_CREATE", "hwnd": 1512676}
+{"seq": 8, "time": 1788905607.4560294, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_DESTROY", "hwnd": 1512676}
+{"seq": 9, "time": 1788905607.4749975, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "FocusIn", "target": "QWindow"}
+{"seq": 10, "time": 1788905607.4775443, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowActivate", "target": "StartupWindow"}
+{"seq": 11, "time": 1788905607.5259638, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "QWindow"}
+{"seq": 12, "time": 1788905607.5273416, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "_LibraryCard"}
+{"seq": 13, "time": 1788905607.528651, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "QWidget"}
+{"seq": 14, "time": 1788905607.5363917, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "QWidget"}
+{"seq": 15, "time": 1788905607.5376146, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "QScrollArea"}
+{"seq": 16, "time": 1788905607.5448244, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "QFrame"}
+{"seq": 17, "time": 1788905607.546075, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "QWidget"}
+{"seq": 18, "time": 1788905607.5532196, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "StartupWindow"}
+{"seq": 19, "time": 1788905607.5547447, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyPress", "target": "QWindow"}
+{"seq": 20, "time": 1788905607.5620086, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyPress", "target": "_LibraryCard"}
+{"seq": 21, "time": 1788905607.5884552, "kind": "observer_error", "run_id": "reliability-bisect-stage-4", "phase": "install_monitor", "error": "RecursionError('Stack overflow (used 1952 kB)')"}
+{"seq": 22, "time": 1788905607.897554, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_CREATE", "hwnd": 7475270}
+{"seq": 23, "time": 1788905607.9099655, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowStateChange", "target": "MainWindow"}
+{"seq": 24, "time": 1788905607.920821, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Show", "target": "MainWindow"}
+{"seq": 25, "time": 1788905607.941114, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Show", "target": "QWindow"}
+{"seq": 26, "time": 1788905607.9459388, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_ACTIVATE", "hwnd": 7804834}
+{"seq": 27, "time": 1788905607.9573345, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_ACTIVATE", "hwnd": 7475270}
+{"seq": 28, "time": 1788905607.9646652, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_KILLFOCUS", "hwnd": 7804834}
+{"seq": 29, "time": 1788905607.9760983, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "FocusOut", "target": "QWindow"}
+{"seq": 30, "time": 1788905607.9802685, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "FocusIn", "target": "QWindow"}
+{"seq": 31, "time": 1788905607.9878714, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowActivate", "target": "MainWindow"}
+{"seq": 32, "time": 1788905607.990851, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowDeactivate", "target": "StartupWindow"}
+{"seq": 33, "time": 1788905608.0017142, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowStateChange", "target": "QWindow"}
+{"seq": 34, "time": 1788905608.2377672, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Close", "target": "QWindow"}
+{"seq": 35, "time": 1788905608.2393787, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Close", "target": "StartupWindow"}
+{"seq": 36, "time": 1788905608.2478333, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_SHOWWINDOW", "hwnd": 7804834}
+{"seq": 37, "time": 1788905608.2518387, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Hide", "target": "QWindow"}
+{"seq": 38, "time": 1788905608.256128, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Hide", "target": "StartupWindow"}
+{"seq": 39, "time": 1788905608.2581704, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "HideToParent", "target": "StartupWindow"}
+{"seq": 40, "time": 1788905608.2624276, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_DESTROY", "hwnd": 7804834}
+{"seq": 41, "time": 1788905609.048056, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "QWindow"}
+{"seq": 42, "time": 1788905609.0492978, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "_LibraryCard"}
+{"seq": 43, "time": 1788905609.0503666, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "QWidget"}
+{"seq": 44, "time": 1788905609.0577054, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "QWidget"}
+{"seq": 45, "time": 1788905609.058892, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "QScrollArea"}
+{"seq": 46, "time": 1788905609.066735, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "QFrame"}
+{"seq": 47, "time": 1788905609.0680869, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "QWidget"}
+{"seq": 48, "time": 1788905609.0698884, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "StartupWindow"}
+{"seq": 49, "time": 1788905615.059195, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_KEYDOWN", "hwnd": 7475270}
+{"seq": 50, "time": 1788905615.0618808, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_KEYDOWN", "hwnd": 7475270}
+{"seq": 51, "time": 1788905615.07056, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_KEYUP", "hwnd": 7475270}
+{"seq": 52, "time": 1788905615.0722907, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_KEYUP", "hwnd": 7475270}
+{"seq": 53, "time": 1788905615.0740545, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "QWindow"}
+{"seq": 54, "time": 1788905615.0820494, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "WorkspaceBar"}
+{"seq": 55, "time": 1788905615.0833921, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "WorkspaceSection"}
+{"seq": 56, "time": 1788905615.0846, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "QWidget"}
+{"seq": 57, "time": 1788905615.0858276, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "MainWindow"}
+{"seq": 58, "time": 1788905615.0871916, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyPress", "target": "QWindow"}
+{"seq": 59, "time": 1788905615.0954986, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyPress", "target": "WorkspaceBar"}
+{"seq": 60, "time": 1788905615.0969892, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyPress", "target": "WorkspaceSection"}
+{"seq": 61, "time": 1788905615.1049829, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyPress", "target": "QWidget"}
+{"seq": 62, "time": 1788905615.1127, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyPress", "target": "MainWindow"}
+{"seq": 63, "time": 1788905615.1141791, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "QWindow"}
+{"seq": 64, "time": 1788905615.1153278, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "WorkspaceBar"}
+{"seq": 65, "time": 1788905615.122078, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "WorkspaceSection"}
+{"seq": 66, "time": 1788905615.123773, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "QWidget"}
+{"seq": 67, "time": 1788905615.1249347, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "MainWindow"}
+{"seq": 68, "time": 1788905615.1262922, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Shortcut", "target": "QAction"}
+{"seq": 69, "time": 1788905615.1277092, "kind": "monitor_start", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.request_exit"}
+{"seq": 70, "time": 1788905615.128833, "kind": "monitor_start", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.request_exit"}
+{"seq": 71, "time": 1788905615.1361856, "kind": "monitor_start", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.request_exit"}
+{"seq": 72, "time": 1788905615.1374118, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Close", "target": "QWindow"}
+{"seq": 73, "time": 1788905615.1438725, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Close", "target": "MainWindow"}
+{"seq": 74, "time": 1788905615.1452577, "kind": "monitor_start", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.closeEvent"}
+{"seq": 75, "time": 1788905615.1464946, "kind": "monitor_start", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.closeEvent"}
+{"seq": 76, "time": 1788905615.155186, "kind": "monitor_start", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.closeEvent"}
+{"seq": 77, "time": 1788905615.1564019, "kind": "monitor_start", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow._shutdown_resources"}
+{"seq": 78, "time": 1788905615.1575472, "kind": "monitor_start", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow._shutdown_resources"}
+{"seq": 79, "time": 1788905615.1648934, "kind": "monitor_start", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow._shutdown_resources"}
+{"seq": 80, "time": 1788905615.6471393, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowStateChange", "target": "MainWindow"}
+{"seq": 81, "time": 1788905615.6514606, "kind": "monitor_return", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow._shutdown_resources"}
+{"seq": 82, "time": 1788905615.656925, "kind": "monitor_return", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow._shutdown_resources"}
+{"seq": 83, "time": 1788905615.658101, "kind": "monitor_return", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow._shutdown_resources"}
+{"seq": 84, "time": 1788905615.6733882, "kind": "monitor_return", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.closeEvent"}
+{"seq": 85, "time": 1788905615.6746817, "kind": "monitor_return", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.closeEvent"}
+{"seq": 86, "time": 1788905615.6758294, "kind": "monitor_return", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.closeEvent"}
+{"seq": 87, "time": 1788905615.6833434, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowDeactivate", "target": "MainWindow"}
+{"seq": 88, "time": 1788905615.693145, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_SHOWWINDOW", "hwnd": 7475270}
+{"seq": 89, "time": 1788905615.7025564, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_ACTIVATE", "hwnd": 7475270}
+{"seq": 90, "time": 1788905615.7061503, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_KILLFOCUS", "hwnd": 7475270}
+{"seq": 91, "time": 1788905615.7157815, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Hide", "target": "QWindow"}
+{"seq": 92, "time": 1788905615.721439, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Hide", "target": "MainWindow"}
+{"seq": 93, "time": 1788905615.7266662, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "HideToParent", "target": "MainWindow"}
+{"seq": 94, "time": 1788905615.7411954, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_DESTROY", "hwnd": 7475270}
+{"seq": 95, "time": 1788905615.7453063, "kind": "monitor_return", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.request_exit"}
+{"seq": 96, "time": 1788905615.7553012, "kind": "monitor_return", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.request_exit"}
+{"seq": 97, "time": 1788905615.7570605, "kind": "monitor_return", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.request_exit"}
+{"seq": 98, "time": 1788905615.758656, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "QWindow"}
+{"seq": 99, "time": 1788905615.7669458, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "WorkspaceBar"}
+{"seq": 100, "time": 1788905615.7690701, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "WorkspaceSection"}
+{"seq": 101, "time": 1788905615.7708027, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "QWidget"}
+{"seq": 102, "time": 1788905615.7827222, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "MainWindow"}
+{"seq": 103, "time": 1788905615.7843382, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "QWindow"}
+{"seq": 104, "time": 1788905615.7934403, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "WorkspaceBar"}
+{"seq": 105, "time": 1788905615.7953107, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "WorkspaceSection"}
+{"seq": 106, "time": 1788905615.8062005, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "QWidget"}
+{"seq": 107, "time": 1788905615.8185906, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "MainWindow"}
+{"seq": 108, "time": 1788905615.8281112, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowStateChange", "target": "QWindow"}
+{"seq": 1, "time": 1788905621.30302, "kind": "bisect_register_enter", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "stage": 4}
+{"seq": 2, "time": 1788905621.304429, "kind": "recorder_startup", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "stage": 4, "log": "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\g3-ops\\docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-01-prep\\reliability-runs\\bisect-stage-4\\synthetic\\qt-events.jsonl"}
+{"seq": 3, "time": 1788905621.3057115, "kind": "stage2_qt_filter_installed", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "stage": 4}
+{"seq": 4, "time": 1788905621.3071635, "kind": "stage3_native_filter_installed", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "stage": 4}
+{"seq": 5, "time": 1788905621.3085642, "kind": "stage4_import_hook_installed", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "stage": 4}
+{"seq": 6, "time": 1788905621.3097541, "kind": "bisect_register_done", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "stage": 4}
+{"seq": 7, "time": 1788905621.7935367, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_CREATE", "hwnd": 2693274}
+{"seq": 8, "time": 1788905621.8418396, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_DESTROY", "hwnd": 2693274}
+{"seq": 9, "time": 1788905621.8614974, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "FocusIn", "target": "QWindow"}
+{"seq": 10, "time": 1788905621.8633063, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowActivate", "target": "StartupWindow"}
+{"seq": 11, "time": 1788905621.8777869, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_ACTIVATE", "hwnd": 4263706}
+{"seq": 12, "time": 1788905621.8849783, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_KILLFOCUS", "hwnd": 4263706}
+{"seq": 13, "time": 1788905621.9172597, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "FocusOut", "target": "QWindow"}
+{"seq": 14, "time": 1788905621.9197073, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowDeactivate", "target": "StartupWindow"}
+{"seq": 15, "time": 1788905622.045081, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_ACTIVATE", "hwnd": 4263706}
+{"seq": 16, "time": 1788905622.0561492, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "FocusIn", "target": "QWindow"}
+{"seq": 17, "time": 1788905622.0593598, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowActivate", "target": "StartupWindow"}
+{"seq": 18, "time": 1788905622.0826797, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "QWindow"}
+{"seq": 19, "time": 1788905622.08411, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "_LibraryCard"}
+{"seq": 20, "time": 1788905622.0856035, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "QWidget"}
+{"seq": 21, "time": 1788905622.0874255, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "QWidget"}
+{"seq": 22, "time": 1788905622.0947227, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "QScrollArea"}
+{"seq": 23, "time": 1788905622.0961447, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "QFrame"}
+{"seq": 24, "time": 1788905622.097374, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "QWidget"}
+{"seq": 25, "time": 1788905622.0985415, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "StartupWindow"}
+{"seq": 26, "time": 1788905622.0997913, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyPress", "target": "QWindow"}
+{"seq": 27, "time": 1788905622.1008565, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyPress", "target": "_LibraryCard"}
+{"seq": 28, "time": 1788905622.1301584, "kind": "observer_error", "run_id": "reliability-bisect-stage-4", "phase": "install_monitor", "error": "RecursionError('Stack overflow (used 1953 kB)')"}
+{"seq": 29, "time": 1788905622.3848906, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_CREATE", "hwnd": 1446866}
+{"seq": 30, "time": 1788905622.4001338, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Show", "target": "QWindow"}
+{"seq": 31, "time": 1788905622.4021516, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_SHOWWINDOW", "hwnd": 1446866}
+{"seq": 32, "time": 1788905622.4083648, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_ACTIVATE", "hwnd": 4263706}
+{"seq": 33, "time": 1788905622.4166813, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_ACTIVATE", "hwnd": 1446866}
+{"seq": 34, "time": 1788905622.4241006, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_KILLFOCUS", "hwnd": 4263706}
+{"seq": 35, "time": 1788905622.4722002, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_SHOWWINDOW", "hwnd": 1446866}
+{"seq": 36, "time": 1788905622.478517, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_ACTIVATE", "hwnd": 1446866}
+{"seq": 37, "time": 1788905622.4911876, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_ACTIVATE", "hwnd": 4263706}
+{"seq": 38, "time": 1788905622.4985237, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_KILLFOCUS", "hwnd": 1446866}
+{"seq": 39, "time": 1788905622.5116124, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Hide", "target": "QWindow"}
+{"seq": 40, "time": 1788905622.526156, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_DESTROY", "hwnd": 1446866}
+{"seq": 41, "time": 1788905622.7153783, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_CREATE", "hwnd": 1643748}
+{"seq": 42, "time": 1788905622.7301536, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowStateChange", "target": "MainWindow"}
+{"seq": 43, "time": 1788905622.7443602, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Show", "target": "MainWindow"}
+{"seq": 44, "time": 1788905622.7607324, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Show", "target": "QWindow"}
+{"seq": 45, "time": 1788905622.7667742, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_ACTIVATE", "hwnd": 4263706}
+{"seq": 46, "time": 1788905622.7771146, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_ACTIVATE", "hwnd": 1643748}
+{"seq": 47, "time": 1788905622.7862017, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_KILLFOCUS", "hwnd": 4263706}
+{"seq": 48, "time": 1788905622.798737, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "FocusOut", "target": "QWindow"}
+{"seq": 49, "time": 1788905622.8026438, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowDeactivate", "target": "StartupWindow"}
+{"seq": 50, "time": 1788905622.8117266, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "FocusIn", "target": "QWindow"}
+{"seq": 51, "time": 1788905622.8199584, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowActivate", "target": "StartupWindow"}
+{"seq": 52, "time": 1788905622.8229642, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "FocusOut", "target": "QWindow"}
+{"seq": 53, "time": 1788905622.8324172, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "FocusIn", "target": "QWindow"}
+{"seq": 54, "time": 1788905622.8404322, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowActivate", "target": "MainWindow"}
+{"seq": 55, "time": 1788905622.843573, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowDeactivate", "target": "StartupWindow"}
+{"seq": 56, "time": 1788905622.8553133, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowStateChange", "target": "QWindow"}
+{"seq": 57, "time": 1788905622.9019737, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Close", "target": "QWindow"}
+{"seq": 58, "time": 1788905622.9032884, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Close", "target": "StartupWindow"}
+{"seq": 59, "time": 1788905622.9049628, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_SHOWWINDOW", "hwnd": 4263706}
+{"seq": 60, "time": 1788905622.9157567, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Hide", "target": "QWindow"}
+{"seq": 61, "time": 1788905622.9237494, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Hide", "target": "StartupWindow"}
+{"seq": 62, "time": 1788905622.9263182, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "HideToParent", "target": "StartupWindow"}
+{"seq": 63, "time": 1788905622.9374855, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_DESTROY", "hwnd": 4263706}
+{"seq": 64, "time": 1788905623.7703, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "QWindow"}
+{"seq": 65, "time": 1788905623.7716558, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "_LibraryCard"}
+{"seq": 66, "time": 1788905623.773059, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "QWidget"}
+{"seq": 67, "time": 1788905623.7743733, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "QWidget"}
+{"seq": 68, "time": 1788905623.7761145, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "QScrollArea"}
+{"seq": 69, "time": 1788905623.7777643, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "QFrame"}
+{"seq": 70, "time": 1788905623.7882078, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "QWidget"}
+{"seq": 71, "time": 1788905623.7898092, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "StartupWindow"}
+{"seq": 72, "time": 1788905627.3432584, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_ACTIVATE", "hwnd": 1643748}
+{"seq": 73, "time": 1788905627.3463871, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_KILLFOCUS", "hwnd": 1643748}
+{"seq": 74, "time": 1788905627.3622813, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "FocusOut", "target": "QWindow"}
+{"seq": 75, "time": 1788905627.3673012, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowDeactivate", "target": "MainWindow"}
+{"seq": 76, "time": 1788905628.3787405, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_ACTIVATE", "hwnd": 1643748}
+{"seq": 77, "time": 1788905628.3914464, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "FocusIn", "target": "QWindow"}
+{"seq": 78, "time": 1788905628.3944638, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowActivate", "target": "MainWindow"}
+{"seq": 79, "time": 1788905628.5442314, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_KEYDOWN", "hwnd": 1643748}
+{"seq": 80, "time": 1788905628.5473797, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_KEYDOWN", "hwnd": 1643748}
+{"seq": 81, "time": 1788905628.5543766, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_KEYUP", "hwnd": 1643748}
+{"seq": 82, "time": 1788905628.5557778, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_KEYUP", "hwnd": 1643748}
+{"seq": 83, "time": 1788905628.5636065, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "QWindow"}
+{"seq": 84, "time": 1788905628.5650733, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "WorkspaceBar"}
+{"seq": 85, "time": 1788905628.5662818, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "WorkspaceSection"}
+{"seq": 86, "time": 1788905628.5673275, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "QWidget"}
+{"seq": 87, "time": 1788905628.5747776, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "MainWindow"}
+{"seq": 88, "time": 1788905628.5760808, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyPress", "target": "QWindow"}
+{"seq": 89, "time": 1788905628.5838583, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyPress", "target": "WorkspaceBar"}
+{"seq": 90, "time": 1788905628.5852005, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyPress", "target": "WorkspaceSection"}
+{"seq": 91, "time": 1788905628.5926986, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyPress", "target": "QWidget"}
+{"seq": 92, "time": 1788905628.5941312, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyPress", "target": "MainWindow"}
+{"seq": 93, "time": 1788905628.600893, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "QWindow"}
+{"seq": 94, "time": 1788905628.6025562, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "WorkspaceBar"}
+{"seq": 95, "time": 1788905628.6036766, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "WorkspaceSection"}
+{"seq": 96, "time": 1788905628.604802, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "QWidget"}
+{"seq": 97, "time": 1788905628.6124961, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "ShortcutOverride", "target": "MainWindow"}
+{"seq": 98, "time": 1788905628.613778, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Shortcut", "target": "QAction"}
+{"seq": 99, "time": 1788905628.6203177, "kind": "monitor_start", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.request_exit"}
+{"seq": 100, "time": 1788905628.6219177, "kind": "monitor_start", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.request_exit"}
+{"seq": 101, "time": 1788905628.6230783, "kind": "monitor_start", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.request_exit"}
+{"seq": 102, "time": 1788905628.6302383, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Close", "target": "QWindow"}
+{"seq": 103, "time": 1788905628.6319296, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Close", "target": "MainWindow"}
+{"seq": 104, "time": 1788905628.633243, "kind": "monitor_start", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.closeEvent"}
+{"seq": 105, "time": 1788905628.634374, "kind": "monitor_start", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.closeEvent"}
+{"seq": 106, "time": 1788905628.6353323, "kind": "monitor_start", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.closeEvent"}
+{"seq": 107, "time": 1788905628.6426516, "kind": "monitor_start", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow._shutdown_resources"}
+{"seq": 108, "time": 1788905628.6443083, "kind": "monitor_start", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow._shutdown_resources"}
+{"seq": 109, "time": 1788905628.6508534, "kind": "monitor_start", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow._shutdown_resources"}
+{"seq": 110, "time": 1788905629.3885322, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowStateChange", "target": "MainWindow"}
+{"seq": 111, "time": 1788905629.395335, "kind": "monitor_return", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow._shutdown_resources"}
+{"seq": 112, "time": 1788905629.404926, "kind": "monitor_return", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow._shutdown_resources"}
+{"seq": 113, "time": 1788905629.4080842, "kind": "monitor_return", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow._shutdown_resources"}
+{"seq": 114, "time": 1788905629.4352553, "kind": "monitor_return", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.closeEvent"}
+{"seq": 115, "time": 1788905629.4437268, "kind": "monitor_return", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.closeEvent"}
+{"seq": 116, "time": 1788905629.4460402, "kind": "monitor_return", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.closeEvent"}
+{"seq": 117, "time": 1788905629.4567342, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowDeactivate", "target": "MainWindow"}
+{"seq": 118, "time": 1788905629.4728765, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_SHOWWINDOW", "hwnd": 1643748}
+{"seq": 119, "time": 1788905629.4890099, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_KILLFOCUS", "hwnd": 1643748}
+{"seq": 120, "time": 1788905629.50268, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Hide", "target": "QWindow"}
+{"seq": 121, "time": 1788905629.514443, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "Hide", "target": "MainWindow"}
+{"seq": 122, "time": 1788905629.521709, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "HideToParent", "target": "MainWindow"}
+{"seq": 123, "time": 1788905629.5360343, "kind": "native_event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WM_DESTROY", "hwnd": 1643748}
+{"seq": 124, "time": 1788905629.543958, "kind": "monitor_return", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.request_exit"}
+{"seq": 125, "time": 1788905629.5563548, "kind": "monitor_return", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.request_exit"}
+{"seq": 126, "time": 1788905629.5696712, "kind": "monitor_return", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "method": "MainWindow.request_exit"}
+{"seq": 127, "time": 1788905629.5724015, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "QWindow"}
+{"seq": 128, "time": 1788905629.5748105, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "WorkspaceBar"}
+{"seq": 129, "time": 1788905629.5766628, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "WorkspaceSection"}
+{"seq": 130, "time": 1788905629.5888546, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "QWidget"}
+{"seq": 131, "time": 1788905629.6053073, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "MainWindow"}
+{"seq": 132, "time": 1788905629.6083941, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "QWindow"}
+{"seq": 133, "time": 1788905629.6263123, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "WorkspaceBar"}
+{"seq": 134, "time": 1788905629.6396625, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "WorkspaceSection"}
+{"seq": 135, "time": 1788905629.6531408, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "QWidget"}
+{"seq": 136, "time": 1788905629.6552904, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "KeyRelease", "target": "MainWindow"}
+{"seq": 137, "time": 1788905629.657524, "kind": "event", "run_id": "reliability-bisect-stage-4", "phase": "first-exit", "event": "WindowStateChange", "target": "QWindow"}

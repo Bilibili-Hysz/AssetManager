@@ -1,0 +1,17 @@
+{
+ "_cfg_version": 2,
+ "_legacy_migrated": true,
+ "recent_libraries": [
+  "D:\\~Vibe-Coding\\Projects\\AssetsManager_old-bak\\.pytest-tmp-lead-snapshots\\g3-ops\\docs\\reports\\exit-g3-g2-2026-09-09-evidence\\batch-01-prep\\reliability-runs\\normal-exit\\synthetic\\synthetic\\library"
+ ],
+ "theme": "Navy",
+ "window_maximized": true,
+ "lan_auto_start": true,
+ "lan_auth_mode": "password",
+ "lan_password": "W6-Functional-Password!",
+ "lan_port": 4756,
+ "lan_bind": "127.0.0.1",
+ "lan_share_name": "W6-Functional",
+ "lan_share_safety_ack_version": 1,
+ "lan_trusted_network_confirmed": false
+}

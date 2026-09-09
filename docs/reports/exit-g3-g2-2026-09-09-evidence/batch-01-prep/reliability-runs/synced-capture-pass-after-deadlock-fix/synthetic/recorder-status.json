@@ -1,0 +1,1 @@
+{"run_id": "reliability-synced-capture", "phase": "first-exit", "pid": 37104, "mode": "synced", "seq": 180, "buffered_count": 0, "dropped": 0, "error_count": 0, "alive": true, "monotonic_ms": 196943855.142}
