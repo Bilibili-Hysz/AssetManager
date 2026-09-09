@@ -1,0 +1,12 @@
+<testsuites id="" name="" tests="3" failures="0" skipped="0" errors="0" time="12.551017">
+<testsuite name="share-receive-live.spec.ts" timestamp="2026-09-09T11:21:07.459Z" hostname="chromium" tests="1" failures="0" skipped="0" time="3.732" errors="0">
+<testcase name="built recipient page verifies a password and browses real share-scoped HTTP" classname="share-receive-live.spec.ts" time="3.732">
+</testcase>
+</testsuite>
+<testsuite name="share-receive.spec.ts" timestamp="2026-09-09T11:21:07.459Z" hostname="chromium" tests="2" failures="0" skipped="0" time="4.786" errors="0">
+<testcase name="mobile share browsing, preview and browser back preserve the share route" classname="share-receive.spec.ts" time="2.08">
+</testcase>
+<testcase name="a temporary service error can be retried without becoming a missing share" classname="share-receive.spec.ts" time="2.706">
+</testcase>
+</testsuite>
+</testsuites>

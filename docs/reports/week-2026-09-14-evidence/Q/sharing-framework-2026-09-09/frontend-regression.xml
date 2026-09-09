@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="60" failures="0" errors="0" time="3.3605207">
+    <testsuite name="src/App.test.tsx" timestamp="2026-09-09T11:21:17.422Z" hostname="Administrator" tests="13" failures="0" errors="0" skipped="0" time="0.5661037">
+        <testcase classname="src/App.test.tsx" name="App routing &gt; renders LandingPage at the root path" time="0.1139725">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="App routing &gt; renders LoginPage at /login" time="0.0155265">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="App routing &gt; redirects an unauthenticated user to /login when auth is enabled" time="0.0165738">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="App routing &gt; lets an unauthenticated user into a protected route when auth is disabled and the capability is granted" time="0.0268898">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="App routing &gt; renders a protected route for an authenticated user with the browse capability" time="0.0522072">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="App routing &gt; redirects to / when the user lacks the browse capability" time="0.00951">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="App routing &gt; renders nothing while auth is loading" time="0.0115628">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="App routing &gt; renders ShareReceivePage under /s/:shareId" time="0.0148915">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="App routing &gt; renders AdminPage at /admin for an admin with manage_users capability" time="0.0213549">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="App routing &gt; redirects away from /admin without manage_users capability" time="0.036799">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="App routing &gt; renders NotFoundPage for unknown paths" time="0.0180669">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="App routing &gt; opens and closes the shortcut cheat sheet with the ? key" time="0.1979031">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="App routing &gt; ignores the ? key while an editable field has focus" time="0.0272527">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/api/public-contracts.test.ts" timestamp="2026-09-09T11:21:17.431Z" hostname="Administrator" tests="5" failures="0" errors="0" skipped="0" time="0.0114721">
+        <testcase classname="src/api/public-contracts.test.ts" name="LAN public DTO contracts &gt; normalizes users and invites without repository fields" time="0.0056056">
+        </testcase>
+        <testcase classname="src/api/public-contracts.test.ts" name="LAN public DTO contracts &gt; normalizes tags, tree nodes, and stats" time="0.0009967">
+        </testcase>
+        <testcase classname="src/api/public-contracts.test.ts" name="LAN public DTO contracts &gt; anchors the file-list item shape to the backend golden contract" time="0.0005763">
+        </testcase>
+        <testcase classname="src/api/public-contracts.test.ts" name="LAN public DTO contracts &gt; keeps the ServerInfo shape free of removed ghost fields" time="0.0009282">
+        </testcase>
+        <testcase classname="src/api/public-contracts.test.ts" name="LAN public DTO contracts &gt; anchors share info expiry semantics and the gallery entry shape" time="0.0007509">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/api/shares.contract.test.ts" timestamp="2026-09-09T11:21:17.434Z" hostname="Administrator" tests="7" failures="0" errors="0" skipped="0" time="0.0149621">
+        <testcase classname="src/api/shares.contract.test.ts" name="shares API contract &gt; create posts the full request body to shares" time="0.0063163">
+        </testcase>
+        <testcase classname="src/api/shares.contract.test.ts" name="shares API contract &gt; list gets shares" time="0.0007768">
+        </testcase>
+        <testcase classname="src/api/shares.contract.test.ts" name="shares API contract &gt; delete sends DELETE to shares/{id}" time="0.0008472">
+        </testcase>
+        <testcase classname="src/api/shares.contract.test.ts" name="shares API contract &gt; getInfo gets shares/{id}/info and resolves the DTO" time="0.0019057">
+        </testcase>
+        <testcase classname="src/api/shares.contract.test.ts" name="shares API contract &gt; verifyPassword posts the password to shares/{id}/verify" time="0.0010723">
+        </testcase>
+        <testcase classname="src/api/shares.contract.test.ts" name="shares API contract &gt; gets one directory page without expanding the full library tree" time="0.0009339">
+        </testcase>
+        <testcase classname="src/api/shares.contract.test.ts" name="shares API contract &gt; builds download and preview URLs with the configured baseUrl while preserving path separators" time="0.0008371">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/ShareReceivePage.test.tsx" timestamp="2026-09-09T11:21:17.438Z" hostname="Administrator" tests="22" failures="0" errors="0" skipped="0" time="2.1368008">
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; shows a loading placeholder while fetching share info" time="0.1992641">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; renders the file list returned by the public info endpoint" time="0.0645035">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; degrades to the not-found state and toasts when loading fails" time="0.1825051">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; shows an empty state when the share has no paths" time="0.0166826">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; shows an empty state when paths are omitted" time="0.0154853">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; shows an expired state when the share has expired" time="0.0074119">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; requires a password for a protected share without cookie-authorized paths" time="0.0291878">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; skips the password gate when the info response already carries paths" time="0.0312182">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; verifies a password successfully and reveals the file list" time="0.2942666">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; toasts an invalid password and stays on the password form" time="0.1981901">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; encodes download and preview URLs segment by segment" time="0.1275063">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; only renders preview links when the share allows preview" time="0.0408598">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; returns a protected visitor to password verification after entries answers 401" time="0.1028031">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; does not append a late next page after changing directories" time="0.1826285">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; prevents duplicate password verification submissions" time="0.3024795">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; ignores a stale info response after navigating to another share" time="0.0818877">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; renders the remaining-download quota badge for capped shares" time="0.0165709">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; marks the last remaining download with the warning color" time="0.0156621">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; shows a neutral exhausted state when the download cap is reached" time="0.0247225">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; omits the quota badge when downloads are unlimited" time="0.0535092">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; renders the expiry countdown tiers (date / hours / minutes)" time="0.1191587">
+        </testcase>
+        <testcase classname="src/pages/ShareReceivePage.test.tsx" name="ShareReceivePage &gt; omits the countdown badge when the share never expires" time="0.0270771">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/layout/ConnectionStatusBanner.test.tsx" timestamp="2026-09-09T11:21:17.450Z" hostname="Administrator" tests="4" failures="0" errors="0" skipped="0" time="0.2768566">
+        <testcase classname="src/components/layout/ConnectionStatusBanner.test.tsx" name="ConnectionStatusBanner &gt; shows a retry action when the service is unavailable" time="0.2105835">
+        </testcase>
+        <testcase classname="src/components/layout/ConnectionStatusBanner.test.tsx" name="ConnectionStatusBanner &gt; shows a recovery action when realtime recovery fails" time="0.035461">
+        </testcase>
+        <testcase classname="src/components/layout/ConnectionStatusBanner.test.tsx" name="ConnectionStatusBanner &gt; does not show for a healthy connection" time="0.0053324">
+        </testcase>
+        <testcase classname="src/components/layout/ConnectionStatusBanner.test.tsx" name="ConnectionStatusBanner &gt; shows a reconnecting state only after the initial realtime connection" time="0.0226314">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/ui/Modal.test.tsx" timestamp="2026-09-09T11:21:17.463Z" hostname="Administrator" tests="9" failures="0" errors="0" skipped="0" time="0.3543254">
+        <testcase classname="src/components/ui/Modal.test.tsx" name="Modal &gt; renders nothing when closed" time="0.0393367">
+        </testcase>
+        <testcase classname="src/components/ui/Modal.test.tsx" name="Modal &gt; renders the dialog with title and children" time="0.1994982">
+        </testcase>
+        <testcase classname="src/components/ui/Modal.test.tsx" name="Modal &gt; wires aria-labelledby to the title and falls back to aria-label without a title" time="0.0274837">
+        </testcase>
+        <testcase classname="src/components/ui/Modal.test.tsx" name="Modal &gt; focuses the dialog on open" time="0.0113314">
+        </testcase>
+        <testcase classname="src/components/ui/Modal.test.tsx" name="Modal &gt; closes via the header close button" time="0.0209933">
+        </testcase>
+        <testcase classname="src/components/ui/Modal.test.tsx" name="Modal &gt; closes on an overlay click but not on a dialog content click" time="0.0135373">
+        </testcase>
+        <testcase classname="src/components/ui/Modal.test.tsx" name="Modal &gt; closes on Escape" time="0.0076753">
+        </testcase>
+        <testcase classname="src/components/ui/Modal.test.tsx" name="Modal &gt; traps Tab focus between the first and last focusable elements" time="0.0256532">
+        </testcase>
+        <testcase classname="src/components/ui/Modal.test.tsx" name="Modal &gt; returns focus to the provided element when closed" time="0.0064054">
+        </testcase>
+    </testsuite>
+</testsuites>

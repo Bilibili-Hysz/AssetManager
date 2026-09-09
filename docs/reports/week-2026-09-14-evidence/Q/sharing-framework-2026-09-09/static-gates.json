@@ -1,0 +1,96 @@
+[
+  {
+    "command": [
+      "C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\python.exe",
+      "scripts/check_boundaries.py"
+    ],
+    "exit_code": 0,
+    "stdout": "boundary checks passed (gates 1/2/3/5 + layer DAG)\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\python.exe",
+      "scripts/check_i18n_catalogs.py"
+    ],
+    "exit_code": 0,
+    "stdout": "i18n catalogs are aligned (en=1077, ja=1077, zh=1077; _meta.version=[2])\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\python.exe",
+      "scripts/check_inline_styles.py"
+    ],
+    "exit_code": 0,
+    "stdout": "check_inline_styles: clean �� 232 calls across 39 files (ratchet baseline held)\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\python.exe",
+      "scripts/check_style_sources.py"
+    ],
+    "exit_code": 0,
+    "stdout": "check_style_sources: 0 violation(s) across 96 scoped file(s)\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\python.exe",
+      "scripts/check_style_dialects.py"
+    ],
+    "exit_code": 0,
+    "stdout": "check_style_dialects: clean �� 0 legacy sites across 0 files (G3 freeze held)\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\python.exe",
+      "scripts/check_web_token_usage.py"
+    ],
+    "exit_code": 0,
+    "stdout": "check_web_token_usage: 0 violation(s) across 209 scoped file(s)\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\python.exe",
+      "scripts/check_frontend_data_fetch.py"
+    ],
+    "exit_code": 0,
+    "stdout": "check_frontend_data_fetch: 0 violation(s) across 10 page file(s)\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\python.exe",
+      "scripts/check_route_capabilities.py"
+    ],
+    "exit_code": 0,
+    "stdout": "check_route_capabilities: 0 violation(s)\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "C:\\Users\\86177\\AppData\\Local\\Programs\\Python\\Python314\\python.exe",
+      "scripts/gen_ts_types.py",
+      "--check"
+    ],
+    "exit_code": 0,
+    "stdout": "contracts.ts is up to date\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "git",
+      "-c",
+      "core.safecrlf=false",
+      "diff",
+      "--check"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  }
+]

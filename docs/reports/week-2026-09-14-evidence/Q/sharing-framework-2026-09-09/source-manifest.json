@@ -1,0 +1,2792 @@
+{
+  "snapshot": ".pytest-tmp-lead-snapshots/sharing-framework-0848c645",
+  "base_head": "25720b290b4a6e40c7a502bed67a5e6bad5375ff",
+  "source_and_build": [
+    {
+      "path": "AssetsManager/__init__.py",
+      "sha256": "71349ec7863316446e62e317984d9d268fc23220ed37d9095ba423e4dfcba726",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/app.py",
+      "sha256": "3e1b21510c3b1bce136725a0131fb70b7b3d1324253786f9f6bd0507fd6cb78f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/__init__.py",
+      "sha256": "00af9904335ecda140d591423409a40c89b8d90a93df4dddcbf325a53eb9cfb7",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/activity_recorder.py",
+      "sha256": "93f0400ecc84bd66a365233107ff0ba189c1ab4df41165c682acf0bfa1c30f2f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/ai_tagging/__init__.py",
+      "sha256": "c468c35d3f21b82d8bb9cc1b1162f86839c53595bad5c06d2c07a1eab49c019f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/ai_tagging/ollama_client.py",
+      "sha256": "167ec53efba3764065cf738bceeb8b5db4b3077ff60a44f409ffb1d9f61f9e31",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/ai_tagging/service.py",
+      "sha256": "5acecc3a25892be9a6c14fe90b445ac8b1818e9b96a753e622d2ff28331c8c53",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/ai_tagging/write_policy.py",
+      "sha256": "69b2ea3fbb72cb5d55792b6c73c353e79f83a7dd4bfde8673eb9d235b3bfd2d0",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/app_settings_provider.py",
+      "sha256": "10525ae351974231fa606bcd25a18f0868c81fe09c5dca277b72aae33e28731f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/asset_filters.py",
+      "sha256": "f52cd3cdcb64b564bedb3192d6482cdaa665815707323ee1ad0e1b106099e97e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/asset_index_reconciliation_service.py",
+      "sha256": "f77260db7edee43f422d1a85a5ceadfd4c232cf26b79c2b82eac084ca8993a51",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/asset_index_service.py",
+      "sha256": "f0a963af9f454d478f7de5a9df8e5c5e9ebd5132389ef04cc390fcac4ca0b625",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/asset_service.py",
+      "sha256": "3a6e5036d6f250c5979a7a0a36004b9c620fdef9bf0f4e03abdf874ad82df034",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/auth_service.py",
+      "sha256": "25a2cb595c870148b55a95f385b7458953fc3c13e91f62eea544c3f5ab782a36",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/bootstrap.py",
+      "sha256": "1741ee00c77cc3324ffb23d3a9e5a9e9a6f5a815e4eb763bff3776f9d47c94de",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/collection_service.py",
+      "sha256": "c2944f3bc4c43720fd0af92aa7527858ebe8c6296f2be8da00ff95bfb441a4a6",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/command_executions.py",
+      "sha256": "3641e3ccc9707e1672fc0912a285536a23eba5e286a08594da5a5c39e3756de3",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/command_registry.py",
+      "sha256": "a14d1a36ea984b0024603afa30868fd829aa918c6e22a3bf23a5cf406856e898",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/context.py",
+      "sha256": "eee88af81b580f785bc85217b814e6ead8f37aa610b63be97396b8b2ebca0adb",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/database_integrity_service.py",
+      "sha256": "9c3d4cd1c71773ee3ac36e48c7e0232dae4a12f781ae4148633c9d4ff2bf4624",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/database_maintenance_service.py",
+      "sha256": "3d647cfa717b3e2e74d2ebe0bc09835f08004b2b123046043c6555d826da95ad",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/desktop_ports.py",
+      "sha256": "28bbd18c0d83c6244ad25b1b0c9fe1ac39a5df846c09b52ef72fd09b70d00e1f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/favorite_service.py",
+      "sha256": "bac39f85c7ce0013cf79b1d2866f471045a827dae670b10bf73033e978bf4a3c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/file_operation_service.py",
+      "sha256": "14ad1c8ff52548762fa4920e52b5f6d1abc92f4c4193d2e97bd4d0430880da3f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/filesystem_projection_repair_service.py",
+      "sha256": "b4e3c2b670096d9ffac7a23c8b50af021055d72902f9aa9f553783fae9dd0245",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/free_download_quota_service.py",
+      "sha256": "7e6bfd251df2c8c4491369b9fd4c67c5ac93471f01abee944c420e381b2bbb8c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/gallery/__init__.py",
+      "sha256": "b032cc177307ce70c8e00de4290fa40df06239cd48b94388cb616a263c8a9baa",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/gallery/_incremental.py",
+      "sha256": "546be03ee52652d4f7e7720aa8a848a637d260bb7e8a4d1932ef192eb251d594",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/gallery/_persistence.py",
+      "sha256": "4016b203b93880ecaf5a887d053a39decc3505cc4fe9ff2f6d789021240458d5",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/gallery/_projection_builder.py",
+      "sha256": "8a2db069f58b819730f20358f21c33dc78c7a9dedeef3f4f5fd344aa2f0ad3bb",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/gallery/_types.py",
+      "sha256": "35d1c3de86aac6c09c7692b6e0d1e9cecd8ea4c0bc4b8514b65ae4059253ff82",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/gallery_service.py",
+      "sha256": "661b2d14153ea0e0b14e83f411b4ed068b1e455cffa6e885febfe06ba191157b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/import_manifest_store.py",
+      "sha256": "6379f744779ff832b9e90684ba0128922253d2bbbe6f970c7bf38b489ec3ab68",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/import_service.py",
+      "sha256": "27ee68e2362d074a13dc81b85c1c72bcf05d45af12a758e92a1c42f8a099fe69",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/library_export_io.py",
+      "sha256": "97a63afbd69f433b2183385c0857f610e77c12196d247c9e8c4ccb1e0997306f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/library_export_service.py",
+      "sha256": "e1ca67208b65e4625786ac5725418b8482e1ecb58a12692e19093c89d5f54ae9",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/library_export_service_export.py",
+      "sha256": "3d3b0c515cb30ab94f75d70de38d48f2d8c536db3aa5fbee6cea0c1fe38ec7af",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/library_export_service_restore.py",
+      "sha256": "d0270832142aea2cfd5d7209ead612cc0d865fb65cdf1b59c9652ebbf133ce53",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/library_export_service_types.py",
+      "sha256": "f894f31226668a40b23bf03264103e1fb3ef20b4cf98c55c293000464079b944",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/library_export_service_validate.py",
+      "sha256": "01cfbf61a029db46d40b139a17de16848f1f76e56d74d8be5e7b6bbdc4327e17",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/library_governance.py",
+      "sha256": "d8b82574b2a41bee5fab58660bc8fbf058ad24d335deafa17fcde3603b4710fc",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/library_service.py",
+      "sha256": "943d8e83038cce59aec137b05c7954192776a219c9b16589c7fc39d2f7339cb9",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/library_settings_adapter.py",
+      "sha256": "a70f52b2a1a3470d2e3c42977c8716d3de8a3f035886f576fe20522e328af5af",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/library_watcher_service.py",
+      "sha256": "1d17ea81f218e5d3e1a082b86884be37d4785b6530268719d6acbb0825d89f7d",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/media/__init__.py",
+      "sha256": "90e1412823a28820b0969c6bcf608151adcb86aa6b246f4a087c21967fcfa816",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/media/analysis.py",
+      "sha256": "301b36bb58f71011bf6f965c91023de9d07399cc485b3efe8a5841c28e58eed1",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/media/decoders.py",
+      "sha256": "ee9cca8344be2323d410b2766a34a067956554ed130f0103631535cf7cd17a31",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/media/derivatives.py",
+      "sha256": "03022e490453b2e83c659e195c0e6546f9b4e49e3e8ce6bce286d1428d52d4fe",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/metadata_service.py",
+      "sha256": "7e3c645f8ef6bf58bd603b6bbb93ff7e8c8b598db35f79098684ebd460bf823d",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/plugin_service.py",
+      "sha256": "d3f883909900d7a4e8591e071ef19881255e7667866317108eb4df9a7796cf21",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/project_service.py",
+      "sha256": "9f57a7fecb0e6634c5b4fb13f5813546557b61e08d46fae2380b2726142a70e5",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/reconciliation_queue.py",
+      "sha256": "f17ae5d925d1740ebecaae5ccd3d5ca3633721fb89071116aaebff73d0eedc74",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/reconciliation_queue_migration.py",
+      "sha256": "2f9c7e22841974d98d9a4d2338a09689bd77d8b91d819c613e4553b060893fda",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/reconciliation_queue_store.py",
+      "sha256": "9b29ba1910ee2a6e6314bef17493991dfffb658cf7574cd21f268e04e12e3653",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/relink_service.py",
+      "sha256": "71b0449d37dca26cbb8a5742c8382702eb16eacafb0e5b14aaa69b8321e8a8d8",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/runtime.py",
+      "sha256": "4544b2b73f3118e0905036db017623621a9c951009ccff8cf8f9c86ba8bc282f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/runtime_events.py",
+      "sha256": "aa6344d2b9188fc0b1a0da6f07000fc88b670c5e687dadfe5dbf432d3f60565b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/search_index_service.py",
+      "sha256": "e36047f2a69b05d008d4e3aca907a20fa6b6d971a88347a6b8ab6156db2e2dbe",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/search_service.py",
+      "sha256": "a96cd580fdae0b6c61755aaf0349959a505f7fde4998142247fcae4ca03d11de",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/search_syntax.py",
+      "sha256": "c1097ac10fda151e28a52780028774b0adef0a5ab07457ef2602cceb5b02c58d",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/security_preflight.py",
+      "sha256": "c76f2426cdaeb4ce57f679c348fee49d1bdda073cf87612533062c57a20d4ecd",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/sequence_service.py",
+      "sha256": "90b52b25ab4924d02124000c2853f843baaac13f37f69ab17f1c39005be47397",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/share_delivery.py",
+      "sha256": "07779759de8e6c495e13f3217ec9caf8f7e86f96f9b617da3b90cc7a56343450",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/share_service.py",
+      "sha256": "4a73770669f7de5e6eeaf0b6e6457200b86d993c4b148d564399c0767d7a4864",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/tag_canonicalizer.py",
+      "sha256": "990d647ab9c0ff8607546e8002b5fa739900b477f341ca81531b9aa1cbfe003b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/tag_service.py",
+      "sha256": "0944ca76f456455c62d28bdb27b05ea762930e84f22ca75d68377259d8a2a045",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/thumbnail_cache_lifecycle.py",
+      "sha256": "903e1191f4f6767f7f9a44a0f280ff59d11fb28f99018232e97eaa6e7607911d",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/thumbnail_service.py",
+      "sha256": "73ab60c50a14e18bf2c59fa291c4c5f2505319d82abc721aef6dca663ad2d4d6",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/application/undo_service.py",
+      "sha256": "46b796020601dc28f18b5f1f938ee5eb356fcc77560ccdbed6297cbbec2968c9",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/background/__init__.py",
+      "sha256": "7b42eb88c50a8ba635ee5e1f7fc3a5dc5e533395621221af55641bf225b741a1",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/background/cpu.py",
+      "sha256": "5afc90a859a18e9d3666212b912b2fbb5e2d12a02b8253dad20477999208e618",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/background/gl/__init__.py",
+      "sha256": "69e69a01a96adc900b2e7e7bc319dba3a860f593ea033552f6cecf8ece63fe23",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/background/gl/presets.py",
+      "sha256": "3293c8b7edd98a1cb813ac76ef75fbdfb45e4df6d110960a86671c960fa18d38",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/background/gl/renderer.py",
+      "sha256": "a4610c23f84773ca9fca722e69730758a7bf714b5e96f4c3414c197e14a442dd",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/background/gl/shaders.py",
+      "sha256": "ddf4436bef9b05fef3ed69c4657150c2a4f6aa85f4e806b76ff0bbcf9b382ef0",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/background/model.py",
+      "sha256": "e48c6a7213d7f60185df03f63251f70c8190d1c0cada44cfc7eb92dd5e088230",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/background/pipeline.py",
+      "sha256": "489e0e0cb164e90aa4a4119340210e076824253f0158dd7e46504d2f4b042987",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/controllers/__init__.py",
+      "sha256": "7c9109422892c7900eb20d30f1b4ba791d21d292fe9241eca1eeb28fe2c58a8d",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/controllers/file_list_controller.py",
+      "sha256": "86a303611d696ef7fd8ce370ae809e858b7033163f76490ac208d708a11264e0",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/controllers/info_controller.py",
+      "sha256": "bec01bc1a6278f1150ad5c8b4f19ed53c2b06df925406de9034ab1cc5d914ce8",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/controllers/sidebar_controller.py",
+      "sha256": "6c64a3c81c1c584a4bcba04f53f56393a6a479bd676b25583010610cd6e51a9d",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/controllers/tag_tree_controller.py",
+      "sha256": "7475815c0e7e459306e6a0ef47558f177aa6b8791522b21467b6c3cd0216f018",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/__init__.py",
+      "sha256": "b73d8f95f366e0b558834b08f9747065e70746202d61609654c68c51b0d2adf2",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/bg_effects.py",
+      "sha256": "fdf4c761882fea3243636655abe819b1b1a8dea8794c031ac36f2d707793fc19",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/cache.py",
+      "sha256": "f1d6e4c18f91e790ee771c462820893e172ad793586f6219e2db9e2be326fbd9",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/color_utils.py",
+      "sha256": "059c4430ebefeb05cdebe04364bb0c38563b4084e775788223c77f81f7c98d62",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/config_migrator.py",
+      "sha256": "49c95b67670d1d0f68a171f3503ef882231e6b95d81f991ce07c8a18b23776b0",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/constants.py",
+      "sha256": "a123c9ee4b8d734bdfb1a56ca817ed8b08fd35133a4e831300e0d9fab839fe01",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/crash_handler.py",
+      "sha256": "4d02c1c2105fb40778172b65e14eaebbfa599bc3b0f9212a067c9e0f2f9a0a6f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/database.py",
+      "sha256": "cac451e1f777aa8d60c1a87ee536562a5fdde399e1a836fd5e6558d5f372eefd",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/db_migrations.py",
+      "sha256": "203287d708546e30ad8f2fcfd44dedc4f4a6252ec59e5e74fad308b5c204f5bf",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/directory_cache.py",
+      "sha256": "290fdc861dbe3621b288140802977769f7ebf409fc91cf636c29eb1ddfc5295b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/event_contracts.py",
+      "sha256": "55e2af654e810de44c1eb9e063c90d88c873d3c00f63474b7f698fbe27fe6ce6",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/file_snapshot.py",
+      "sha256": "008685be9ee706bb0051d8a05ee5a06be557cb114628d777831b76fd84be6aad",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/format_utils.py",
+      "sha256": "9d1d642a962e0f6970435178b48991918a3afe32a9f6d7e03a2257e790b7ec5e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/icons.py",
+      "sha256": "027bf714d614549b6385e368798d99dc22b4db408be746e0ab4bc9b1218c51a7",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/json_store.py",
+      "sha256": "5d40fd1d1bee83277c3327d83268177e637f35bced9656d30cd5add57527799a",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/library_lock.py",
+      "sha256": "f35f9227b1fa8d4b39cc5f2abb3782980c0a02c70454d38b5881ed6c638fc407",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/library_manager.py",
+      "sha256": "b3a5e7b1920c8340be6d48dc4264387764c51534fc60a684d658a0176befd099",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/path_resolver.py",
+      "sha256": "b8503c403916e962c0b714fdd0b2ec991b58cbd1eb76721e0b4569b72714af96",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/performance.py",
+      "sha256": "a083844cfc7e462ee422e37124926a59980c7cc07b204a5a954d1809e21837e6",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/plugins/__init__.py",
+      "sha256": "46c82a787a96800689b08bc3ed380ec73a451227aa99378e1446e3622aed1c11",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/plugins/descriptor.py",
+      "sha256": "7e692aec0e216873a1df2ef3fa62dadfa990d94a4fdf4113c9c99f1ac9ac97fa",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/plugins/host_context.py",
+      "sha256": "38e3be1606284dba76d16afe14003fdc252208b6d83f61dba69628eeb7c755e3",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/plugins/loader.py",
+      "sha256": "398140f10e24f366c8ea7bfbf74de5018b5b2ce75e6b69bb9229a5168b45c340",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/plugins/manager.py",
+      "sha256": "61ded1044acd70531957fc5a778904d161661110c79f7fb72dd0501ad01ed1f1",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/plugins/preferences.py",
+      "sha256": "dfe335f6587fc98e3e50c463b561351dd42f70fcb26167e98b82a281c3085479",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/project_data.py",
+      "sha256": "dbe5a67a52caec65112c366b9a831def3710bd7cebddba95380270cdcdef54a9",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/protocols.py",
+      "sha256": "fc8848bd8d4c9072fb88c8987d49aac581d46e25088a4f90356dcc3175ae7d87",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/schema_defs.py",
+      "sha256": "a5750bf3c159c2a171c3e5dba32288c4f17192c44f68d52633999c7297203271",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/session_contract.py",
+      "sha256": "0718624ee57f152ad2bcf486d59f4f734c8b66dca582c92552dd57938804109b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/settings.py",
+      "sha256": "3a1961a7ac0b3369df15ee0fd8805624a33fcf2feb9a40dd6173057e44fc023e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/signal_bus.py",
+      "sha256": "2cca2eea433e3c4935ae5a89e82a261e930018b8a8c205504e6efec3126c10ab",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/singleton.py",
+      "sha256": "59c565fb15363ac27781556138847e11a23259e25ba3a3ef8aa0704635ede414",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/tag_library.py",
+      "sha256": "2778efae134bb346cd7c659364676a8d6cab3c39fff4820ba4c8810736ba36b8",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/tag_store.py",
+      "sha256": "d4dac4d4d3d102f532738a5a53d99f13d449e5c500876cbef7595635b86a7482",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/theme_loader.py",
+      "sha256": "b731f91e5bc804ed2706f9dea3d7e1380b5bb7fdcd7bb0ccb5ea53d94c055f0f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/themes.py",
+      "sha256": "583843cea35b14100a1cee9ca3ce94119554a9008e80056fd62e584d031f889b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/thumbnail_key.py",
+      "sha256": "e76ef283d5d6e293918a5d8ad7bb4084e2a4b090cc18b65cd902250dd105ca8b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/timers.py",
+      "sha256": "d65ca84dce17d061aa1f91f312aadb804813836f2c47d34a7cfab90ab3d4fcf1",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/tool_scheduler.py",
+      "sha256": "ff94a09a91bc51a41e4c0a07258c6cc6013db7d016d47b1ef80f15100d83e328",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/ui_scale.py",
+      "sha256": "3cdc107f466bc7d13d7a3232e2062df41e0efb296bcb603f10ea67079f29e88d",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/core/workers.py",
+      "sha256": "2e689fe17ba1d04a9759fcbb0c204b17699a4e64792910d9aa2a5b626218fbbc",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/di/__init__.py",
+      "sha256": "ae48ee37f89f6338f44c800c2cee6d6d91a93960a07e4b74673250cfca120419",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/__init__.py",
+      "sha256": "5e0e3ebb9372d6bea001032d4bd39a8cc454e953ee7db0ee8338f1368b250ccf",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/_maintenance_tasks.py",
+      "sha256": "e2f6da3c1d62d984c0659456be06694e094ea525fc86365beb8ffc92f1c1943d",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/_plugin_manager_widget.py",
+      "sha256": "2476fb13514891720fa2e6a24cb2e0d6e7c811a6ca70e3635c0655ed4ed4d9e5",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/_share_api.py",
+      "sha256": "5f1e338ba81cae290f18936db8f86e82a77c247fa4108a0f31831e4434c0431f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/_sharing_helpers.py",
+      "sha256": "bd6b2f6a266f14526a76b49e96a41b4b4b43af40bcc55399ca0645fa9a0854cd",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/activity_panel.py",
+      "sha256": "cefb8fa56016d8f1481b1d58968eeac8032917ae69e14f1dbb5720582acf9aa5",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/color_picker_dialog.py",
+      "sha256": "4a04c0005f7fef27c8eb4c5664ef704bb846fc0843aa99e249ce9347e27ed625",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/generic_settings_dialog.py",
+      "sha256": "7466935a1ab6f4c0ed052c6ac21bb4fb079b6a4262f8af2be01b0c66ecbaf27f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/modal_dialog.py",
+      "sha256": "a35bf0005727508cf7c46635b4e86f340bd8cbfa8011f63f5253177eab1ce87e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/plugin_manager_dialog.py",
+      "sha256": "e3545d515002378e85ce6fbdae4c7d612b50fb4b18af11c82ce3d6e6db6d16ca",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/plugin_operator_dialog.py",
+      "sha256": "518bb6e268a406d7eaf7a3c097ffd3ff98ce556daa0cf7b5d9726c7342c3d8ca",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/settings_dialog.py",
+      "sha256": "a8da38bed116c34c0afef5a9c172949e573be41ab8c86182dbf73f84f041adc3",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/share_center_dialog.py",
+      "sha256": "5ac111b60a828130333740b5d5a4348f59aef538aa7d0795e75bdb459c9cae30",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/share_link_dialog.py",
+      "sha256": "4760b109d08f25c4eaba500071d2009f5b7ab96939de3bcd1c98453d7c8d66f0",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/share_qr_dialog.py",
+      "sha256": "fb90cf0474cc27389598905ff1a0aa9cb15e40e528b9301937ec28d8a8694eb7",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/sharing_settings/__init__.py",
+      "sha256": "a5132402624d741d518f187e61071f14eb12068826b6a5fd836f6988819f7ceb",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/sharing_settings/_access_page.py",
+      "sha256": "39e8da2827247e153a89ca93bdcaaadf905a292d14a8fd7c013a0b720c617fee",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/sharing_settings/_configuration_page.py",
+      "sha256": "23b2d7da1d91c1e1ef277571deedce159bb004a04af25d256ed93b2c767e4565",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/sharing_settings/_endpoint_page.py",
+      "sha256": "be2026c4d6537c33d570524d9fc10637c5c2d9adcf752f4dc285c0b98de883e1",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/sharing_settings/_links_page.py",
+      "sha256": "2ea463390aa4f858d3c7e3a6d32e4122e7db597ae8e60bd4345ac4a81dd2fb82",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/sharing_settings/_ui.py",
+      "sha256": "22f7dda3c983c7ccc4a0154ad83d3d60e622f78a91ebef146ccf00904aa2673b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/sharing_settings_dialog.py",
+      "sha256": "afa742c02fa23a4a4888711c3885792113710a4d46f68299ebb1d920f7ac8712",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/sidebar_favorites.py",
+      "sha256": "54d5ce721ee12f3eeb2cf0c69f0fe05f12f06b85259f0365f9a83583c9f25b59",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/sidebar_recent.py",
+      "sha256": "92ec117caf39b01ad845c87f57efc9508c981ec13757d751b4ef5e5b0d78c9bf",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/sidebar_settings_dialog.py",
+      "sha256": "a823489061b482130cd775526cd977d25bfb18637252d84f6377eed1da8aa6ae",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/startup.py",
+      "sha256": "a2be258d1864948e4d49faf0e7cd15e335e891e8384bdf15042760b2879d118b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/tabbed_dialog.py",
+      "sha256": "26fbe64b300fda4cf4ef7436fc90b9925153363448b3858a77446eff1bd28cfe",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/tag_browser_dialog.py",
+      "sha256": "dad080b57fcf18f5af536375b70590ee3f3692f0a872bc1c2a6803e7bf9ff810",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/tag_editor_dialog.py",
+      "sha256": "16534f0eb19f926a59a36b54fcc28c4807353222174c3d1e57bc54157d9600a7",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/tag_style_dialog.py",
+      "sha256": "363d85e5cfadceaed74427732980dc059ada0e74bbd62ed6a07d4645c6f47176",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/theme_preview_dialog.py",
+      "sha256": "8f30a1a7fd5ceb1d3b66750614da8eff6ec3d6ad282ebca49e49e650c5a6750e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dialogs/undo_panel.py",
+      "sha256": "42ca19c3f18680601f685a1e98368631a2d115ae16ccbe6c08c07f27cb83452e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/dock_factory.py",
+      "sha256": "0404233272bf62703a9385a1b91d1d85a63a68313f683ed0672debe5a0f2421c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/domain/__init__.py",
+      "sha256": "c9325c5c4e4580ade58129c0766c3a549821cd526d334d40d693b565f2223f58",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/domain/asset.py",
+      "sha256": "bd331758ff441452dd68c7b224ce8bcbb28e5d6920b7ef22f7c9746ecbb57276",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/domain/auth.py",
+      "sha256": "385430538ab77faf28588d82858b00870fb19b5d425c6d8de7294326464c229d",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/domain/errors.py",
+      "sha256": "f4c3c06ebeab2a32ee39ef5580e2fadf5d01d17a1f684182e29347326b99ec65",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/domain/event_bus.py",
+      "sha256": "483427da4f90e9f308f52af731972f3b7a0d99a68333a02eaf98f7310dd81bfc",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/domain/events.py",
+      "sha256": "5603512b6cd9e6c7db978b45a047674d2d49ad24fdf549438c60109e9ccd5c05",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/domain/library.py",
+      "sha256": "4ff333178c2e6ea9cb4db81f26cf58b522deade2cfaa4086c35c8b996e94288a",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/domain/share.py",
+      "sha256": "c33d9541a79bce01750db57ed4ff6db528dead0b5ff7322cc534103c9a587d14",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/i18n/__init__.py",
+      "sha256": "e7262759708f39676e604635c08917397e15b832181de549014d2133a425691b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/i18n/en.json",
+      "sha256": "e331bdc40bd6708ddb461f51f1874159f3c9288d420aa3cc34181ba2aab2b26a",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/i18n/ja.json",
+      "sha256": "9d9743967a49d8e6d456493cd24d3c375815d04e7006b6c7deaa50ba561a4f21",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/i18n/zh.json",
+      "sha256": "2769b19949a8e56b24f84d86f168d4a1e624ad1c59029dcb979054fbcde5a074",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/__init__.py",
+      "sha256": "01ef13c0c958a056c0ce025b63c2a9ee3d4e4f4ae889a1971001c3e31bd2a13b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/api.py",
+      "sha256": "1d11a758a67c67b3d564b68e97d6a9126474680101851c8518e8aa8b487ed15e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/auth.py",
+      "sha256": "3ce95a7eb28df2afb393d3da8a1a64667eb773dbfca2c2a93cb11a31de61bb90",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/authorization.py",
+      "sha256": "e37704a60d619a7f1cb32661b06d1bd1b985c0cb394bbf5bdbc3bdf4398aa2f4",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/dto.py",
+      "sha256": "6d43d4a3a95020945f353db755c88ba5f00db64a012a4dc4a19f47a42d9e01bb",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/file_response.py",
+      "sha256": "516fa653fb9ada8bb25aa0d35209688a6064db4bcec72deeec662812eb9a8829",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/guarded_tunnel.py",
+      "sha256": "f7ac978215ce448b5609b5d6aec5f3cdc65571724bae460f7f5a84c03d7dc63c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/manager.py",
+      "sha256": "8b1473c7e84fd967b04b634ac7e54a23ca71ed4eda82d82502b2839519d5cc2d",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/mcp_server.py",
+      "sha256": "1d6114e2f9ee785016c26dae072efa6b799d27cf6efe78ae6ba18b19ecbf6a7d",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/path_guard.py",
+      "sha256": "721ff93029e801b52fc60b771390c8508f169fa9358582ab2cc8543c1d311864",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/ports.py",
+      "sha256": "e5473bd378d83a83bed585a7c3fecedb4364f13fc36178e550a0f970d82e2faf",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/principal.py",
+      "sha256": "3128c86f060614b36a504dd4d7582cf6df2ae9c2f66dc5390dcb161a53c5ceb0",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/route_policy.py",
+      "sha256": "2a3768f9c5e9d720597f2616b2c56d2d722f718c5161f10ff30320f2a813b101",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/__init__.py",
+      "sha256": "cc9cdd6bb80cc4385ee2307e6b055a7394a7fe7d5f1b6886dc1da7a6edadb816",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/_errors.py",
+      "sha256": "2fedf3d497bd6f44a625ff50f3219820ca668aa59a9b9b3d82817f2963788adb",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/_helpers.py",
+      "sha256": "f07d074c8e0457fd54c820b5d2de56e647da864db5561f27ae6f79edb3107152",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/_resource_urls.py",
+      "sha256": "0bba3e128e7ba0d68fcd3aaf6f2ab7b5eb59d4777c07d514a5733a9239f10843",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/_telemetry.py",
+      "sha256": "3b7fd6b478a988f6a1be50455d945a3183f8ff1eed284889461b7f13db3bd00b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/auth.py",
+      "sha256": "b3486ddf2b9e2a0c68851975fea070e6a1e3d95cff5716060a092ce7fc0f8cc1",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/collections.py",
+      "sha256": "5a1aa044e8307c4f25a5211d19fccad5e3f3f7ce03b53297ea15083332588867",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/downloads.py",
+      "sha256": "0ec6eba827086aee4b090ebee4d5fd94bf29ba9008f04bb00549157b645a3d8e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/favorites.py",
+      "sha256": "acb0b09d0a35e98ab6693958fec5b20efa18f25f0510034583130abaa7b9fd99",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/files.py",
+      "sha256": "57a4731158ed04e27322e9a3fbfae34bd802280f5a679107baace278e443767c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/gallery.py",
+      "sha256": "a6d986ab7e1c180af9d1b4896ef26e6b4dc68dabd9d4181dbff340af417434dd",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/image.py",
+      "sha256": "85587cec0e87fca79d25af68ad01ca42873317ee65b7005e13f2867691f717d5",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/metadata.py",
+      "sha256": "27cbf641910133b9123b3eaa65b1d6b2c331ad5eb4572b8a146c5c1f5250d97f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/pages.py",
+      "sha256": "c3a648015af573b6d872bb1dedf0d867419c00bb63588f641711a754992cdb22",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/quicksearch.py",
+      "sha256": "1ebb72984725f143c5f1d960994f8c829373b5a31c3d8bc15d03a75aa30630b9",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/quota.py",
+      "sha256": "b18f9df19701b216fde16a35a8de21724d17de1f3483ba3c4a4922ba118e7eb1",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/sequence.py",
+      "sha256": "11af26c7dcdabdfefa526c831bbfac0bedfafcddd0e56273ed91c6e020697f70",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/shares.py",
+      "sha256": "d4c8c81249d289ce540da79f1051b4df182843d68305609ab652b3efbdfd71eb",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/system.py",
+      "sha256": "6c13b073e767df619a92f44c3c65c21d703e943e7e784cc9b1eac366365a86c7",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/tags.py",
+      "sha256": "8506e1cdc8b685fc6dd0570875def46a927cedc5689e0dd3dcc014e8fe370254",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/thumbnails.py",
+      "sha256": "b10989200c826fdf83cea2252f6eea3c27c884f3f32ef66d3c6261047711480d",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/users.py",
+      "sha256": "abe97531baea7337f417c381051b6bdce912812c4258f0f41ffbb3cda394da92",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/routes/websocket.py",
+      "sha256": "c954ac9ac87c96d0c99b71c517e622b336e1a768eb4999fa1d7596efec766c43",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/runtime_validation.py",
+      "sha256": "341439802a32e4a9724d16cbd33f6a807fc24f2c728ec83c3c0cefca2ffbb476",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/safe_open.py",
+      "sha256": "5b5109aa6ac1f5f5b75c7e705ad302a342a97b6ce01d0b59899a67e612ecf56a",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/scanner.py",
+      "sha256": "b6d7d208b01a6e11eb36fea8155e9ffbe1afd9d6a69670787be7f29b916f2d0b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/security.py",
+      "sha256": "4cd4d87dafdf83befc9643a4da07f8ec400d6c13777ba0c48daf20d3fee2408c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/server.py",
+      "sha256": "bffe842cf2462fce0ef1f82fdf6bb3242a26da0df4cc9db08b96d8d0d4911d1e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/server_lifecycle.py",
+      "sha256": "6746eb65e6cffb3f60bb4a6df71e8097c0f03af34f585170fe66117a1404af58",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/temporary_file_response.py",
+      "sha256": "3795230333cc80b9499c66ebc6bcc37c7f5e262e73ac76307c9b5722d346586e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/token_revocations.py",
+      "sha256": "51fc3539f0ee8787fe7d90c7af8ef1590a66511fd25d0b29c2c4352eef349449",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/tunnel.py",
+      "sha256": "428de85254dd7fb40e2613148eb88ad746a71e51a9f1c5053443206d05aed745",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/tunnel_identity.py",
+      "sha256": "f06e9cdc12d56569ac5fa5b575235039eaa2bbb47b9fc8ed043a5c21b3af5ff7",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/utils.py",
+      "sha256": "cdf7226cefeb00257cb171487c0428ddee0ef6b0ec849f9ea254c58eb9793ed3",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/ws.py",
+      "sha256": "7a651359b8243d308453e0d769e4c6482667480305d2448faeb37d8cab9eb596",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/zip_cleanup.py",
+      "sha256": "ed09124bb05a96d5296b6694533813e3af3529118879512286ccbd1c4eb1fd88",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/zip_resources.py",
+      "sha256": "1d687b0c93877a6c7082a5d08477c8334f49e2dce85a0ac3ae901d849d102edf",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/lan/zip_sources.py",
+      "sha256": "0fb05695c527c3cb764d03da6f7f0bcc19856a3c39fcfeae85559add48fe7927",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/__init__.py",
+      "sha256": "0a9adf2c24daaa0f89dc6ae00a9ddf7b92c766428fb6d3b25d0c3818c092260e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/_ai_tag_common.py",
+      "sha256": "9057cf1b810374eb0a163ce7ff27ddd423c6e340fde9fbae35a65eb0291944de",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/_event_bridge.py",
+      "sha256": "c8d68b627d8dd107fc809ccf23ef35fa83968d0d84b16c15d22ca9535f22e0f6",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/_info_parts.py",
+      "sha256": "9d2fae56e89517da827ee4e7acc310137c922a90b3b8f8c69c9e5a59082d8656",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/_sidebar_parts.py",
+      "sha256": "c896e06069fac6354c139c5eadcdd58bb8fc53b79aaa6de08612d14ad45399e0",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/base.py",
+      "sha256": "1dd9a67f52f387e66350d3198833dae70733b24f89b60514726cf1f0b025e6f4",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/empty.py",
+      "sha256": "e2b038611ffd075233200f6d6eaf1c244c3ec5f83366a18b2b4c8311e1117880",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/__init__.py",
+      "sha256": "c771d47be06c7fda4ae31ca715a3def7ad81a67c03be64df527339f27df89235",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_actions.py",
+      "sha256": "3c9749948e7176dae839f4c2c9e43a07d4ec925b3d6a07e1e0b60febe413e21b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_animator.py",
+      "sha256": "9cc13a08102794e60393c1eb6dcb1c72896aaed6daa1c71010fb142078b1edb1",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_background.py",
+      "sha256": "58f059516c0d9b953a511e2de489dc7ee2a8994c019a8ab35050b4083b477d7a",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_base.py",
+      "sha256": "fecf519b0c44186d106b0bab636946bb4058de6b5cc1f72fd588fa15cc4de8b7",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_base_events.py",
+      "sha256": "c08d01ee3ca234c29f678eb3443ee7be94eac590450f6c50ab52e8bf8ed36744",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_base_layout.py",
+      "sha256": "e4929562c8191e0799067d1546628fbe6b36bd30358d3a4d8669efc215a484a9",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_base_logic.py",
+      "sha256": "84b33d04f943dbc48b0e76a60399b63700c92bde578aa4bd4e0983c204491626",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_batch_rename.py",
+      "sha256": "f44320b4ba993642d4e11bff4880b2f471e84675d3da09521e496436e38d2eab",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_batch_rename_dialog.py",
+      "sha256": "6a7494a7e9351b3b5b07f55a4f5be3d950f27e1fa6076d04681266c19a7d12be",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_commands.py",
+      "sha256": "7eff46e52299fb1f97d733f50c794bcba22070be6b70d6a9492b8274777a1974",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_common.py",
+      "sha256": "d8f8166cdd3b2e3ae9a79e0c22d8bdf319fad1bee3797cd6755b8f3f008cce1d",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_detail_model.py",
+      "sha256": "b7b2f5ac3b791300511ba4a5f08aa915b5c3220d263d82708f97af7188ca7ce4",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_grid_layout.py",
+      "sha256": "524c18d26cccd15f985403ed61f43d81d35bfb92bf8273ca71449a6ca37b68b1",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_grid_texture_cache.py",
+      "sha256": "f4e7fa9aa81c1875843547925df0a8145e4606aa05c97a081ee97d163ac3abf6",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_grid_widget.py",
+      "sha256": "c81cb94a30e9b5f64c2b18348289fcdd46c24943e235f2ba99e47b3bcf7d1451",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_grid_widget_data.py",
+      "sha256": "b395d601e95e4e657a8a706007cc75d601ab06f8ec926382899b666c7126f387",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_grid_widget_interact.py",
+      "sha256": "d73efaf918c88e461597e70f1fc51dec84ac9d6c823bacaf6f22a7cbd3c786b2",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_grid_widget_render.py",
+      "sha256": "dc535793c7ef04067003b8829216cfee4012b19dc97175c4dad162ac46c74e38",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_host.py",
+      "sha256": "62533fa4e1a501becd1e8ec29378a5f04e3504ce8847b03d9e2896581b87fd45",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_loader.py",
+      "sha256": "e363ab8259e33bb075e4a3fea91a2bb1409e37eb739c4db2e47070b6ba40e249",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_model.py",
+      "sha256": "3eb3e2bcef4d97bc08a2dd3ec0eab56a2c588f6d2383cab67c1165a6f2364b79",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_navigation.py",
+      "sha256": "6f19d1c979d5473fe9adea73b00d554923cf959ab1643ce51a3591284a615ddd",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_shortcuts.py",
+      "sha256": "cec90b50ea2cc79c292870aaa6324ab705456f75b20e4c167e73ee6560daa72b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_status_helpers.py",
+      "sha256": "67850da844bdb7a42439114e220523e58be15f472b948dc7953701c11ca1881d",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_thumbnail_delivery.py",
+      "sha256": "bd3b96c6d31249ee774b3ec30e0b8e55ebef6bb7e48d91ca45aeb538c631db9f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/file_list/_ui_helpers.py",
+      "sha256": "78d44751f138381af4c2e9be01b76255b2671ce8553b872f7bf7313988c10b18",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/image_viewer.py",
+      "sha256": "54748fe8d82d621eaee4cb4b8dbedfeb971eccab0b2e4117564d95f6cdda1a2c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/info.py",
+      "sha256": "06b72a3cfa4c499fe5b281f9c497f00dbebdb059de5f67cd7852d68f541ec5a6",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/panel_state.py",
+      "sha256": "192f9fe12681b915a8525eaa3f43c74622752cfed49bd2af67f77a3999498f36",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/sidebar.py",
+      "sha256": "e9c49ed55cc658c9e6884d4c6ff16015b993b08d790e723d3e3dd6a68a4bec03",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/panels/tag_tree.py",
+      "sha256": "bee2842bd12a68449411a3c022865180d4870e318cd6a58e2f603896e0b1a733",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/plugin_api/__init__.py",
+      "sha256": "de7e99b5ab6c13faa53e12703058a6b98dc8ca6c8ce03bc2df6d3da60f45006c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/plugin_api/types.py",
+      "sha256": "701868a672bcd150d547ae944753af233b4910b624f6e667a3f4ff3d8d5d98d5",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/repositories/__init__.py",
+      "sha256": "588609ce1cde55d529526d54602e2c8e8ef89f61c4f8abcf97e0d7b312a921ad",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/repositories/_common.py",
+      "sha256": "0b1a0e33fa2c3c1cf28715cd60e8df46dfd3412c0d15cbe84abef08a9665471d",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/repositories/asset_index_repository.py",
+      "sha256": "6c135635451e5b3aa658c70d9eed2f47aef3587140ad2e06abf7ff1fd6dbed66",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/repositories/auth_repository.py",
+      "sha256": "9e40ee6436eb0f8d6f819983a46a9861945836d90049e5bc3a2d4b95c7f172a4",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/repositories/collection_repository.py",
+      "sha256": "9b6b32bb444c2cd33b5f420ffffdc19774824b012be78d62fa1719091429d8eb",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/repositories/favorite_repository.py",
+      "sha256": "d899e26fdb600348701e2a19ed63f911873bf4775c5a44500badf93eb1e2d94f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/repositories/free_download_quota_repository.py",
+      "sha256": "3a720c6d6ec792c8f2209ffd745d155644fbe331bcf0200c40fbcebad7ca7a34",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/repositories/gallery_home_repository.py",
+      "sha256": "708a20bffa7099be8cd9690c13f027691bc9c8b7fa9aa46c551e78f2bd2845d8",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/repositories/metadata_repository.py",
+      "sha256": "34fde9c5b8cec76a47ed69a2f2f3960352aaa23b012b7e54986d37c18df3c162",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/repositories/plugin_metadata_repository.py",
+      "sha256": "2223f74e258306ddad6641006a7805ea29809b43bdec75db59976605bc867078",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/repositories/revoked_token_repository.py",
+      "sha256": "2263ebaf9755daae304a3353957ae2991acc9582557993900bfd88f3f864656e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/repositories/share_repository.py",
+      "sha256": "049843b94fe8d2fbca6675f6d5b184f448dac424eaa9505293609ecdb1576974",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/repositories/tag_repository.py",
+      "sha256": "bfbf21c1b05686e2d40368e33e4f3f97e6b2ca100ae8cf8a8b8fde016bba0953",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/repositories/thumbnail_repository.py",
+      "sha256": "e94134d9989b2e9ee75b64af652a20a6f2d33daac1b229cccbc1407d8b2d2463",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/__init__.py",
+      "sha256": "6ee6d04bf5c6ce36c7dd92f9711825a3eae9bd4c6ed0ccf743072e97baf369ca",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/command_palette.py",
+      "sha256": "a1c533b297a1a95f0b9ba98f88cdc62de5ec83753f5199f204bdc9a432254f22",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/dominant_palette_strip.py",
+      "sha256": "3dcefc09ebe823225717937cb4f121ef0a04926e85dddf2b401baf905c00e8ca",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/elevation.py",
+      "sha256": "df9f1fa6eaf81aca4cd24ab4f9ce31b846ce52e0685383a6e5907f86b7b73f36",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/empty_state.py",
+      "sha256": "4f154a205593a8bfffb102561483ff95fc307c09471306cc9f5ad4cbcba7f64c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/hsv_wheel.py",
+      "sha256": "f120d478639b201a344bbe7ec314d2064c48c732d1fe92bc09b2bc9615583433",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/lan_sharing.py",
+      "sha256": "6b952dac3ce7d73d8ed6e457647b10ab71074c45870be0252514cdcec7ecf566",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/micro_tab_bar.py",
+      "sha256": "525d5964b6c23c6447b6c32085e789bd6f850f0951c6e7a30abe2164d0d08a27",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/overlay_shell.py",
+      "sha256": "62736cc8bc843923c7ff1611c4a2597ba9db013a12baf7cbf303df746fe79f84",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/plugin_ui.py",
+      "sha256": "b864a8f42cc78ff6ae3bf22ffa3668a9f9fedd34cc95cf1456ba1097e1593243",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/quick_look_overlay.py",
+      "sha256": "7246ee413bbeb25fe9920c90d3054c7061456ffdc39847ddadff665c1fd09628",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/quick_tagger_overlay.py",
+      "sha256": "365837bfd4e8207dcf591697230d2eff0a687096f4da4bbf63fcb763b9b846c8",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/sharing_contracts.py",
+      "sha256": "cd865cf4435fb3b00c0c877fa74d04bb0c4fa852598326edc08f26a598a34164",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/shortcut_manager.py",
+      "sha256": "87784e29428bcd54478baca217a7a5eb03b1aa8d9ce3c766a3c3c72df51c4353",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/stylekit.py",
+      "sha256": "9aebc08925b86dbba32af8fe1cc058c77c4c8bdc6948c0313f2e5018bdbfcb32",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/tab_container.py",
+      "sha256": "d5c9915f28f821a8ed86c1430fafea90ba9c3a98621d7fd6c9198be4dd1e59ba",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/tag_chip.py",
+      "sha256": "0b4f174c3b3ca6d10efa4f311c529238eb99321feb3bb24836ccf3dbdf47ca58",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/theme_preview.py",
+      "sha256": "1eda9d512c68408c6a4d35a84c17f05f8d9067987991e66bdadced52148925b7",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/toast.py",
+      "sha256": "e0895728b53b679a3b7edd8a4792a3356b388753f537230bc30f3fc0b4af14f2",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/tray.py",
+      "sha256": "679ab862aea1496dc501e81cde79e1a2d5424dc97b4aac774eac4855c327fda3",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/widgets/workspace_bar.py",
+      "sha256": "afe0034fa1274ff0628668abc2cb2365ae5f63ef21a218ff993deddc4d5412dd",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/window.py",
+      "sha256": "17727336c6c7f47bcdc4bc34e3525cebc79a419bbe92d1eb33660dcc97650f6f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/window_coordinator.py",
+      "sha256": "1d372248bea424d75cfefeb7510752bec52b435d57d3126daf372551d843b56d",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/window_lifecycle_coordinator.py",
+      "sha256": "dbaf2c5f155bac8b24eaa304ef7d8033fe1df3adead3fe38f8d24c91c8df81f1",
+      "matches_snapshot": true
+    },
+    {
+      "path": "AssetsManager/window_scoped_panels.py",
+      "sha256": "9a0f52249eb8a868521862a858674ad8efaf3a3c4fd65497c4a4db783624ed2f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "scripts/gen_ts_types.py",
+      "sha256": "90e4875bb9182632fd4cde4bf9cb7107a457b9d4f1184b217235a1ece6305540",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/contracts/lan_public_contracts.json",
+      "sha256": "a9ebf99871bcd87b1c1acdb2e62785b762a0f16ad7ddd0c8fd9e62a2a2ec3671",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/desktop/test_share_api.py",
+      "sha256": "93104709f2a7f7c2794c2fef6d2127130bce20d0052faae0c63b261c7b32fb45",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/desktop/test_share_center_dialog.py",
+      "sha256": "e1fcb148ff1a5c378b2baa50c2a927e80328bf41747887da601288fdb2c815e3",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/desktop/test_share_link_dialog.py",
+      "sha256": "4181764b240c1668457097404d6a0df86e491e48ce3c6c0a9f0f883b2af2b369",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/desktop/test_share_qr_dialog.py",
+      "sha256": "de8f7270d846247ea0845a7c36e3ca0128c3bfe62e169e2e7c00407f82c07adf",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/desktop/test_share_status_url.py",
+      "sha256": "62921fd407e2b421ac8d2d88f5c18d2622a99d4f1a0f419b21a157963044dd99",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/desktop/test_sharing_settings_dialog.py",
+      "sha256": "c41383610e611555a31334368e8609d3d679da20f2f5056faebb848c26795815",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/integration/test_auth_share_session_binding.py",
+      "sha256": "9822f7c278b35a096053f8924e389147df8a7a826351e452c01d96911f9d4f18",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/integration/test_share_service.py",
+      "sha256": "f406d73e78bed1ba94cfe30322330e16e984d1d70f8ec1573d65e7c50a169c34",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/lan/test_login_share_verify_offload.py",
+      "sha256": "36876f81941cc973ba4af19c4830dbacf229b196fc3b3860757b43241dc24830",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/lan/test_public_contracts.py",
+      "sha256": "28b39c16e3c561910b56b3e7ae1a64108d5d7834d0eeb6ca84472325a5da932c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/lan/test_route_policy_contract.py",
+      "sha256": "83821e0eddadf90cbbe52a8371bd9b2a75760cc5a307b4abeec6bdb0b4153b05",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/lan/test_share_entries_api.py",
+      "sha256": "6f03b75ed4bb34d977f3ebcce8a6d4e384fe4ca1c1a332fcc08402a45a181333",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/lan/test_share_manager_tunnel_failures.py",
+      "sha256": "2e73befb3b68ebac6cbec366a5d19fb3bff2a228f3754a044e647f61d9d05ffb",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/lan/test_share_preview_policy.py",
+      "sha256": "263cbb2c905e72ca90acbc1d9cbac19092d8a0125c5fe08164b10fce2087a86b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/lan/test_t2_t4_contracts.py",
+      "sha256": "2e032d97f446a64b3a456642afbee8506619c5f2d4610a1f71605a981f58b8e1",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/test_support/share_browser_server.py",
+      "sha256": "2dca5d2ccef16763b5637459787f1941e4c7de123e071fc2126242ef253c4710",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/unit/test_gen_ts_types.py",
+      "sha256": "58a004955d48ee9e1e3017a975582007ef9ee3b3a925b9308c7b50b40a998542",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/unit/test_lan_sharing.py",
+      "sha256": "d3cbb721b1cea0677c0346a820957c04a89a0e63c0671ce60525e9f2e5b7c623",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/unit/test_share_delivery.py",
+      "sha256": "e53727ecf6b7e0957d2a27340cda5a5d48bee6ff3e85108218933f4c28eb3ca4",
+      "matches_snapshot": true
+    },
+    {
+      "path": "tests/unit/test_share_repository_error_contract.py",
+      "sha256": "8abc1339a0d57774c768a6b9a8326475551fe5ce475bc43304787843403c14dc",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/AdminPage-CUif3wdy.js",
+      "sha256": "0612301cbae0c62a8c7833819c012aaf0c96ce304d098faf293f425a5aee5f32",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/AppHeader-Cod3LeUY.js",
+      "sha256": "ad97a5c0782fb7dd6c5e2357682c8428f67d16c2da1897d8ad3e7cc25f9c3f53",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/AppHeader-CssPwG_h.css",
+      "sha256": "87dd37e154d3504e8fedfd98f78bec09cc9f5d4f425472b60bf40d24d2aca264",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/BrowsePage-DEZXC-CT.css",
+      "sha256": "e1bfd10a22e1bf222bd0a2160d0860e2f1481b770bca81d0c1333eee2b608122",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/BrowsePage-RqOz1Jo-.js",
+      "sha256": "04531bec8de366ccd65648b3d5426513870644e69ae2e1ec91fca8b07e413d2c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/DetailPage-BfdMgOIf.js",
+      "sha256": "84c36923791dc38eda379ffd63892d05b856bf4e5d4051746d8852587be25122",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/DetailPage-DjTtBVF1.css",
+      "sha256": "41b17923c442eb75a686699a9e48bf96f3c158957d48a8a430afe0a5e18f5f6c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/EmptyState-BEyyRojG.css",
+      "sha256": "a4cc68de2a88d84b521e39d6528560d5c639d5e800f47ef52803568a63a14c4e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/EmptyState-CqoIV5C0.js",
+      "sha256": "17705fbfa79155db19ceb813cd9e7f98edbc044537c7877e2128a69cda9be6df",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/GalleryCollectionPage-Dm9wLcwy.js",
+      "sha256": "dc403c73e9a7e6be54bb35feba9e3e98e13c963b949927c13859f4af6ce3adbc",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/GalleryFavoritesPage-DPahfs-Y.js",
+      "sha256": "a03b767a1c509b0319896be7ceb29668afd56841d8a06e71f5991ff3a435df18",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/GalleryHomePage-DCH31Aju.js",
+      "sha256": "22828f71115d0f460139cf37f56a67eca30a90b445a330c30890fc8cf5ce2e33",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/GalleryViewControls-8KcCh77C.js",
+      "sha256": "f1c3b06b7452f59a5987be3ac99ae6d593d1438a9275cd0779c935b93baa9e19",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/GalleryViewControls-DW6__qfT.css",
+      "sha256": "47b109b934a9c7bf5febc9b00af910103ae7e71c175083a7203b5ba62be2830e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/ShareReceivePage-BHABgZTX.js",
+      "sha256": "3e933a528b34fd0a0c14678c2d897487b4676a72f805edbd9915ad02b2d6419c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/Skeleton-Br8Xhx4w.js",
+      "sha256": "28a4450a809968da910b8c828aea5e08b4dff99fd235dc55079d6ff137258074",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/download-s5rOElhj.js",
+      "sha256": "2156f49bc5492eea5dbefe583a26ea66ba389392ff8e24b31e93100216e92763",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/index-Bo0T2q3j.css",
+      "sha256": "69d8550b18404b85ca54f0b4c91f123e16612f2c7d93b6c307c628e1eeb62897",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/index-CfKyC8mP.js",
+      "sha256": "80679fd9ca8c9253a1d7ee97d42ab279e7ec3bbd414ac0967ff0c133f0149b48",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/link-Bir1j7GJ.js",
+      "sha256": "c0da1c6f6118ea488289dbf64d1f66f948b37f337fa5a9939135a7fda43a4512",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/assets/plus-DYWaz-W8.js",
+      "sha256": "4f1a22fa21dc1f7b25b5b32acf63c18c39c700533ac1156f8b59d3902e7a2d8e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/fonts/inter-var-latin.woff2",
+      "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/dist/index.html",
+      "sha256": "5aee26455d4ce5ecd9f17973495bf01569cee22b2ec7cde7c77204afa007a2e7",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/e2e/share-receive-live.spec.ts",
+      "sha256": "91e26a00a5257017de5155fff35873105147ee635be180ef17faa6b05210f862",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/e2e/share-receive.spec.ts",
+      "sha256": "89302b8ada31ede8b200eac50e31c7ac6c56c24bea7a0621d754c51b41593d44",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/playwright.sharing.config.ts",
+      "sha256": "db3026c77e877d8a03ee6a95ce81ad256994b74af8d23d9a8572a6a56e602e39",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/App.test.tsx",
+      "sha256": "175a72590ebf4f7497ce961edfa3b40c2d4b703fbbe4ca6c9359f5d90d50d857",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/App.tsx",
+      "sha256": "fff123a2048e135026e86bccba760b16f791e69704b4c8e8b06a92bb64fa93da",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/auth.contract.test.ts",
+      "sha256": "fc1a123f3d9706b6d1f25bd8737ee619d0090db878cb4d8e2639549115e23cc1",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/auth.ts",
+      "sha256": "f71b1214e2ceb1d5be62b36f24bfb8f4c8de27cf66e39e43795a75a56ddd3398",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/client.test.ts",
+      "sha256": "ac90c3560583f08b1dcbc0a4f80fdaef1a0fc88c449c1cd42f039adb2169daf3",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/client.ts",
+      "sha256": "42a8a29cc155e7071fe8cd0442ecbe20d7199c2f2a65c4c8d3077429b614325f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/collections.contract.test.ts",
+      "sha256": "2dd4f00a2f409e81c24b80bf3a33b3e666279bf3f7abcc1c62238c3ad3c9c356",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/collections.ts",
+      "sha256": "047c5dacf6c8676d1e10a513439c244d2b4d2bf7a4b1d756180bb97d8a8b20de",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/degradationBus.ts",
+      "sha256": "f1097ff6e08eba4b8082d9c32c3618497ac232656cfca8cc6498bd0962dba8d5",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/errors.test.ts",
+      "sha256": "7aaf8d4fb07f3b4aa7b90830a5f36f4284dfe27f2aa3dc6f8d421661bca2e60e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/errors.ts",
+      "sha256": "ced69fc2efd1907b7e5e858a23d446c9a9c73162f18e55bafc0155edf35b8ecd",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/favorites.contract.test.ts",
+      "sha256": "3269c3d19d0c6cebbb3dfa21ebe4ab13166d4ccf3e92afbd51e9154542270d0b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/favorites.ts",
+      "sha256": "669a33b89cdc143be1e98bde9ba7ce04b14da0e9c675363e34cf2d94cb76c459",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/files-shares.contract.test.ts",
+      "sha256": "20291accdaaaf5c17bb99c47e059d9e2ad4560381fad08d6a5572370907d93e2",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/files.contract.test.ts",
+      "sha256": "1372fe68473e647b600ecd882524f8e268cc5cf839eac05f1cc62228ccb74d66",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/files.ts",
+      "sha256": "2b844bbb3af7ccca2784f8904f5204393de5c808a99cf75996bbb3aa78f2f15f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/gallery.contract.test.ts",
+      "sha256": "2289f417aabf92d8c3a5722fa254a3304c7c29a36625b4e25d94f46ceb8aca5c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/gallery.ts",
+      "sha256": "e5ea0baa237b653905887652157da4ec26f26459c8b9c556969d9efbf7b2ff4e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/metadata.contract.test.ts",
+      "sha256": "49d9603e67983804568a691f157dfb05779a6577b1c7bd829a3cae9e64d0baef",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/metadata.ts",
+      "sha256": "462713b0e267d05ba34f66216be4793bfb055f26ce2598c1c2cc79e58ecbc867",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/notes.contract.test.ts",
+      "sha256": "e8c5d8e27967a56055f85a3a61e6b1cb1bb5bc24eca7023a369e96a6632d1409",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/notes.ts",
+      "sha256": "1f3aa2a675c208a2a9d71515dbdf667627640754c5a660e4820f46d71bc25c71",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/public-contracts.test.ts",
+      "sha256": "0673ddba2e336015f7b8e4c925362db297ca64bb82279067f7364d9af2d822f1",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/quicksearch.contract.test.ts",
+      "sha256": "6cb1573c426a25e3da1077cf8b1b0a83219849afabb418a9d298cff9856c9f7a",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/quicksearch.ts",
+      "sha256": "ca5e7e56500ce4a626a45e505d81b24364c90272b32a7684bfbf25817ca85069",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/shares.contract.test.ts",
+      "sha256": "1420216780b172746bcf726b7aea66e751e9a93eec47328166da9673679aeb06",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/shares.ts",
+      "sha256": "624b14cd1a140d180171a76952264d4d00e6bc606e38ae37e177845c9f4eea4e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/system.contract.test.ts",
+      "sha256": "2842b495d6caac3fd3c622975932b307cf223fc7308ed1da4d190cac20bab991",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/system.ts",
+      "sha256": "88acadea1166957b3688ed6bdc3611f25f70335fe7122b5f06af6b2b912c54a7",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/tags.contract.test.ts",
+      "sha256": "6ff6c64a65b1d968a285c5c9fca29d087f0b438673b0bd193e912e296283862f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/tags.ts",
+      "sha256": "f143361e5c25de54910e6a0c17a4c5bf9ac951ce47ed3cabf6e5933f8ca20d63",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/thumbnails.contract.test.ts",
+      "sha256": "7c4c29b22f58d305685db1af1da652e86e8556984ee099b740b135acecba0040",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/thumbnails.ts",
+      "sha256": "d744f8e67b2b4768788155da6c6a4cc3cff000beface72b556f4843516018ee3",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/users.contract.test.ts",
+      "sha256": "3f90987fd222c90d1beba76e48ddf8a7befb376dd3775df4d5430516ab6bb3ac",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/api/users.ts",
+      "sha256": "09eadd1413e2e89d76d253911a23ec09fcbc5d6c74c5713a314f666edc68b97e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/cache/QueryCacheContext.tsx",
+      "sha256": "c72afe10981c146330ad6c000c92c987015de77ff9e7ef929d35356c7f3ba17c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/cache/invalidation.test.ts",
+      "sha256": "6a8afcc40a8daf8ddbc391f9a49061bd5afffd1595b5484ab3624aeca42ad97c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/cache/invalidation.ts",
+      "sha256": "43592095dd7c03438fa911f2e5aa03cb8ccb4014e14882969f4c8d6ebb945885",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/cache/queryCache.test.ts",
+      "sha256": "d982546c4417006ddc2b791c44f4502e442a80585b07ee73f7625d248741391d",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/cache/queryCache.ts",
+      "sha256": "ef68aeb285fd43ec8ace495a9868de0d793a5151971c28b2a58e0211c9104736",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/admin/ActivityLog.test.tsx",
+      "sha256": "5359dff1da67bed4dbb4d84d381fe82db220c8094794edd2551f6ae78b938f1a",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/admin/ActivityLog.tsx",
+      "sha256": "8c58d9adb905a9d880f5a989889c130f228bd0a304661bafadfadd3fc4c6918c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/admin/InviteManagement.test.tsx",
+      "sha256": "5bf23a676131b23fa031c9e0da07e0c1f469d056f4f54633e3c1ad16fbe816ee",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/admin/InviteManagement.tsx",
+      "sha256": "e12eca1d358d7a28317a9c89f72e47d8a6e7e0dc8b55952b5a367374513d5d88",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/admin/OnlineUsers.test.tsx",
+      "sha256": "ff918ba74d4ba0647260e44c21798929d929e9de6098c28f0000b15eeb3a64e8",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/admin/OnlineUsers.tsx",
+      "sha256": "8d173e67c3d6aa9f2385a25f4753bc0749de4afe064de874dd22ec8cd3451b1c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/admin/ShareManagement.test.tsx",
+      "sha256": "76049127eda128c6b9a647294a10f5c59a8297646236813a8e4faea5d157d3ed",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/admin/ShareManagement.tsx",
+      "sha256": "7031b4917da7b27da702ec9c98fd2d4d30567ae0d5a836d343a3c55b5885061a",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/admin/UserManagement.test.tsx",
+      "sha256": "e8955f09eefec679ba8df41d6c8830335476a5f5fef8af3d438b849a44911fdf",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/admin/UserManagement.tsx",
+      "sha256": "a4f24edfe51a75381a61317fbdeb8c4aaa807715a67c755b66dca8ee3ff3d939",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/auth/ProtectedRoute.test.tsx",
+      "sha256": "d6e145126f8b64b55be657d29abbb2dddadbf82773eee6d74eae48206b05ac09",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/auth/ProtectedRoute.tsx",
+      "sha256": "5752315393c4300bb4ee8f4f0de99bb9b2f6a334c119435c1e78142ba245cae9",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/files/Breadcrumb.test.tsx",
+      "sha256": "83925011aaf650d969f2a0abacf18e8ea3549f8f8f579e3c8967e941e6538706",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/files/Breadcrumb.tsx",
+      "sha256": "1655cfe6b20bc1b9e81411f8fd57bae32a563b97bd0989136571aae8381b804a",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/files/FileToolbar.test.tsx",
+      "sha256": "e0f218fd3b0fb389c038a91d1dcdedbbe69747d602042c2b61b1bc0c7f42e13f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/files/FileToolbar.tsx",
+      "sha256": "49d3b0d74fa8267ba28bfda74b00bb727db27d7a4c0ec95252a71c3947a4e82e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/files/LayeredPreview.test.tsx",
+      "sha256": "5c33cda5aadc45ececeebc48977a8a82c9650ae94e758f7687f3d0709149b74b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/files/LayeredPreview.tsx",
+      "sha256": "e0b0f8f8906614f49b45c7fb75effadb637891c6b70c77b69f3eecd448a3cd72",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/files/MasonryView.test.tsx",
+      "sha256": "c267fce0699b6370ee94c90b05e5df0f8b907a21e76128c2fa3cb97657704495",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/files/MasonryView.tsx",
+      "sha256": "994f5d8da7e2c075f5356fee5ac4849d47a80dbee5ce7feafa1cbc43aebea56e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/files/ProjectCard.test.tsx",
+      "sha256": "7341af4be87ccd118844c77eb444bbb7939c262109f0b1dfd91bfadb908906d3",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/files/ProjectCard.tsx",
+      "sha256": "7252758ee9a3ea3da77f628dabff09e8c7e1fec54a8ded242120f6fc015b58aa",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/files/ProjectGrid.test.tsx",
+      "sha256": "2e702d354a1da81b5d3a6445ba7dc042b2963de54598228a6db95a224a5b4ecc",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/files/ProjectGrid.tsx",
+      "sha256": "61903b0c547091ecd4b82ed2d8c243d2a57411f21be9db6c93c97ec5f9c093da",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/files/ProjectList.test.tsx",
+      "sha256": "7308200eb33b7882403f5594acc6c9da216fe5a3d2ee0c01ebcaf7ca804e6422",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/files/ProjectList.tsx",
+      "sha256": "ba61e32472db9743fc44701fa7d2627c5e6713567692fc6a63fc6cba3fad3787",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/gallery/Gallery.css",
+      "sha256": "17906ab1575900d3003f1bf1bec8577598efdbf91778dfec73ae52d373f62e13",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/gallery/GalleryCard.test.tsx",
+      "sha256": "95b80c09add19bedbddd578a0ded5a5d3b4884501b43f5be0823d1d90afe0341",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/gallery/GalleryCard.tsx",
+      "sha256": "60237257f91ed8f65622b6538c7ab443e6aa6dceb7939237bc7f21ae8b8b9630",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/gallery/GalleryEmptyState.tsx",
+      "sha256": "9e7588aa274bf4e47b3d82780e15bc0639154447cffe308db9f3cb82a5af45bd",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/gallery/GalleryLayout.tsx",
+      "sha256": "d04ccfb3d8db106ddf90989983da889f1bb518059efa96bf05595506a897cfba",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/gallery/GallerySection.tsx",
+      "sha256": "aef850c01dbfa9accaa67353d2b39a7e51a5baa393c15400a82f8c12e978d1ee",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/gallery/GallerySections.test.tsx",
+      "sha256": "01d49ada11bde7c8e2cd5d23644bd520b8a5ae99e33c3258cb954660f7111d9b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/gallery/GalleryTiledGrid.tsx",
+      "sha256": "5223109dd57c2862d87e7fbe3743ebbeeccd8c94e5c1806821e1d4247feaefc8",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/gallery/GalleryViewControls.tsx",
+      "sha256": "c93f4a2374455b645bc55615498229eb89617c61ee62abbe22b964c6dfaa6910",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/layout/AmbientBackdrop.tsx",
+      "sha256": "149160fcae9465e827412cc0f8e2382beb999cec196f0ba77ef88ec6bacb550c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/layout/AppHeader.test.tsx",
+      "sha256": "628f5090637424faeda256dc525d04d7b85ffeb667d0d80b4306a91204ea3ea6",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/layout/AppHeader.tsx",
+      "sha256": "369ae032739afe01e1e32a3e9b580736159546ad5bd52fdba08db3438aa4cce9",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/layout/AppLayout.test.tsx",
+      "sha256": "7f20d70dc20a479fd5f316f64fe156ec0f887d8e0791d65760559079c31fcc39",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/layout/AppLayout.tsx",
+      "sha256": "3bbb59a09fe502c93c4ea3bfcd9def597a3b9dc5b57b042e3209da3c7083bdde",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/layout/ConnectionStatusBanner.test.tsx",
+      "sha256": "4cc3070e5e25034a71b2ef5034f9e4c1e15cc5a8bc796c11928186846d0e02d5",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/layout/ConnectionStatusBanner.tsx",
+      "sha256": "d364a3c58da67f66e09d74bf70e666eb74bbea18217769c5702af3ce11155158",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/layout/Header.css",
+      "sha256": "4e9e143d22a7dfc07ea8918602411f4cabc289372d7d1337eb1dcd10b6ed9cb0",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/layout/Header.test.tsx",
+      "sha256": "735e86a2c3cefe9f8c427b3d15d3c759fb0a0344595f28bff709e4508056adeb",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/layout/Header.tsx",
+      "sha256": "1c02c7c89c72fdb8183d64ec0cd597a298b4148b06e5392dff5aa1c331a917aa",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/layout/InfoPanel.test.tsx",
+      "sha256": "5cc40cd670ac8a9d3f819de5ed1c5beadd813e9f42a1bf7512ad8b77f6e16f47",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/layout/InfoPanel.tsx",
+      "sha256": "a9dd09a3146911d423b7b799942aac39a81b24e167c077f1f2dab1fb095336d0",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/layout/ResizablePanel.test.tsx",
+      "sha256": "4935762b18238e5e1c4048bbb0b39ccefe5fa148644512f67c2480def4675d2f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/layout/ResizablePanel.tsx",
+      "sha256": "dbac9d6b5dc2537bc81d230592f215bb1602606c694614e9df1f98f4a7bc9cda",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/layout/Sidebar.test.tsx",
+      "sha256": "00a9150cba403609c18eacc1d89956392386b41a209a4da68f57c207ef05b41b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/layout/Sidebar.tsx",
+      "sha256": "c2f0be40d364bccd98c2fafe33ccd0e281c241ff7126f71d46f4e589e8069e54",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/layout/StatusBar.test.tsx",
+      "sha256": "ae3ad19092352a230023c9524c6b3bb2e3c5fbc3b3bc4c574d851ebfd4de564e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/layout/StatusBar.tsx",
+      "sha256": "7509a399f6718adcdb0722a53dc7be32bef670183e2207651b683ce970b74ec8",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/layout/Workspace.css",
+      "sha256": "27ce598ad567657aedc679eec7d44e11da14d2229e75cf41c781c7cb9b7665de",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/media/DominantPaletteStrip.test.tsx",
+      "sha256": "4003b8b1c0ef2b0aab3b81896f1166cbd912039fb53b5fd91881c5b196de3cee",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/media/DominantPaletteStrip.tsx",
+      "sha256": "275853c9480510a81f152fe6e0cf73df09cbffb51c11a0d3d5f603ce9b3c139a",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/shares/ShareDialog.test.tsx",
+      "sha256": "fbed4474a261c021edf5206d7e7edcb8db814d0946579cc75af775b9df4b1e6e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/shares/ShareDialog.tsx",
+      "sha256": "205fc6c02718fe3289f8048ade8b55b0f4d85f5e1e1bf6acba59a6af867354b7",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/tags/TagChip.test.tsx",
+      "sha256": "6d33be8b2fa4d0be0a25db0bce28f682732d92ac905262d4fa63d5cd73ebb6d2",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/tags/TagChip.tsx",
+      "sha256": "6c6a61c1562a00b5430102520de860ec96f8d1feebde9422a5d9cc284cddf677",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/BottomSheet.test.tsx",
+      "sha256": "8e68c3bbe2f1587794ac329c8c3779a2560939862eefbaadf6ffec04c595b345",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/BottomSheet.tsx",
+      "sha256": "5c3e4a72fa72dffb8a679f2f15cdf5768fe0724f4d6bdd49ce0a94a6ccba6bf4",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/CommandPalette.css",
+      "sha256": "921a5772e77a7e6646f3017abf8974ae91943d0102d63d6b9d91a4ad463b0f81",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/CommandPalette.test.tsx",
+      "sha256": "e68a7bb17a7f49f0ac9b2025fe0410f9fea17caaa82bd9a1e74567c80a967bda",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/CommandPalette.tsx",
+      "sha256": "22204aa39ca0042472a9feeff74e8ba919382df4b60f9ccd2b7b44e33199915f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/ContextMenu.test.tsx",
+      "sha256": "8a55bc4d22e50365aac9c13f62e3b93aa085e2d2da94e74c8a7ce7c085b5bfdb",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/ContextMenu.tsx",
+      "sha256": "61c8fdd2fa851be422a76f0b752dae187336500bcad088c42abaf8d63bd33691",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/DownloadProgress.test.tsx",
+      "sha256": "24d8c4aa5b4b658baee9b137476c774f4af9e832df271be694b60eddc737f04d",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/DownloadProgress.tsx",
+      "sha256": "e42df0ebe665724636504e389869655254d8d7e757c10175c3326feacc189cea",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/EmptyState.css",
+      "sha256": "88beb4aba591f1410f8b0f2333494d87920c5ae88d9b2d547ec489f225778cdf",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/EmptyState.test.tsx",
+      "sha256": "1694d73d14a3b4164bf50b1b4df403bf561680a7763ba6ae56972693779602e2",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/EmptyState.tsx",
+      "sha256": "0a06091ebbb001e874dd4d511d3392479f350f42af9a645444611cdf8240890c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/ErrorBoundary.test.tsx",
+      "sha256": "276196e47592b6f061fc816784325bc1b61125a294a5ba90848b8fdd0d5bdd60",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/ErrorBoundary.tsx",
+      "sha256": "04c530e15f61471c6cc33a9689adcacd3b35736bc0c33a500ac8050e70210ed5",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/Modal.test.tsx",
+      "sha256": "60d5dc9e3d866404ae62593a2b365815e03cc848420c44526a9dc61d967d7913",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/Modal.tsx",
+      "sha256": "384f49597fe0489b16611a76b5ee2581bdd3b9c29bbb4e42ef9aa0ec51339b25",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/ShortcutsDialog.css",
+      "sha256": "64bf6dff083f9c3839d7051ecd3545556d935d9c17098c16065cb41551458b09",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/ShortcutsDialog.test.tsx",
+      "sha256": "c914d64d974af830b0fa83027ab39f681681d3cfe21dd5c5ce0a154fc27c5241",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/ShortcutsDialog.tsx",
+      "sha256": "b7e35058d57d911af4c68f67b6a04a0dd02b8016a984a3adf4e36abe088e38c5",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/Skeleton.test.tsx",
+      "sha256": "0e164fd46dba57497dbce286df8a4105c11bfce857bd59f0c6c7cb086b2ed6c1",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/Skeleton.tsx",
+      "sha256": "7eb0b4517b1ab503ce94f66dec8090854db2c96e1777232dd87989e947c6635f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/Toast.test.tsx",
+      "sha256": "3f2aa3601d968cbdb22e66dcce5edcce9a764c5e4bc96d863dafef1a697ef9e1",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/ui/Toast.tsx",
+      "sha256": "3ed773bd0ca8cd3d432c099f9cdd105a67e5c0877941c7c198a1845d33e308f2",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/viewer/ImageViewer.test.tsx",
+      "sha256": "9356527b5b2e47175914f1c83d80fac684f0e06434b956d199ba3f166095bd0c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/viewer/ImageViewer.tsx",
+      "sha256": "8ab9503146fc5569527a970f506234e0bf07d0e5c7f9941e6e01227da0d3c745",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/viewer/QuickLookOverlay.test.tsx",
+      "sha256": "26efe7e208834dc4b39b507adeea9d485d7affd94eba22c2f2e04a2fee618c09",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/components/viewer/QuickLookOverlay.tsx",
+      "sha256": "70c5f3c448cfac678b3eb19f7f76983f7c49d1503907a264b69d61f8a4a3e8a5",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/features/shares/ShareBrowser.tsx",
+      "sha256": "bdb75079d41fb8ef965cc390f21f11b80df8d78b9305e0b8357397109962fb82",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/features/shares/SharePreview.tsx",
+      "sha256": "35d6a8dd028a6c44cc3cb93de667612315c8055feb12ffbf2ec573d8868d7001",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/features/shares/useShareEntries.ts",
+      "sha256": "8bb81d98da60ea3deaf3be02c3c073430fd8ee87439253327e17078d436191e0",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useApiDegradationToast.ts",
+      "sha256": "13a8bb2b5ff11b85de42ceb298784a68c70df7683c6c622d8b8f8c9703ad5204",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useAuth.ts",
+      "sha256": "5c3cd25bf6d01600cce7cbb5be9192f2e7f5ac1abb26c048006c5b1c8c1e46f3",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useCachedQuery.test.tsx",
+      "sha256": "0f0590fc590473479a246a1a85c3a405458854e0ede5b3936fd41fd66c75ed78",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useCachedQuery.ts",
+      "sha256": "ba0f1103a5f85e3495d474ec314e78a32d00e35e80d2526455bd8379f6c4e93d",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useDialogFocus.test.tsx",
+      "sha256": "cdc7d95718050cb1cd268dcec85619fe4324facc7ac8e2c7a9821c3a671df057",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useDialogFocus.ts",
+      "sha256": "1bcd8d02291e7ef9e82e4b9d0e4b6b3ef21da9c13b2e4429c2c4cd3d30c17a97",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useFavorites.test.tsx",
+      "sha256": "ad00ddcaa503b8d93d0d94d72283b465771f9f6d273bdb7288671537df41f75f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useFavorites.ts",
+      "sha256": "041ae198f03ab754c77dd79075fe069ee23f610f132a21d5f21e1d7f82b84139",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useI18n.test.tsx",
+      "sha256": "b036d6ecf4375e00d40fb9327d969d5ef44926929c7547b3bffdc85c0a664ac8",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useI18n.ts",
+      "sha256": "ba55dd40a36afdcc2cdc3d09e6ee61122c6233da479afbc1b8234677c2fb5b80",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useInvalidation.test.tsx",
+      "sha256": "b56d3700ac463bf87fee49f31caa34846c837826806c9e531963787a1c5f6c42",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useInvalidation.ts",
+      "sha256": "2c55ff5f275b6262252f05c9fdd843006a0207bc79728e07c149600e863a5a23",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useMediaQuery.test.tsx",
+      "sha256": "8576cdb2757b0f3718f2fdc3e624f146ce08b21d7a504c13b26d5fe48eec164a",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useMediaQuery.ts",
+      "sha256": "2158bbb0df866716283f720d9bc9517b2d93fff9ba4b21595f8d522ea559bbe0",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/usePageApis.ts",
+      "sha256": "2113be5e6db123aeea0f1c6f903a2bf72a3c1da79bd9bc5f2c2dcc4497b2efe1",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useProjects.test.tsx",
+      "sha256": "5448494ce4532d5c6bf39ac88248ade31fcf0b27f4322e912f88250a61ecdf17",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useProjects.ts",
+      "sha256": "d2ca0ea3aa9fafc5dcb927c30468cadf37437a390f43557b617f8c41487e89c0",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useQuickLook.ts",
+      "sha256": "7709aaf3e66d5ebe646840048bf034f8a9fc30de8e5655440432610f1cbdc761",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useQuota.test.tsx",
+      "sha256": "41b74533c88bcd8b01407294c48159ae06ef10c0551fefdec9b1e565426019de",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useQuota.ts",
+      "sha256": "558854d664741afd8c3775e6b262b44689012691626e83f490efa4161b289136",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useSearch.test.tsx",
+      "sha256": "d088112a3aabf5b8ab222dd89b80a5792f1319b9390611630704e33729ac1f59",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useSearch.ts",
+      "sha256": "d8e6265492915cf35069ced639b8dd6a74d5b7d688a3f913956c7e151f873ae7",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useServerTheme.test.tsx",
+      "sha256": "a7844c7612c3484ec11406e24622962ff5c7a41d5fe4da95252176243791b77e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useServerTheme.ts",
+      "sha256": "d47f73316cbcc86dccc0e352669bc3cd0732e209a549f01415ec8689dced6931",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useTheme.test.tsx",
+      "sha256": "ac86e79b8948d84e61577bc7dc21459b0834bc6fa87167d9c1227da64657506e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useTheme.ts",
+      "sha256": "6042fa36762bdfc9c7e1860ec3f402e3f2a0b246b46ddf5ac5447f80ee0d9f33",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useThumbnailCache.test.tsx",
+      "sha256": "eb24749d7a5b3c4221b1d3c3333c26bfd146226bf87975cbae50a28e1d5fe7fd",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useThumbnailCache.ts",
+      "sha256": "389260c5f30767f695af900e6483e6457448be1a8369bd61861298a7d538c881",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useWebSocket.test.tsx",
+      "sha256": "ab050e30aea7a034ca1065ad9074a1d06dbd3d0fcb69f2892a2eb2561dc3734e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/hooks/useWebSocket.ts",
+      "sha256": "038d8f8d779471f7b2056936fb87da2cb83c241313c16675dfb67d671a10af9a",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/i18n/en.ts",
+      "sha256": "ffad09545449525475602b97a5e4a95b7a3236a0fb7a0f7a1a3db30fb37e24e4",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/i18n/i18n.test.ts",
+      "sha256": "f59246985f12547ef54b2ddb5b9b2cd1171ac688880731e51de65d9c72971ca6",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/i18n/index.ts",
+      "sha256": "089174e8d48343c1771a3cf5499cf46539787d9cce47fea83b8d87adcb7cb346",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/i18n/ja.ts",
+      "sha256": "d66ee5dfaa79c5bf5682e212e96dafc386394adae07210875a299d22dad9733a",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/i18n/zh.ts",
+      "sha256": "fecdae85ce221c8c2af0f493819311df1a16a947345ce7c644b3c183fe34da40",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/index.css",
+      "sha256": "63cdc18c5a03c1f2a011e736abbb15db08f6c4ffcde84bffb4b2df9cae7465e9",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/index.css.test.ts",
+      "sha256": "b91596228c42df31bc0b6966ec95dfdf89de9b369930df83129f64f9dc1df75f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/main.tsx",
+      "sha256": "2c0a792d35e3de5d747baac9a9b79b4f05180621ea4bf7fa75006c95e7e6f077",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/AdminPage.test.tsx",
+      "sha256": "11e7d044aef84a10c03c08422195c2b65616627ad76eefeb944aa81ca21d3a25",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/AdminPage.tsx",
+      "sha256": "38571e258298302dad2b0ad39e0a37203bd55b3ffdb8a84928c3dc2ef0a8e254",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/BrowsePage.test.tsx",
+      "sha256": "9dadfb01bdbf0251aa30f19e9f29a209fde597ab7bd6c60bf58c535467be49ea",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/BrowsePage.tsx",
+      "sha256": "afad1d88844b7478026ce214228832dcaefb9fdacad3b63113074813871ac38e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/DetailPage.css",
+      "sha256": "160c82ca6d18044cc3508d7477e4b42f4f470965eb701e140a68b065dbb29c02",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/DetailPage.test.tsx",
+      "sha256": "4d6e6865f5bd59029cab187c3dee2ce26978e30125bedb8f6687f5b7d850201d",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/DetailPage.tsx",
+      "sha256": "3536fa88c0a7206b602473a5385a9f7350cc6f8a39a760b79acc233d50c76349",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/GalleryCollectionPage.test.tsx",
+      "sha256": "4667f27f3c2facfbb3a645913be27827af22f12e6aa9d9a33b3bfdc046315630",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/GalleryCollectionPage.tsx",
+      "sha256": "5e446e93e5f9fd9b12e962b0072cd982b67e4ca1dec82178a5b1f0a0bf426f98",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/GalleryFavoritesPage.test.tsx",
+      "sha256": "a734c089733bd5d40497b31bec1fd4ce100376ce7f4fb21d79d17b3e7af6260c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/GalleryFavoritesPage.tsx",
+      "sha256": "f4762cbb15cd7e954cd1351953a180a698c260284058f0faef3df32c05ac10c1",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/GalleryHomePage.test.tsx",
+      "sha256": "2678131c5c625a8a8a1041ba2c1b0e8616a9bf73f34c34779e9919356fda1aa6",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/GalleryHomePage.tsx",
+      "sha256": "fb51b06323a39c15bbfbfef62491d2603cbbcff443ac9fadbd85438ff007baf9",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/LandingPage.css",
+      "sha256": "539581a0dd3fc20a5f9aefbe4a5cc880c1ca9e43474d7ad263ae05001dca239a",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/LandingPage.css.test.ts",
+      "sha256": "a18eb7c656d9b04c98673a57e54ae4d3ef579febf6e570702f429348768ed537",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/LandingPage.test.tsx",
+      "sha256": "53a89ed940bd463731f992e4f52191ce7303221ab5c3fdbf381778db5018a3a9",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/LandingPage.tsx",
+      "sha256": "1aaa3ff074aed7477c192b3474694cab2aac167da79e35abac34f0639a598b97",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/LoginPage.test.tsx",
+      "sha256": "6bba19829d50185a6d052b50c350a2192bec6f9d52ff122c4f42cc94d0548487",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/LoginPage.tsx",
+      "sha256": "628b4b57696e1dbb277b371c52af138ab2d3469fab01199759799a3d54f7a280",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/NotFoundPage.tsx",
+      "sha256": "350c80cf69d1b1cf83586ca1386dd0b1e2355b05cd5d2845acf45a16d8b1870c",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/ShareReceivePage.test.tsx",
+      "sha256": "337f9001b09c0269878ab1a1d359561f6bfd0189c32f4def2c99eab345337d82",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/pages/ShareReceivePage.tsx",
+      "sha256": "58e95608300785dea0f17b6af2b23fc543ddeb8d0fc71f9c6526bd097a180c3e",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/shortcuts/registry.test.ts",
+      "sha256": "8274a5675c319030f86eef5b9fdbec18786e92a05d4c908f5df711df113592fa",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/shortcuts/registry.ts",
+      "sha256": "afd1827afdeb8ad6b4ac44eeb6265ac18962dd24e29b55dc69c281a850d4182b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/stores/AuthContext.test.tsx",
+      "sha256": "55fe1c88764df41455b3686f09f328dd37f0cb3b78a2a1e24d8abb155bc38077",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/stores/AuthContext.tsx",
+      "sha256": "002d905f570e7e373c8fe0d28b9c040ba088704dfbfce1f20ebf58c751aab014",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/stores/RealtimeContext.test.tsx",
+      "sha256": "21e6eb601dcc2f570023da1cd2cc37a399afe3ead14121444f805fe30c4e27df",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/stores/RealtimeContext.tsx",
+      "sha256": "77aea85df6d7f5c2b2cdaf6f03b2e10a5bcbb4291a6be12022e75a878cc63f11",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/tokens/themes.generated.css",
+      "sha256": "9329b5e2ffc915e9622d422406040ae7e213472042d4c436de8ddbe324852d12",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/tokens/themes.manifest.generated.ts",
+      "sha256": "bcc1ee4f3165d60505cb41edc5d0a7cef46b17e3d8e310d9864eaf4e45da1d4f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/types/api.ts",
+      "sha256": "4618db169470671d0cd63f6d1dbefa94b06ebaea78c73cac210a09288492fb8f",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/types/contracts.ts",
+      "sha256": "5171652e6514499d0589c17bdcf21425b02d704acd45c16670a2bedde30124ac",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/utils/backoff.test.ts",
+      "sha256": "1ad369f7a2700f3ebbc23c93fd52387a644a270ca92896b2f7d3860ac26546a9",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/utils/backoff.ts",
+      "sha256": "8e0c26521684f120fe37a977800d534170b867d78ad9c855f6eeb1f59387c852",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/utils/collectionSnapshot.test.ts",
+      "sha256": "625a2760688629a018aa640fcb98f95090fe72911d839ef4c45dc0558599dbb8",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/utils/collectionSnapshot.ts",
+      "sha256": "9cb1d94da53e981ad75b4bbbfd17ce1ca34b9a8f87934b2c82ace1419b647ff3",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/utils/concurrency.test.ts",
+      "sha256": "f2be196f73be0419b4951adb22e2ec38bd971f086b5e90611584393906c35a3b",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/utils/concurrency.ts",
+      "sha256": "1afc3105bb80fc09285e4639542b82c3fa1f4d1a32c8be9aff7e70db12ba4d99",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/utils/download.test.ts",
+      "sha256": "8c0549b41e8213ef368c66d980c2b19a69ac1148edbaf98dc290cd45f28fe392",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/utils/download.ts",
+      "sha256": "eecda5f6d70969d7d4eba8193e346a4a0a6637d58a21af6697f6fe3c8c6e3973",
+      "matches_snapshot": true
+    },
+    {
+      "path": "webui/src/vite-env.d.ts",
+      "sha256": "b440b802c2cfeac6a24eda510bd63c1f23c6ab5c52bcfe3a32a918dbad6b46c8",
+      "matches_snapshot": true
+    }
+  ],
+  "mismatches": []
+}
